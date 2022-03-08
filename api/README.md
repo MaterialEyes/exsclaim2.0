@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.org/materialeyes/exsclaim-ui.svg?branch=master)](https://travis-ci.org/materialeyes/exsclaim-ui)
 [![Built with](https://img.shields.io/badge/Built_with-Cookiecutter_Django_Rest-F7B633.svg)](https://github.com/11th-Hour-Data-Science/cookiecutter-django-rest)
 
-API for handling EXSCLAIM results. Check out the project's [documentation](http://materialeyes.github.io/exsclaim-ui/).
+API for handling EXSCLAIM results.
 
 # Prerequisites
 
