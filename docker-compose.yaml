@@ -1,0 +1,33 @@
+version: "3"
+services:
+  postgres:
+    image: postgres:11.6
+  api:
+    restart: always
+    environment:
+      - DJANGO_SECRET_KEY=local
+    build:
+      context: ./api
+      args:
+        ENV: dev
+      target: base
+    command: >
+      bash -c "python wait_for_postgres.py &&
+           ./manage.py migrate &&
+           ./manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ./api/apps:/code/apps
+      - ./api/config:/code/config
+      - ./api/docs:/code/docs
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+  dashboard:
+    build: dashboard
+    ports:
+      - "3000:3000"
+    volumes:
+      - "./dashboard:/app"
+    depends_on:
+      - api
