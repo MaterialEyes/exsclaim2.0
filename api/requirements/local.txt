@@ -11,7 +11,6 @@ flake8==4.0.1
 mock==4.0.3
 factory-boy==3.2.1
 django-nose==1.4.7
-nose-progressive==1.5.2
 coverage==6.2
 
 # Static and Media Storage
