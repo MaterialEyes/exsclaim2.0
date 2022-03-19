@@ -23,3 +23,19 @@ For development and testing, it is useful to have a small amount of pre-populate
 ```bash
 docker-compose run --rm api python manage.py loaddata exsclaim_fixture.json
 ```
+
+## Installing new node packages
+
+If you need a new node package,
+```bash
+docker exec -it <dashboard_container_name> npm install <package name>
+```
+This should update `package-lock.json` and `package.json`. Make sure to commit these changes for them to persist. 
+
+## Common Errors
+
+#### API 404 Error
+The API requires a trailing slash on its path. 
+
+#### Bind for 0.0.0.0:8000 failed: port is already allocated
+The API container might still be running, or you have another service running. If it is an old container, try `docker container ls` and `docker kill <NAME>` to stop it and try again.

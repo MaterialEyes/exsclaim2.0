@@ -27,6 +27,8 @@ class BaseConfig(Configuration):
 
     )
 
+    CORS_ORIGIN_ALLOW_ALL = True
+
     # https://docs.djangoproject.com/en/2.0/topics/http/middleware/
     MIDDLEWARE = (
         'django.middleware.security.SecurityMiddleware',
@@ -36,6 +38,8 @@ class BaseConfig(Configuration):
         'django.contrib.auth.middleware.AuthenticationMiddleware',
         'django.contrib.messages.middleware.MessageMiddleware',
         'django.middleware.clickjacking.XFrameOptionsMiddleware',
+        'corsheaders.middleware.CorsMiddleware',
+        'django.middleware.common.CommonMiddleware',
     )
 
     ALLOWED_HOSTS = ["*"]
