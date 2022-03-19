@@ -19,4 +19,7 @@ Data added to the database will persist between runs unless you remove the postg
 
 ## Seeding the database
 
-For development and testing, it is useful to have a small amount of pre-populated data. 
+For development and testing, it is useful to have a small amount of pre-populated data. Since we would like our sample data to be very realistic (images with reasonable croppings), we use a fixture instead of a factory. To load, run:
+```bash
+docker-compose run --rm api python manage.py loaddata exsclaim_fixture.json
+```
