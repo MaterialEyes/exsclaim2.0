@@ -39,3 +39,6 @@ The API requires a trailing slash on its path.
 
 #### Bind for 0.0.0.0:8000 failed: port is already allocated
 The API container might still be running, or you have another service running. If it is an old container, try `docker container ls` and `docker kill <NAME>` to stop it and try again.
+
+#### Dashboard failks with ENOSPC
+The dashboard doesn't have enough disk space to run. Try this [stackoverflow](https://stackoverflow.com/questions/22475849/node-js-what-is-enospc-error-and-how-to-solve).
