@@ -3,7 +3,7 @@ const baseUrl = "http://localhost:8000/api/v1";
 export const fetchArticles = async () => {
     const res = await fetch(`${baseUrl}/articles/`)
     const data = await res.json()
-    return data
+    return data.results
 }
 
 export const fetchArticle = async (id) => {
