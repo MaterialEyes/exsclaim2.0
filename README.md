@@ -17,6 +17,12 @@ You can then navigate to http://localhost:3000 to view the dashboard. Any change
 
 Data added to the database will persist between runs unless you remove the postgres container. 
 
+## Additional install commands to run
+Make sure to install the MUI library by running:
+```bash
+npm install @mui/material @emotion/react @emotion/styled
+```
+
 ## Seeding the database
 
 For development and testing, it is useful to have a small amount of pre-populated data. Since we would like our sample data to be very realistic (images with reasonable croppings), we use a fixture instead of a factory. To load, run:
