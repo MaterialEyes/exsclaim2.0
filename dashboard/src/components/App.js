@@ -7,7 +7,7 @@ import SearchPage from './search/SearchPage';
 import NavigationBar from './common/NavigationBar'
 import Layout from './common/Layout';
 import Footer from './common/Footer';
-
+import ImagesPage from './images/ImagesPage';
 
 function App() {
   return (
@@ -21,6 +21,7 @@ function App() {
               </Route>
           </Routes>
       </BrowserRouter>
+      <ImagesPage></ImagesPage>
       <Footer />
     </div>
   );
