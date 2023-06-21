@@ -2,8 +2,9 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import { fetchArticles } from '../../services/ApiClient';
 import { ImageList, ImageListItem } from '@mui/material';
+import myData from '../../example-files/exsclaim.json';
 
-const itemData = [
+const exampleItemData = [
     {
       img: 'https://images.unsplash.com/photo-1551963831-b3b1ca40c98e',
       title: 'Breakfast',
@@ -66,6 +67,10 @@ const itemData = [
     },
   ];
 
+//var data = JSON.parse(fs.readFileSync('../../example-files/exsclaim.json'));
+
+console.log(myData["d0na00203h_fig1.jpg"]["figure_name"]);
+
 const ImagesPage = () => {
     // get the articles
     const [articles, setArticles] = useState([])
@@ -90,23 +95,11 @@ const ImagesPage = () => {
     // try combining the masonry image list with this:
     // https://colab.research.google.com/drive/1WB5EQxSn8lVwx7vDw0TT8ZpDn7jxYzh9#scrollTo=660oaoioWGek
     return (
-        /*
-        <div>
-            {articles.length > 0 ? (
-                <div>
-                    {articles.map((article) =>(
-                        <li><a href={article.url}>{article.title}</a></li>
-                    ))}
-                </div>
-            ) : (
-                'No articles available'
-            )}
-        </div>
-        */
+      /*
        <div>
            {articles.length > 0 ? (
                <ImageList sx={{ width: 500, height: 450 }} cols={3} rowHeight={164}>
-                    {itemData.map((item) => (
+                    {data.map((item) => (
                     <ImageListItem key={item.img}>
                         <img
                         src={`${item.img}?w=164&h=164&fit=crop&auto=format`}
@@ -121,6 +114,15 @@ const ImagesPage = () => {
                'No articles available'
            )}
        </div>
+       */
+       
+       <img
+        src={`${myData["d0na00203h_fig1.jpg"]["image_url"]}?w=164&h=164&fit=crop&auto=format`}
+        srcSet={`${myData["d0na00203h_fig1.jpg"]["image_url"]}?w=164&h=164&fit=crop&auto=format&dpr=2 2x`}
+        alt={myData["d0na00203h_fig1.jpg"]["figure_name"]}
+        loading="lazy"
+        />
+
     )
 }
 
