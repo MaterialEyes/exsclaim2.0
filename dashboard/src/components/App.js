@@ -13,14 +13,8 @@ function App() {
   return (
     <div className="App">
       <NavigationBar />
-      <BrowserRouter>
-          <Routes>
-              <Route path="/" element={<Layout />}>
-                  <Route index element={<ResultsPage />} />
-                  <Route path="search" element={<SearchPage />} />
-              </Route>
-          </Routes>
-      </BrowserRouter>
+      <Layout></Layout>
+      <SearchPage></SearchPage>
       <ImagesPage></ImagesPage>
       <Footer />
     </div>
@@ -28,3 +22,16 @@ function App() {
 }
 
 export default App;
+
+/*
+
+<BrowserRouter>
+          <Routes>
+              <Route path="/" element={<Layout />}>
+                  <Route index element={<ResultsPage />} />
+                  <Route path="search" element={<SearchPage />} />
+              </Route>
+          </Routes>
+      </BrowserRouter>
+
+*/
