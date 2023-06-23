@@ -1,13 +1,19 @@
 import React from 'react';
 //import { useState, useEffect } from 'react';
 //import { fetchArticles } from '../../services/ApiClient';
-import { ImageList, ImageListItem, ImageListItemBar, ListSubheader, IconButton, Tooltip } from '@mui/material';
+import { ImageList, ImageListItem, ImageListItemBar, IconButton, Tooltip } from '@mui/material';
 import InfoIcon from '@mui/icons-material/Info';
 import myData from '../../example-files/exsclaim.json';
 
+// Displays the subfigures given after user's input
 const ImagesPage = () => {
     // get the articles
     const keys = Object.keys(myData);
+    
+    //var fs = require('fs');
+    //const files = fs.readdirSync('../../example-files/nano-subfigures');
+
+    //console.log(files);
 
     /*
     const [articles, setArticles] = useState([])
@@ -36,11 +42,7 @@ const ImagesPage = () => {
        <div>
            {keys.length > 0 ? (
              // width: 500, height: 450
-               <ImageList sx={{ width: 800, height: 600 }} cols={3} gap={8}>
-                <ImageListItem key="Subheader" cols={3}>
-                  <ListSubheader component="div">Figures</ListSubheader>
-                  <p></p>
-                </ImageListItem>
+               <ImageList sx={{ height: 550 }} cols={3} gap={8}>
                 {keys.map((val) => (
                   <ImageListItem key={myData[val]["image_url"]}>
                       <img

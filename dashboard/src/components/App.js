@@ -14,8 +14,6 @@ function App() {
     <div className="App">
       <NavigationBar />
       <Layout></Layout>
-      <SearchPage></SearchPage>
-      <ImagesPage></ImagesPage>
       <Footer />
     </div>
   );

@@ -2,6 +2,8 @@ import React from 'react';
 import { Outlet, Link } from "react-router-dom";
 import NavigationBar from "./NavigationBar"
 import Footer from "./Footer"
+import ImagesPage from '../images/ImagesPage';
+import SearchPage from '../search/SearchPage';
 import { Box, Grid, Paper, styled } from '@mui/material';
 
 /*
@@ -11,12 +13,12 @@ import { Box, Grid, Paper, styled } from '@mui/material';
  * Footer 
  */
 
-const Item = styled(Paper)(({ theme }) => ({
-    backgroundColor: theme.palette.mode === 'dark' ? '#1A2027' : '#fff',
+const HeaderBox = styled(Paper)(({ theme }) => ({
+    backgroundColor: '#0cb1f7',
     ...theme.typography.body2,
     padding: theme.spacing(1),
     textAlign: 'center',
-    color: theme.palette.text.secondary,
+    color: '#fff',
   }));
 
 const boxDefault = {
@@ -33,10 +35,16 @@ const Layout = () => {
             <Box sx={boxDefault}>
                 <Grid container spacing={4}>
                     <Grid item xs={4}>
-                    <Item>menu</Item>
+                        <HeaderBox>Menu</HeaderBox>
                     </Grid>
                     <Grid item xs={8}>
-                    <Item>images</Item>
+                        <HeaderBox>Figure Results</HeaderBox>
+                    </Grid>
+                    <Grid item xs={4}>
+                        <SearchPage />
+                    </Grid>
+                    <Grid item xs={8}>
+                        <ImagesPage />
                     </Grid>
                 </Grid>
             </Box>
