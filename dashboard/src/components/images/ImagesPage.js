@@ -9,11 +9,6 @@ import myData from '../../example-files/exsclaim.json';
 const ImagesPage = () => {
     // get the articles
     const keys = Object.keys(myData);
-    
-    //var fs = require('fs');
-    //const files = fs.readdirSync('../../example-files/nano-subfigures');
-
-    //console.log(files);
 
     /*
     const [articles, setArticles] = useState([])
