@@ -15,6 +15,7 @@ function App() {
     <div className="App">
       <NavigationBar />
       <Layout></Layout>
+      <CropImage></CropImage>
       <Footer />
     </div>
   );

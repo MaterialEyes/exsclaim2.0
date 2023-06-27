@@ -41,8 +41,8 @@ const ImagesPage = () => {
                 {keys.map((val) => (
                   <ImageListItem key={myData[val]["image_url"]}>
                       <img
-                      src={`${myData[val]["image_url"]}?w=248&fit=crop&auto=format`}
-                      srcSet={`${myData[val]["image_url"]}?w=248&fit=crop&auto=format&dpr=2 2x`}
+                      src={`${myData[val]["image_url"]}?fit=crop&auto=format`}
+                      srcSet={`${myData[val]["image_url"]}?fit=crop&auto=format&dpr=2 2x`}
                       alt={myData[val]["figure_name"]}
                       loading="lazy"
                       />
