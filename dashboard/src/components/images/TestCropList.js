@@ -1,38 +1,14 @@
 import React from 'react';
-//import { useState, useEffect } from 'react';
-//import { fetchArticles } from '../../services/ApiClient';
 import { ImageList, ImageListItem, ImageListItemBar, IconButton, Tooltip } from '@mui/material';
 import InfoIcon from '@mui/icons-material/Info';
 import myData from '../../example-files/exsclaim.json';
+import CropImage from './CropImage';
 
-// Displays the subfigures given after user's input
-const ImagesPage = () => {
+// Testing if <canvas> can be used with ImageList
+const TestCropList = () => {
     // get the articles
     const keys = Object.keys(myData);
 
-    /*
-    const [articles, setArticles] = useState([])
-
-    useEffect(() => {
-      const getArticles = async () => {
-        const articlesFromServer = await fetchArticles()
-        setArticles(articlesFromServer)
-      }
-      getArticles()
-    }, [])
-    */
-
-    // In the real app, we'll want to show subfigures, not articles. You 
-    // can retrieve them from their figure urls, and then you'll have to crop
-    // them. The old ui had an image only results page that I liked, and one
-    // with the resolved metadata (caption, scale, label, etc.). This is where
-    // something like https://mui.com/components/data-grid/ and/or
-    // https://mui.com/components/image-list/#masonry-image-list will come in
-    // handy (masonry is good because it will allow images with different sizes
-    // to fit together well)
-    //
-    // try combining the masonry image list with this:
-    // https://colab.research.google.com/drive/1WB5EQxSn8lVwx7vDw0TT8ZpDn7jxYzh9#scrollTo=660oaoioWGek
     return (
        <div>
            {keys.length > 0 ? (
@@ -71,4 +47,4 @@ const ImagesPage = () => {
     )
 }
 
-export default ImagesPage;
+export default TestCropList;
