@@ -9,7 +9,7 @@ import myData from '../../example-files/exsclaim.json';
 // https://www.w3schools.com/cssref/pr_pos_clip.php
 // https://stackoverflow.com/questions/30629230/centering-svg-clipping-path-with-css
 
-const imgSize = 300;
+const imgSize = 290;
 
 const CropImage = (props) => {
 
@@ -31,13 +31,13 @@ const CropImage = (props) => {
     useEffect(() => {
         const context = myCanvas.current.getContext("2d");
 
-        const example_figure = myData[props.figure_name];
+        const figure = myData[props.figure_name];
         const sub_num = props.num;
 
         const image = new Image();
-        image.src = example_figure["image_url"];
+        image.src = figure["image_url"];
         image.onload = () => {
-          const dimensions = cropImage(example_figure, sub_num);
+          const dimensions = cropImage(figure, sub_num);
           context.drawImage(image, dimensions[0], dimensions[1], dimensions[2], dimensions[3],
             0, 0, imgSize, imgSize);
         };

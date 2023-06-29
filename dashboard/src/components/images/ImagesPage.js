@@ -4,6 +4,7 @@ import React from 'react';
 import { ImageList, ImageListItem, ImageListItemBar, IconButton, Tooltip } from '@mui/material';
 import InfoIcon from '@mui/icons-material/Info';
 import myData from '../../example-files/exsclaim.json';
+import CropImage from './CropImage';
 
 // Displays the subfigures given after user's input
 const ImagesPage = () => {
@@ -34,41 +35,39 @@ const ImagesPage = () => {
     // try combining the masonry image list with this:
     // https://colab.research.google.com/drive/1WB5EQxSn8lVwx7vDw0TT8ZpDn7jxYzh9#scrollTo=660oaoioWGek
     return (
-       <div>
-           {keys.length > 0 ? (
-             // width: 500, height: 450
-               <ImageList sx={{ height: 550 }} cols={3} gap={8}>
-                {keys.map((val) => (
-                  <ImageListItem key={myData[val]["image_url"]}>
-                      <img
-                      src={`${myData[val]["image_url"]}?fit=crop&auto=format`}
-                      srcSet={`${myData[val]["image_url"]}?fit=crop&auto=format&dpr=2 2x`}
-                      alt={myData[val]["figure_name"]}
-                      loading="lazy"
-                      />
-                      <ImageListItemBar
-                        title={myData[val]["figure_name"]}
-                        subtitle={myData[val]["title"]}
-                        actionIcon={
-                          <Tooltip title={myData[val]["full_caption"]}>
-                            <IconButton
-                              sx={{ color: 'rgba(255, 255, 255, 0.54)' }}
-                              aria-label={`info about ${myData[val]["figure_name"]}`}
-                            >
-                              <InfoIcon />
-                            </IconButton>
-                          </Tooltip>
-                        }
-                      />
-                  </ImageListItem>
-                ))}
-                </ImageList>
-           ) : (
-               'No articles/figures available'
-           )}
-       </div>
+      <div>
+          {keys.length > 0 ? (
+            // width: 500, height: 450
+              <ImageList sx={{ height: 550 }} cols={3}>
+               {keys.map((val) => (
+                 Array.from(Array(myData[val]["master_images"].length).keys()).map((x) => (
+                   <ImageListItem key={myData[val]["image_url"]}>
+                       <CropImage figure_name={val} num={x}></CropImage>
+                       <ImageListItemBar
+                         title={myData[val]["figure_name"] + " (" 
+                           + myData[val]["master_images"][x]["subfigure_label"]["text"] + ")"}
+                         subtitle={myData[val]["title"]}
+                         actionIcon={
+                           <Tooltip title={myData[val]["full_caption"]}>
+                             <IconButton
+                               sx={{ color: 'rgba(255, 255, 255, 0.54)' }}
+                               aria-label={`info about ${myData[val]["figure_name"]}`}
+                             >
+                               <InfoIcon />
+                             </IconButton>
+                           </Tooltip>
+                         }
+                       />
+                   </ImageListItem>
+                 ))
+               ))}
+               </ImageList>
+          ) : (
+              'No articles/figures available'
+          )}
+      </div>
 
-    )
+   )
 }
 
 export default ImagesPage;

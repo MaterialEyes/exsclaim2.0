@@ -7,15 +7,16 @@ import './App.css';
 import NavigationBar from './common/NavigationBar'
 import Layout from './common/Layout';
 import Footer from './common/Footer';
-import TestCropList from './images/TestCropList';
+//import TestCropList from './images/TestCropList';
+//import CropImage from './images/CropImage';
 
 function App() {
   return (
     <div className="App">
       <NavigationBar />
       <Layout></Layout>
-      <TestCropList></TestCropList>
       <Footer />
+     
     </div>
   );
 }
