@@ -39,7 +39,7 @@ const CropImage = (props) => {
         image.onload = () => {
           const dimensions = cropImage(figure, sub_num);
           context.drawImage(image, dimensions[0], dimensions[1], dimensions[2], dimensions[3],
-            0, 0, imgSize, imgSize);
+            0, 0, dimensions[2], dimensions[3]);
         };
       });
 

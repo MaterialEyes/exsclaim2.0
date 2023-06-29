@@ -15,7 +15,7 @@ import { Box, Grid, Paper, styled } from '@mui/material';
 
 const HeaderBox = styled(Paper)(({ theme }) => ({
     backgroundColor: '#0cb1f7',
-    ...theme.typography.body2,
+    ...theme.typography.b1,
     padding: theme.spacing(1),
     textAlign: 'center',
     color: '#fff',

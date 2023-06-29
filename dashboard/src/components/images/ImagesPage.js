@@ -37,12 +37,17 @@ const ImagesPage = () => {
     return (
       <div>
           {keys.length > 0 ? (
-            // width: 500, height: 450
               <ImageList sx={{ height: 550 }} cols={3}>
                {keys.map((val) => (
                  Array.from(Array(myData[val]["master_images"].length).keys()).map((x) => (
-                   <ImageListItem key={myData[val]["image_url"]}>
-                       <CropImage figure_name={val} num={x}></CropImage>
+                    <ImageListItem 
+                      key={myData[val]["figure_name"] + " (" 
+                        + myData[val]["master_images"][x]["subfigure_label"]["text"] + ")"}
+                    >
+                       <CropImage 
+                        figure_name={val} 
+                        num={x} >
+                      </CropImage>
                        <ImageListItemBar
                          title={myData[val]["figure_name"] + " (" 
                            + myData[val]["master_images"][x]["subfigure_label"]["text"] + ")"}
