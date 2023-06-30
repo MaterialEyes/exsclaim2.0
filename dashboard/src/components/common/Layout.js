@@ -1,7 +1,4 @@
 import React from 'react';
-import { Outlet, Link } from "react-router-dom";
-import NavigationBar from "./NavigationBar"
-import Footer from "./Footer"
 import ImagesPage from '../images/ImagesPage';
 import SearchPage from '../search/SearchPage';
 import { Box, Grid, Paper, styled } from '@mui/material';

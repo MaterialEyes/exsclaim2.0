@@ -1,7 +1,7 @@
 import React from 'react';
 //import { useState, useEffect } from 'react';
 //import { fetchArticles } from '../../services/ApiClient';
-import { ImageList, ImageListItem, ImageListItemBar, IconButton, Tooltip } from '@mui/material';
+import { ImageList, ImageListItem, ImageListItemBar, IconButton, Tooltip, Link } from '@mui/material';
 import InfoIcon from '@mui/icons-material/Info';
 import myData from '../../example-files/exsclaim.json';
 import CropImage from './CropImage';
@@ -51,7 +51,9 @@ const ImagesPage = () => {
                        <ImageListItemBar
                          title={myData[val]["figure_name"] + " (" 
                            + myData[val]["master_images"][x]["subfigure_label"]["text"] + ")"}
-                         subtitle={myData[val]["title"]}
+                         subtitle={
+                          <Link href={myData[val]["article_url"]} underline="hover" color="white">{myData[val]["title"]}</Link>
+                          }
                          actionIcon={
                            <Tooltip title={myData[val]["full_caption"]}>
                              <IconButton
