@@ -1,19 +1,44 @@
 import React from 'react';
 import { useState, useEffect } from 'react';
-import { fetchSubFigures } from '../../services/ApiClient';
-//import { ImageList, ImageListItem, ImageListItemBar, IconButton, Tooltip, Link, getAccordionSummaryUtilityClass } from '@mui/material';
-//import InfoIcon from '@mui/icons-material/Info';
-//import CropImage from '../images/CropImage';
+import { fetchArticles, fetchSubFigures, fetchFigures } from '../../services/ApiClient';
+import { ImageList, ImageListItem, ImageListItemBar, IconButton, Tooltip, Link } from '@mui/material';
+import InfoIcon from '@mui/icons-material/Info';
+import CropImage from '../images/CropImage';
 
 // Displays the subfigures given after user's input
 const ImagesPageAPI = () => {
-    // get the articles
-    // const keys = Object.keys(myData);
 
     const [articles, setArticles] = useState([])
     const [subFigures, setSubFigures] = useState([])
+    const [figures, setFigures] = useState([])
+
+    function subFigureURL(id) {
+      let figure = figures.find(item => item.figure_id === id);
+      let url = figure?.url;
+      return url;
+    }
+
+    function subFigureArticle(id) {
+      let figure = figures.find(item => item.figure_id === id);
+      let article_id = figure?.article;
+      let article = articles.find(item => item.doi === article_id);
+      let title = article?.title;
+      return title;
+    }
+
+    function subFigureArticleURL(id) {
+      let figure = figures.find(item => item.figure_id === id);
+      let article_id = figure?.article;
+      let article = articles.find(item => item.doi === article_id);
+      let url = article?.url;
+      return url;
+    }
 
     useEffect(() => {
+      const getArticles = async () => {
+        const articlesFromServer = await fetchArticles()
+        setArticles(articlesFromServer)
+      }
       const getSubFigures = async (page) => {
         const subFiguresJson = await fetchSubFigures(page);
         const data = subFiguresJson["results"];
@@ -23,81 +48,60 @@ const ImagesPageAPI = () => {
             getSubFigures(page+1);
         }
       }
-      getSubFigures(1);
-    }, [])
+      const getFigures = async (page) => {
+        const figuresJson = await fetchFigures(page);
+        const data = figuresJson["results"];
+        setFigures(oldArray => [...oldArray, ...data]);
 
-    /*
-
-    React.useEffect(() => {
-        const getAllGames = async(page: number|null): void => {
-          if (Number.isInteger(page)){
-            const result = await fetch(apiURL + "/games?page="+page)
-            const data = await result.json()
-            const { results: games } = data;
-            if (data.next) { 
-              setTimeout(
-                getAllGames(
-                  parseInt(data.next.charAt(data.next.length-1))), 10000)
-            }
-            setGames(previousGames => [...games, ...previousGames]);
-          }
+        if (figuresJson.next) {
+            getFigures(page+1);
         }
-        getAllGames(1)
-      }, []);
+      }
 
-      */
+      getArticles();
+      getSubFigures(1);
+      getFigures(1);
+
+    }, [])
 
     return (
       <div>
-          { /*
-          {keys.length > 0 ? (
-              <ImageList sx={{ height: 550 }} cols={3}>
-               {keys.map((val) => (
-                 Array.from(Array(myData[val]["master_images"].length).keys()).map((x) => (
-                    <ImageListItem 
-                      key={myData[val]["figure_name"] + " (" 
-                        + myData[val]["master_images"][x]["subfigure_label"]["text"] + ")"}
-                    >
-                       <CropImage 
-                        figure_name={val} 
-                        num={x} >
-                      </CropImage>
-                       <ImageListItemBar
-                         title={myData[val]["figure_name"] + " (" 
-                           + myData[val]["master_images"][x]["subfigure_label"]["text"] + ")"}
-                         subtitle={
-                          <Link href={myData[val]["article_url"]} underline="hover" color="white">{myData[val]["title"]}</Link>
-                          }
-                         actionIcon={
-                           <Tooltip title={myData[val]["full_caption"]}>
-                             <IconButton
-                               sx={{ color: 'rgba(255, 255, 255, 0.54)' }}
-                               aria-label={`info about ${myData[val]["figure_name"]}`}
-                             >
-                               <InfoIcon />
-                             </IconButton>
-                           </Tooltip>
-                         }
-                       />
-                   </ImageListItem>
-                 ))
-               ))}
-               </ImageList>
-          ) : (
-              'No articles/figures available'
-          )}
-          */}
-
-            {subFigures.length > 0 ? (
-                <div>
-                    {subFigures.map((subfigure) =>(
-                        <li>{subfigure.subfigure_id}</li>
-                    ))}
-                </div>
-            ) : (
-                'No subfigures available'
+        
+          {subFigures.length > 0 ? (
+            <ImageList sx={{ height: 550 }} cols={3}>
+              {subFigures.map((val) => (
+                <ImageListItem 
+                  key={val.subfigure_id}
+                >
+                  <CropImage 
+                    url={subFigureURL(val.figure)}
+                    data={val}
+                  />
+                  <ImageListItemBar
+                    title={val.subfigure_id}
+                    subtitle={
+                    <Link href={subFigureArticleURL(val.figure)} underline="hover" color="white">{subFigureArticle(val.figure)}</Link>
+                    }
+                    actionIcon={
+                      <Tooltip title={val.caption}>
+                        <IconButton
+                          sx={{ color: 'rgba(255, 255, 255, 0.54)' }}
+                          aria-label={`info about ${subFigureArticle(val.figure)}`}
+                        >
+                          <InfoIcon />
+                        </IconButton>
+                      </Tooltip>
+                    }
+                  />
+                  
+                </ImageListItem>
+              )
             )}
-          
+            </ImageList>
+        ) : (
+            'No articles/figures available'
+        )}
+
       </div>
 
    )

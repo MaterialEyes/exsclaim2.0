@@ -12,15 +12,17 @@ const Footer = () => {
             bottom: 0,
             alignContent: "top"
         }}>
-            <Grid container spacing={1} >
+            <Grid container spacing={1} alignItems="center" justifyContent="center" >
                 <Grid item xs={4}>
-                    <img src={logo} alt="Argonne Logo" height={60}></img>
+                    <a href="https://www.anl.gov/">
+                        <img src={logo} alt="Argonne Logo" height={60} />
+                    </a>
                 </Grid>
                 <Grid item xs={8}>
                     <Stack>
                         <Typography variant="h6" sx={{ fontWeight: "bold" }}>More Info</Typography>
-                        <Link href="https://github.com/MaterialEyes/exsclaim" underline="hover">GitHub Page</Link>
-                        <Link href="https://www.anl.gov/" underline="hover">Argonne Website</Link>
+                        <Link href="https://github.com/MaterialEyes/exsclaim" underline="hover"> EXSCLAIM GitHub Page</Link>
+                        <Link href="https://github.com/MaterialEyes/exsclaim-ui" underline="hover"> EXSCLAIM UI GitHub Page</Link>
                         <Link href="https://arxiv.org/abs/2103.10631" underline="hover">EXSCLAIM Paper</Link>
                     </Stack>
                 </Grid>

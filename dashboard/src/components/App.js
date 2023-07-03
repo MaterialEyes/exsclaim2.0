@@ -5,7 +5,6 @@ import './App.css';
 import NavigationBar from './common/NavigationBar'
 import Layout from './common/Layout';
 import Footer from './common/Footer';
-//import ImagesPageAPI from './results/ImagesPageAPI';
 
 
 function App() {
@@ -14,7 +13,6 @@ function App() {
       <NavigationBar />
       <Layout></Layout>
       <Footer></Footer>
-     
     </div>
   );
 }
