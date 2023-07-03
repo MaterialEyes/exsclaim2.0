@@ -2,20 +2,18 @@ import './App.css';
 //import {
 //  BrowserRouter, Routes, Route
 //} from 'react-router-dom'
-//import ResultsPage from './results/ResultsPage';
-//import SearchPage from './search/SearchPage';
 import NavigationBar from './common/NavigationBar'
 import Layout from './common/Layout';
 import Footer from './common/Footer';
-//import TestCropList from './images/TestCropList';
-//import CropImage from './images/CropImage';
+//import ImagesPageAPI from './results/ImagesPageAPI';
+
 
 function App() {
   return (
     <div className="App">
       <NavigationBar />
       <Layout></Layout>
-      <Footer />
+      <Footer></Footer>
      
     </div>
   );

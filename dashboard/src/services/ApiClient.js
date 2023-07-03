@@ -11,3 +11,15 @@ export const fetchArticle = async (id) => {
     const data = await res.json()
     return data
 }
+
+export const fetchFigures = async (num) => {
+    const res = await fetch(`${baseUrl}/figures/?page=${num}`)
+    const data = await res.json()
+    return data
+}
+
+export const fetchSubFigures = async (num) => {
+    const res = await fetch(`${baseUrl}/subfigures/?page=${num}`)
+    const data = await res.json()
+    return data
+}

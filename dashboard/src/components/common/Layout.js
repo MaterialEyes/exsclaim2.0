@@ -1,5 +1,5 @@
 import React from 'react';
-import ImagesPage from '../images/ImagesPage';
+import ImagesPage from '../results/ImagesPage';
 import SearchPage from '../search/SearchPage';
 import { Box, Grid, Paper, styled } from '@mui/material';
 

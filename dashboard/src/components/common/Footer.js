@@ -1,6 +1,6 @@
 import React from 'react'
 import { Box, Grid, Typography, Stack, Link } from '@mui/material';
-import logo from '../images/Argonnelablogo.PNG';
+import logo from '../images/Argonnelablogo.png';
 
 const Footer = () => {
     return (

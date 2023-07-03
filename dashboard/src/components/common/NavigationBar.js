@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Grid, Typography, Stack, Link } from '@mui/material';
+import { Typography, Stack } from '@mui/material';
 import logo from '../images/ExsclaimLogo.png';
 
 const NavigationBar = () => {
