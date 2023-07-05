@@ -2,7 +2,7 @@ import './App.css';
 //import {
 //  BrowserRouter, Routes, Route
 //} from 'react-router-dom'
-import NavigationBar from './common/NavigationBar'
+import Header from './common/Header'
 import Layout from './common/Layout';
 import Footer from './common/Footer';
 
@@ -10,9 +10,9 @@ import Footer from './common/Footer';
 function App() {
   return (
     <div className="App">
-      <NavigationBar />
+      <Header />
       <Layout></Layout>
-      <Footer></Footer>
+      <Footer />
     </div>
   );
 }
