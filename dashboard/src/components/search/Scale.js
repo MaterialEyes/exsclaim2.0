@@ -37,7 +37,7 @@ const Scale = () => {
             </Typography>
             <Slider
                 aria-label="Confidence Threshold"
-                defaultValue={0.3}
+                defaultValue={0}
                 valueLabelDisplay="auto"
                 step={0.1}
                 marks

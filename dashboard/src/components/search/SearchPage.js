@@ -1,9 +1,10 @@
 import React from 'react'
-import { Box, Paper, Stack, styled, Button } from '@mui/material';
+import { Box, Paper, Stack, styled } from '@mui/material';
 import KeyWords from './KeyWords';
 import Classification from './Classification';
 import License from './License';
 import Scale from './Scale';
+import Submit from './Submit';
 
 // This page comes second in importance. The main idea is
 // to create an html form to mimic an exsclaim query json
@@ -15,6 +16,7 @@ import Scale from './Scale';
 // https://mui.com/material-ui/react-popover/ at the anchor playground section
 
 const SubHeaderBox = styled(Paper)(({ theme }) => ({
+    width: "98%",
     backgroundColor: '#00CAF5',
     ...theme.typography.b1,
     padding: theme.spacing(0.5),
@@ -22,10 +24,10 @@ const SubHeaderBox = styled(Paper)(({ theme }) => ({
     color: '#fff',
   }));
 
-const SearchPage = () => {
+const SearchPage = (props) => {
     return (
         <Box sx={{ width: '100%' }}>
-            <Stack spacing={2}>
+            <Stack spacing={1} >
                 <SubHeaderBox>Keywords</SubHeaderBox>
                 <KeyWords />
 
@@ -33,13 +35,23 @@ const SearchPage = () => {
                 <Classification />
 
                 <SubHeaderBox>License</SubHeaderBox>
-                <License />
+                <License 
+                    toggleLicense={props.toggleLicense} 
+                    license={props.license}
+                />
 
                 <SubHeaderBox>Scale</SubHeaderBox>
                 <Scale />
 
                 <SubHeaderBox>Submission</SubHeaderBox>
-                <Button sx={{ width: 200}} variant="contained">Submit</Button>
+                <Submit
+                    license={props.license}
+                    subfigurelist={props.subfigurelist}
+                    figurelist={props.figurelist}
+                    articlelist={props.articlelist}
+                    setSubFigures={props.setSubFigures}
+                />
+            
             </Stack>
         </Box>
     )
