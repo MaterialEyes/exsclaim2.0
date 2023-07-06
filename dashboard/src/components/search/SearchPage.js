@@ -29,15 +29,21 @@ const SearchPage = (props) => {
     <Box sx={{ width: '100%' }}>
       <Stack spacing={1} >
         <SubHeaderBox>Keywords</SubHeaderBox>
-        <KeyWords />
+        <KeyWords
+          {...props}
+        />
         <SubHeaderBox>Classification</SubHeaderBox>
-        <Classification />
+        <Classification
+          {...props}
+        />
         <SubHeaderBox>License</SubHeaderBox>
         <License 
           {...props}
         />
         <SubHeaderBox>Scale</SubHeaderBox>
-        <Scale />
+        <Scale
+          {...props}
+        />
         <SubHeaderBox>Submission</SubHeaderBox>
         <Submit
           {...props}

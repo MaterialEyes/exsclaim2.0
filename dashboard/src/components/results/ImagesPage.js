@@ -7,22 +7,22 @@ import CropImage from '../images/CropImage';
 const ImagesPage = (props) => {
 
   function subFigureFindFigure(id) {
-    let figure = props.figurelist.find(item => item.figure_id === id);
+    let figure = props.figures.find(item => item.figure_id === id);
     return figure;
   }
 
   function subFigureFindArticle(id) {
-    let figure = props.figurelist.find(item => item.figure_id === id);
+    let figure = props.figures.find(item => item.figure_id === id);
     let article_id = figure?.article;
-    let article = props.articlelist.find(item => item.doi === article_id);
+    let article = props.articles.find(item => item.doi === article_id);
     return article;
   }
 
   return (
     <div>
-        {props.subfigurelist.length > 0 ? (
+        {props.subFigures.length > 0 ? (
           <ImageList sx={{ height: 550 }} cols={3}>
-            {props.subfigurelist.map((val) => (
+            {props.subFigures.map((val) => (
               <ImageListItem 
                 key={val.subfigure_id}
               >
@@ -31,7 +31,6 @@ const ImagesPage = (props) => {
                   data={val}
                   figureData={subFigureFindFigure(val?.figure)}
                   articleData={subFigureFindArticle(val?.figure)}
-                  license={props.license}
                 />
                 <ImageListItemBar
                   title={val.subfigure_id}

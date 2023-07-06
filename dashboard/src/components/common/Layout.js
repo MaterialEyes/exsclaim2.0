@@ -36,15 +36,33 @@ const Layout = () => {
   const [allSubFigures, setAllSubFigures] = useState([]);  
   const [subFigures, setSubFigures] = useState([]);
   const [license, setLicense] = useState(false);
-  const [classes, setClasses] = useState([]);
+  const [classes, setClasses] = useState({"MC" : true,
+                                          "DF" : true,
+                                          "GR" : true,
+                                          "PH" : true,
+                                          "IL" : true,
+                                          "UN" : true,
+                                          "PT" : true});
 
-  function toggleLicense(val) {
-    setLicense(val);
-  }  
+  //const allClasses = ["IL", "GR", "PT", "PH", "MC", "DF", "UN"];
+
+  const allProps = {
+    setSubFigures: setSubFigures,
+    subFigures: subFigures,
+    allSubFigures: allSubFigures,
+    figures: figures,
+    articles: articles,
+    license: license,
+    setLicense: setLicense,
+    classes: classes,
+    setClasses: setClasses
+  }
+
   const getArticles = async () => {
     const articlesFromServer = await fetchArticles()
     setArticles(articlesFromServer)
   }
+
   const getSubFigures = async (page) => {
     const subFiguresJson = await fetchSubFigures(page);
     const data = subFiguresJson["results"];
@@ -84,20 +102,14 @@ const Layout = () => {
           </Grid>
           <Grid item xs={4}>
             <SearchPage 
-              setSubFigures={setSubFigures}
-              subfigurelist={subFigures}
-              allsubfigurelist={allSubFigures}
-              figurelist={figures}
-              articlelist={articles}
-              license={license}
-              toggleLicense={toggleLicense} 
+              {...allProps}
             />
           </Grid>
           <Grid item xs={8}>
             <ImagesPage
-              subfigurelist={subFigures}
-              figurelist={figures}
-              articlelist={articles}
+              subFigures={subFigures}
+              figures={figures}
+              articles={articles}
             />
           </Grid>
         </Grid>
@@ -107,3 +119,13 @@ const Layout = () => {
 }
 
 export default Layout;
+
+/* 
+setSubFigures={setSubFigures}
+              subfigurelist={subFigures}
+              allsubfigurelist={allSubFigures}
+              figurelist={figures}
+              articlelist={articles}
+              license={license}
+              toggleLicense={toggleLicense}
+*/

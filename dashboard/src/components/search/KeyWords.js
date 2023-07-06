@@ -5,7 +5,7 @@ import { Autocomplete, FormGroup, FormControlLabel, Checkbox, TextField } from '
 
 const keywords = ["nano"];
 
-const KeyWords = () => {
+const KeyWords = (props) => {
   return (
     <div>
       <Autocomplete
@@ -20,15 +20,15 @@ const KeyWords = () => {
       <FormGroup>
         <FormControlLabel 
           sx={{ height: 20 }} 
-          control={<Checkbox defaultChecked size="small" />} 
+          control={<Checkbox id="subfigure-caption" defaultChecked size="small" />} 
           label="Subfigure's Distributed Caption" />
         <FormControlLabel 
           sx={{ height: 20 }} 
-          control={<Checkbox defaultChecked size="small" />}
+          control={<Checkbox id="figure-caption" defaultChecked size="small" />}
           label="Subfigure's Containing Figure's Caption" />
         <FormControlLabel 
           sx={{ height: 20 }} 
-          control={<Checkbox defaultChecked size="small" />} 
+          control={<Checkbox id="article-title" defaultChecked size="small" />} 
           label="Article Title" />
       </FormGroup>
     </div>

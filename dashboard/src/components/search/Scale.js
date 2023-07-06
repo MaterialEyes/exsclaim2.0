@@ -3,13 +3,13 @@ import { TextField, Slider, Grid, Typography } from '@mui/material';
 
 // Focuses on the scale and size of the subfigures
 
-const Scale = () => {
+const Scale = (props) => {
   return (
     <div>
       <Grid container spacing={1}>
         <Grid item xs={6}>
           <TextField
-            id="outlined-number"
+            id="min-number"
             label="Min"
             type="number"
             InputLabelProps={{
@@ -21,7 +21,7 @@ const Scale = () => {
         </Grid>
         <Grid item xs={6}>
           <TextField
-            id="outlined-number"
+            id="max-number"
             label="Max"
             type="number"
             InputLabelProps={{

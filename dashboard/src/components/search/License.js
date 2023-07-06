@@ -8,15 +8,19 @@ const License = (props) => {
   return (
     <div>
       <FormGroup>
-        <FormControlLabel 
+        <FormControlLabel
           sx={{ height: 20}} 
-          control={<Checkbox 
-          size="small" 
-          onChange={
-            ()=> {
-              props.toggleLicense(props.license ? false : true)
-            }
-          } />} 
+          control={
+            <Checkbox
+              id="license"
+              size="small" 
+              onChange={
+                ()=> {
+                  props.setLicense(props.license ? false : true)
+                }
+              }
+            />
+          }
           label="Include Only Open Access" 
         />
       </FormGroup>
