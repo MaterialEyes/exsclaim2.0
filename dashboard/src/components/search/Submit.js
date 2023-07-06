@@ -1,6 +1,7 @@
 import React from 'react'
 import { useState, useEffect } from 'react';
 import { Button } from '@mui/material';
+import { fetchSubFigures } from '../../services/ApiClient';
 
 // Submit user's query
 
@@ -18,10 +19,12 @@ const Submit = (props) => {
     }
 
     function getNewSubFigures() {
-        let newSubFigures = [...props.subfigurelist];
+        let newSubFigures = [...props.allsubfigurelist];
+        
         if (props.license) {
             newSubFigures.filter((val) => subFigureFindArticle(val.figure)?.open === true);
         }
+
         props.setSubFigures(newSubFigures);
     }
 

@@ -36,8 +36,7 @@ const SearchPage = (props) => {
 
                 <SubHeaderBox>License</SubHeaderBox>
                 <License 
-                    toggleLicense={props.toggleLicense} 
-                    license={props.license}
+                    {...props}
                 />
 
                 <SubHeaderBox>Scale</SubHeaderBox>
@@ -45,11 +44,7 @@ const SearchPage = (props) => {
 
                 <SubHeaderBox>Submission</SubHeaderBox>
                 <Submit
-                    license={props.license}
-                    subfigurelist={props.subfigurelist}
-                    figurelist={props.figurelist}
-                    articlelist={props.articlelist}
-                    setSubFigures={props.setSubFigures}
+                    {...props}
                 />
             
             </Stack>
