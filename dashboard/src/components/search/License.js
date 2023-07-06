@@ -5,23 +5,23 @@ import { FormGroup, FormControlLabel, Checkbox } from '@mui/material';
 
 const License = (props) => {
 
-    return (
-        <div>
-            <FormGroup>
-                <FormControlLabel 
-                    sx={{ height: 20}} 
-                    control={<Checkbox 
-                        size="small" 
-                        onChange={
-                            ()=> {
-                                props.toggleLicense(props.license ? false : true)
-                            }
-                        } />} 
-                    label="Include Only Open Access" 
-                />
-            </FormGroup>
-        </div>
-    )
+  return (
+    <div>
+      <FormGroup>
+        <FormControlLabel 
+          sx={{ height: 20}} 
+          control={<Checkbox 
+          size="small" 
+          onChange={
+            ()=> {
+              props.toggleLicense(props.license ? false : true)
+            }
+          } />} 
+          label="Include Only Open Access" 
+        />
+      </FormGroup>
+    </div>
+  )
 }
 
 export default License;

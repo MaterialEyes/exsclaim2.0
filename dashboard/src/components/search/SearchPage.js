@@ -16,40 +16,36 @@ import Submit from './Submit';
 // https://mui.com/material-ui/react-popover/ at the anchor playground section
 
 const SubHeaderBox = styled(Paper)(({ theme }) => ({
-    width: "98%",
-    backgroundColor: '#00CAF5',
-    ...theme.typography.b1,
-    padding: theme.spacing(0.5),
-    textAlign: 'center',
-    color: '#fff',
-  }));
+  width: "98%",
+  backgroundColor: '#00CAF5',
+  ...theme.typography.b1,
+  padding: theme.spacing(0.5),
+  textAlign: 'center',
+  color: '#fff',
+}));
 
 const SearchPage = (props) => {
-    return (
-        <Box sx={{ width: '100%' }}>
-            <Stack spacing={1} >
-                <SubHeaderBox>Keywords</SubHeaderBox>
-                <KeyWords />
-
-                <SubHeaderBox>Classification</SubHeaderBox>
-                <Classification />
-
-                <SubHeaderBox>License</SubHeaderBox>
-                <License 
-                    {...props}
-                />
-
-                <SubHeaderBox>Scale</SubHeaderBox>
-                <Scale />
-
-                <SubHeaderBox>Submission</SubHeaderBox>
-                <Submit
-                    {...props}
-                />
-            
-            </Stack>
-        </Box>
-    )
+  return (
+    <Box sx={{ width: '100%' }}>
+      <Stack spacing={1} >
+        <SubHeaderBox>Keywords</SubHeaderBox>
+        <KeyWords />
+        <SubHeaderBox>Classification</SubHeaderBox>
+        <Classification />
+        <SubHeaderBox>License</SubHeaderBox>
+        <License 
+          {...props}
+        />
+        <SubHeaderBox>Scale</SubHeaderBox>
+        <Scale />
+        <SubHeaderBox>Submission</SubHeaderBox>
+        <Submit
+          {...props}
+        />
+      
+      </Stack>
+    </Box>
+  )
 }
 
 export default SearchPage;
