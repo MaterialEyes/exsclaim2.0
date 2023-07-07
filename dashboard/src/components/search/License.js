@@ -16,7 +16,7 @@ const License = (props) => {
               size="small" 
               onChange={
                 ()=> {
-                  props.setLicense(props.license ? false : true)
+                  props.setLicense(props.license ? false : true) // set status of license after user input
                 }
               }
             />

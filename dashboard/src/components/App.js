@@ -6,6 +6,12 @@ import Header from './common/Header'
 import Layout from './common/Layout';
 import Footer from './common/Footer';
 
+/*
+ * Layout of app should be:
+ * NavigationBar / Header
+ * Menu and Results
+ * Footer 
+ */
 
 function App() {
   return (

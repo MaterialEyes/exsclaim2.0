@@ -2,6 +2,8 @@ import React from 'react'
 import { Box, Grid, Typography, Stack, Link } from '@mui/material';
 import logo from '../images/Argonnelablogo.png';
 
+// The footer of the app, contains more information about Argonne and EXSCLAIM
+
 const Footer = () => {
   return (
     <Box sx={{

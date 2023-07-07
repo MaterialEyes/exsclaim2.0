@@ -1,45 +1,47 @@
 import React from 'react';
 import { useEffect, useRef } from 'react';
 
-const imgSize = 290;
+// Returns the cropped image from the given data
 
 const CropImage = (props) => {
+  const imgSize = 290;
 
-    const myCanvas = useRef();
-    
-    function cropImageAPI(data) {
-      var topLeft_x = data["x1"];
-      var topLeft_y = data["y1"];
-      var sub_width = data["width"];
-      var sub_height = data["height"];
+  const myCanvas = useRef();
+  
+  // get the dimensions of the crop
+  function cropImageAPI(data) {
+    var topLeft_x = data["x1"];
+    var topLeft_y = data["y1"];
+    var sub_width = data["width"];
+    var sub_height = data["height"];
 
-      var crop_dimensions = []
+    var crop_dimensions = []
 
-      crop_dimensions.push(topLeft_x, topLeft_y, sub_width, sub_height)
+    crop_dimensions.push(topLeft_x, topLeft_y, sub_width, sub_height)
 
-      return crop_dimensions;
-    }
+    return crop_dimensions;
+  }
 
-    useEffect(() => {
-      const context = myCanvas.current.getContext("2d");
+  useEffect(() => {
+    const context = myCanvas.current.getContext("2d");
 
-      const url = props.url;
-      const data = props.data;
+    const url = props.url;
+    const data = props.data;
 
-      const image = new Image();
-      image.src = url;
-      image.onload = () => {
-        const dimensions = cropImageAPI(data);
-        context.drawImage(image, dimensions[0], dimensions[1], dimensions[2], dimensions[3],
-          0, 0, dimensions[2], dimensions[3]);
-      };
-    });
+    const image = new Image();
+    image.src = url;
+    image.onload = () => {
+      const dimensions = cropImageAPI(data);
+      context.drawImage(image, dimensions[0], dimensions[1], dimensions[2], dimensions[3],
+        0, 0, dimensions[2], dimensions[3]);
+    };
+  });
 
-    return (
-        <div>
-          <canvas ref={myCanvas} width={imgSize} height={imgSize} ></canvas>
-        </div>
-    )
+  return (
+      <div>
+        <canvas ref={myCanvas} width={imgSize} height={imgSize} ></canvas>
+      </div>
+  )
 }
 
 export default CropImage;

@@ -1,37 +1,125 @@
 import React from 'react'
-import { TextField, Slider, Grid, Typography } from '@mui/material';
+import { TextField, Slider, Grid, Typography, InputAdornment } from '@mui/material';
 
 // Focuses on the scale and size of the subfigures
 
 const Scale = (props) => {
+
+  const min = 0; // the minimum width/height of a subfigure
+  const max = 1600; // the maximum width/height of a subfigure
+
+  // set user's query of a minimum width/height
+  const minTextChange = (event, key) => {
+    var value = parseInt(event.target.value, 10);
+
+    if (value > max) {value = max};
+    if (value < min || !value) {value = min};
+
+    let newScales = { ...props.scales};
+    newScales[key] = value;
+    props.setScales(newScales);
+  }
+
+  // set user's query of a maximum width/height
+  const maxTextChange = (event, key) => {
+    var value = parseInt(event.target.value, 10);
+
+    if (value > max || !value) {value = max};
+    if (value < min) {value = min};
+
+    let newScales = { ...props.scales};
+    newScales[key] = value;
+    props.setScales(newScales);
+  }
+
+  // set user's query of confidence threshold
+  const sliderChange = (event, newValue) => {
+    /*
+    let newScales = { ...props.scales};
+    newScales["threshold"] = newValue;
+    props.setScales(newScales);
+    */
+   console.log(newValue);
+  };
+
   return (
     <div>
       <Grid container spacing={1}>
         <Grid item xs={6}>
           <TextField
-            id="min-number"
-            label="Min"
+            id="min-number-width"
+            label="Min Width"
             type="number"
             InputLabelProps={{
                 shrink: true,
             }}
+            InputProps={{
+              endAdornment: <InputAdornment position="end">px</InputAdornment>,
+              inputProps: { type: 'number', min: min, max: max }
+            }}
             size="small"
-            sx={{ width: 200, minHeight: 50 }}
+            margin="dense"
+            sx={{ width: "90%", minHeight: 50 }}
+            onChange={(e) => minTextChange(e, "minWidth")}
           />
         </Grid>
         <Grid item xs={6}>
           <TextField
-            id="max-number"
-            label="Max"
+            id="max-number-width"
+            label="Max Width"
             type="number"
             InputLabelProps={{
               shrink: true,
             }}
+            InputProps={{
+              endAdornment: <InputAdornment position="end">px</InputAdornment>,
+              inputProps: { type: 'number', min: min, max: max }
+            }}
             size="small"
-            sx={{ width: 200, minHeight: 50 }}
+            margin="dense"
+            sx={{ width: "90%", minHeight: 50 }}
+            onChange={(e) => maxTextChange(e, "maxWidth")}
+          />
+        </Grid>
+
+        <Grid item xs={6}>
+          <TextField
+            id="min-number-height"
+            label="Min Height"
+            type="number"
+            InputLabelProps={{
+                shrink: true,
+            }}
+            InputProps={{
+              endAdornment: <InputAdornment position="end">px</InputAdornment>,
+              inputProps: { type: 'number', min: min, max: max }
+            }}
+            size="small"
+            margin="none"
+            sx={{ width: "90%", minHeight: 50 }}
+            onChange={(e) => minTextChange(e, "minHeight")}
+          />
+        </Grid>
+        <Grid item xs={6}>
+          <TextField
+            id="max-number-height"
+            label="Max Height"
+            type="number"
+            InputLabelProps={{
+              shrink: true,
+            }}
+            InputProps={{
+              endAdornment: <InputAdornment position="end">px</InputAdornment>,
+              inputProps: { type: 'number', min: min, max: max }
+            }}
+            size="small"
+            margin="none"
+            sx={{ width: "90%", minHeight: 50 }}
+            onChange={(e) => maxTextChange(e, "maxHeight")}
           />
         </Grid>
       </Grid>
+
       <Typography id="Confidence Threshold" gutterBottom sx={{ height: 10}}>
         Specify confidence threshold:
       </Typography>
@@ -43,6 +131,7 @@ const Scale = (props) => {
         marks
         min={0}
         max={1.0}
+        onChangeCommitted={sliderChange}
       />
     </div>
   )

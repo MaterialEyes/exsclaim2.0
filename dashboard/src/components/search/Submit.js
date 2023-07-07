@@ -12,13 +12,15 @@ const Submit = (props) => {
   }
   */
 
+  // find article data of a subfigure given the figure's id
   function subFigureFindArticle(id) {
-    let figure = props.figurelist.find(item => item.figure_id === id);
+    let figure = props.figurelist?.find(item => item.figure_id === id);
     let article_id = figure?.article;
-    let article = props.articlelist.find(item => item.doi === article_id);
+    let article = props.articlelist?.find(item => item.doi === article_id);
     return article;
   }
 
+  // return new subfigure list from user's query
   function getNewSubFigures() {
     let newSubFigures = [...props.allSubFigures];
 
@@ -27,9 +29,15 @@ const Submit = (props) => {
     newSubFigures = newSubFigures.filter((val) => subFigureClasses.indexOf(val.classification) !== -1);
 
     // filter for open-access subfigures
-    if (props.license) {
-      newSubFigures = newSubFigures.filter((val) => subFigureFindArticle(val.figure)?.open === true);
+    if (props.license === true) {
+      newSubFigures = newSubFigures.filter((val) => subFigureFindArticle(val?.figure)?.open === true);
     }
+
+    // filter for subfigures of certain scale
+    newSubFigures = newSubFigures.filter((val) => 
+      (val.width <= props.scales["maxWidth"] && val.width >= props.scales["minWidth"] &&
+      val.height <= props.scales["maxHeight"] && val.height >= props.scales["minHeight"]));
+    console.log(props.scales);
 
     props.setSubFigures(newSubFigures);
   }

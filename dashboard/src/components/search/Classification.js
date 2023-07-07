@@ -5,6 +5,7 @@ import { FormGroup, FormControlLabel, Checkbox, Grid } from '@mui/material';
 
 const Classification = (props) => {
 
+  // set user's query of classification
   function setClassification(className) {
     let newClasses = { ...props.classes};
     newClasses[className] = (props.classes[className] ? false : true);

@@ -11,10 +11,6 @@ import Submit from './Submit';
 // to send a post request to the api that will initiate
 // a run of the pipeline
 
-// make a side menu and you can change to change the results displayed by ImagesPage
-// https://www.youtube.com/watch?v=WV6u_6ZNWkQ&ab_channel=AnthonySistilli
-// https://mui.com/material-ui/react-popover/ at the anchor playground section
-
 const SubHeaderBox = styled(Paper)(({ theme }) => ({
   width: "98%",
   backgroundColor: '#00CAF5',
@@ -44,7 +40,7 @@ const SearchPage = (props) => {
         <Scale
           {...props}
         />
-        <SubHeaderBox>Submission</SubHeaderBox>
+        
         <Submit
           {...props}
         />

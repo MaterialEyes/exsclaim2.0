@@ -3,14 +3,16 @@ import { ImageList, ImageListItem, ImageListItemBar, IconButton, Tooltip, Link }
 import InfoIcon from '@mui/icons-material/Info';
 import CropImage from '../images/CropImage';
 
-// Displays the subfigures given after user's input
+// Displays the subfigures of the user's input
 const ImagesPage = (props) => {
 
+  // find figure data of a subfigure given the figure's id
   function subFigureFindFigure(id) {
     let figure = props.figures.find(item => item.figure_id === id);
     return figure;
   }
 
+  // find article data of a subfigure given the figure's id
   function subFigureFindArticle(id) {
     let figure = props.figures.find(item => item.figure_id === id);
     let article_id = figure?.article;

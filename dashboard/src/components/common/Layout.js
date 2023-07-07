@@ -6,12 +6,7 @@ import { Box, Grid, Paper, styled } from '@mui/material';
 import { fetchArticles, fetchSubFigures, fetchFigures } from '../../services/ApiClient';
 //import TestImage from '../results/TestingImage';
 
-/*
- * Layout of app should be:
- * NavigationBar / Header
- * One big container divded into two: left side menu, right side figures (this js file)
- * Footer 
- */
+// One big container divded into two: left side menu, right side figures
 
 const HeaderBox = styled(Paper)(({ theme }) => ({
   backgroundColor: '#0cb1f7',
@@ -31,21 +26,26 @@ const boxDefault = {
   
 const Layout = () => {
 
-  const [articles, setArticles] = useState([]);
-  const [figures, setFigures] = useState([]);
-  const [allSubFigures, setAllSubFigures] = useState([]);  
-  const [subFigures, setSubFigures] = useState([]);
-  const [license, setLicense] = useState(false);
+  
+  const [articles, setArticles] = useState([]); // set all articles
+  const [figures, setFigures] = useState([]); // set all figures
+  const [allSubFigures, setAllSubFigures] = useState([]); // set all subfigures
+  const [subFigures, setSubFigures] = useState([]); // set displayed subfigures
+  const [license, setLicense] = useState(false); // set license
   const [classes, setClasses] = useState({"MC" : true,
                                           "DF" : true,
                                           "GR" : true,
                                           "PH" : true,
                                           "IL" : true,
                                           "UN" : true,
-                                          "PT" : true});
+                                          "PT" : true}); // set classification
+  const [scales, setScales] = useState({"threshold" : 0,
+                                        "minWidth" : 0,
+                                        "maxWidth" : 1600,
+                                        "minHeight" : 0,
+                                        "maxHeight" : 1600}); // set scales
 
-  //const allClasses = ["IL", "GR", "PT", "PH", "MC", "DF", "UN"];
-
+  // all props that need to be passed to other components                                        
   const allProps = {
     setSubFigures: setSubFigures,
     subFigures: subFigures,
@@ -55,14 +55,18 @@ const Layout = () => {
     license: license,
     setLicense: setLicense,
     classes: classes,
-    setClasses: setClasses
+    setClasses: setClasses,
+    scales: scales,
+    setScales: setScales
   }
 
+  // get articles from API
   const getArticles = async () => {
     const articlesFromServer = await fetchArticles()
     setArticles(articlesFromServer)
   }
 
+  // get subfigures from API
   const getSubFigures = async (page) => {
     const subFiguresJson = await fetchSubFigures(page);
     const data = subFiguresJson["results"];
@@ -73,6 +77,8 @@ const Layout = () => {
       getSubFigures(page+1);
     }
   }
+
+  // get figures from API
   const getFigures = async (page) => {
     const figuresJson = await fetchFigures(page);
     const data = figuresJson["results"];
@@ -119,13 +125,3 @@ const Layout = () => {
 }
 
 export default Layout;
-
-/* 
-setSubFigures={setSubFigures}
-              subfigurelist={subFigures}
-              allsubfigurelist={allSubFigures}
-              figurelist={figures}
-              articlelist={articles}
-              license={license}
-              toggleLicense={toggleLicense}
-*/

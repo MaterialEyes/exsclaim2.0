@@ -2,6 +2,8 @@ import React from 'react';
 import { Typography, Stack } from '@mui/material';
 import logo from '../images/ExsclaimLogo.png';
 
+// The header of the app, introduces the user to the EXSCLAIM UI and how to use it
+
 const Header = () => {
   return (
     <Stack>
