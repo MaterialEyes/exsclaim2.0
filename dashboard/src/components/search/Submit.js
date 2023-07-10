@@ -37,7 +37,9 @@ const Submit = (props) => {
     newSubFigures = newSubFigures.filter((val) => 
       (val.width <= props.scales["maxWidth"] && val.width >= props.scales["minWidth"] &&
       val.height <= props.scales["maxHeight"] && val.height >= props.scales["minHeight"]));
+    
     console.log(props.scales);
+    console.log(props.keywords);
 
     props.setSubFigures(newSubFigures);
   }

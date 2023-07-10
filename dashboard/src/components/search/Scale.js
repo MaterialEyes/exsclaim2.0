@@ -1,5 +1,5 @@
 import React from 'react'
-import { TextField, Slider, Grid, Typography, InputAdornment } from '@mui/material';
+import { TextField, Slider, Grid, InputAdornment, FormLabel } from '@mui/material';
 
 // Focuses on the scale and size of the subfigures
 
@@ -120,9 +120,7 @@ const Scale = (props) => {
         </Grid>
       </Grid>
 
-      <Typography id="Confidence Threshold" gutterBottom sx={{ height: 10}}>
-        Specify confidence threshold:
-      </Typography>
+      <FormLabel id="keywords label">Specify confidence threshold:</FormLabel>
       <Slider
         aria-label="Confidence Threshold"
         defaultValue={0}

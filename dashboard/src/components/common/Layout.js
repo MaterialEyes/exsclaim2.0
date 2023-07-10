@@ -44,11 +44,16 @@ const Layout = () => {
                                         "maxWidth" : 1600,
                                         "minHeight" : 0,
                                         "maxHeight" : 1600}); // set scales
+  const [keywords, setKeywords] = useState([]); // set the displayed keywords
+
+  const [captionsKeywords, setCaptionKeywords] = useState([]); // set captions keywords
+  const [generalKeywords, setGeneralKeywords] = useState([]); // set general keywords
+  
 
   // all props that need to be passed to other components                                        
   const allProps = {
-    setSubFigures: setSubFigures,
     subFigures: subFigures,
+    setSubFigures: setSubFigures,
     allSubFigures: allSubFigures,
     figures: figures,
     articles: articles,
@@ -57,7 +62,16 @@ const Layout = () => {
     classes: classes,
     setClasses: setClasses,
     scales: scales,
-    setScales: setScales
+    setScales: setScales,
+    keywords: keywords,
+    setKeywords: setKeywords
+  }
+
+  // flatten a nested array to a normal array
+  function flatten(arr) {
+    return arr.reduce(function (flat, toFlatten) {
+      return flat.concat(Array.isArray(toFlatten) ? flatten(toFlatten) : toFlatten);
+    }, []);
   }
 
   // get articles from API
@@ -70,10 +84,14 @@ const Layout = () => {
   const getSubFigures = async (page) => {
     const subFiguresJson = await fetchSubFigures(page);
     const data = subFiguresJson["results"];
+
+    let jsonKeywords = data.map((val) => val.keywords);
+
     setSubFigures(oldArray => [...oldArray, ...data]);
     setAllSubFigures(oldArray => [...oldArray, ...data]);  
+    setKeywords(oldArray => Array.from(new Set(flatten([...oldArray, jsonKeywords]))));
 
-    if (subFiguresJson.next && page < 10) {
+    if (subFiguresJson.next && page < 10) { // limiting image results to 10 pages for now
       getSubFigures(page+1);
     }
   }

@@ -23,7 +23,7 @@ const ImagesPage = (props) => {
   return (
     <div>
         {props.subFigures.length > 0 ? (
-          <ImageList sx={{ height: 550 }} cols={3}>
+          <ImageList sx={{ height: 590 }} cols={3}>
             {props.subFigures.map((val) => (
               <ImageListItem 
                 key={val.subfigure_id}
