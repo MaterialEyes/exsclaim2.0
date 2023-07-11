@@ -4,7 +4,6 @@ import ImagesPage from '../results/ImagesPage';
 import SearchPage from '../search/SearchPage';
 import { Box, Grid, Paper, styled } from '@mui/material';
 import { fetchArticles, fetchSubFigures, fetchFigures } from '../../services/ApiClient';
-//import TestImage from '../results/TestingImage';
 
 // One big container divded into two: left side menu, right side figures
 
@@ -44,12 +43,9 @@ const Layout = () => {
                                         "maxWidth" : 1600,
                                         "minHeight" : 0,
                                         "maxHeight" : 1600}); // set scales
-  const [keywords, setKeywords] = useState([]); // set the displayed keywords
-
-  const [captionsKeywords, setCaptionKeywords] = useState([]); // set captions keywords
-  const [generalKeywords, setGeneralKeywords] = useState([]); // set general keywords
+  const [keywordType, setKeywordType] = useState('caption'); // set the keyword type
+  const [keyword, setKeyword] = useState(''); // set the query keyword
   
-
   // all props that need to be passed to other components                                        
   const allProps = {
     subFigures: subFigures,
@@ -63,15 +59,10 @@ const Layout = () => {
     setClasses: setClasses,
     scales: scales,
     setScales: setScales,
-    keywords: keywords,
-    setKeywords: setKeywords
-  }
-
-  // flatten a nested array to a normal array
-  function flatten(arr) {
-    return arr.reduce(function (flat, toFlatten) {
-      return flat.concat(Array.isArray(toFlatten) ? flatten(toFlatten) : toFlatten);
-    }, []);
+    keywordType: keywordType,
+    setKeywordType: setKeywordType,
+    keyword: keyword,
+    setKeyword: setKeyword,
   }
 
   // get articles from API
@@ -85,11 +76,8 @@ const Layout = () => {
     const subFiguresJson = await fetchSubFigures(page);
     const data = subFiguresJson["results"];
 
-    let jsonKeywords = data.map((val) => val.keywords);
-
     setSubFigures(oldArray => [...oldArray, ...data]);
     setAllSubFigures(oldArray => [...oldArray, ...data]);  
-    setKeywords(oldArray => Array.from(new Set(flatten([...oldArray, jsonKeywords]))));
 
     if (subFiguresJson.next && page < 10) { // limiting image results to 10 pages for now
       getSubFigures(page+1);

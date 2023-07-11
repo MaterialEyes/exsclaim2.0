@@ -1,28 +1,32 @@
 import React from 'react'
-//import { useState, useEffect } from 'react';
 import { Button } from '@mui/material';
 
 // Submit user's query
 
 const Submit = (props) => {
-  /*
-  function subFigureFindFigure(id) {
-    let figure = props.figurelist.find(item => item.figure_id === id);
-    return figure;
-  }
-  */
 
   // find article data of a subfigure given the figure's id
   function subFigureFindArticle(id) {
-    let figure = props.figurelist?.find(item => item.figure_id === id);
+    let figure = props.figures?.find(item => item.figure_id === id);
     let article_id = figure?.article;
-    let article = props.articlelist?.find(item => item.doi === article_id);
+    let article = props.articles?.find(item => item.doi === article_id);
     return article;
   }
 
   // return new subfigure list from user's query
   function getNewSubFigures() {
     let newSubFigures = [...props.allSubFigures];
+
+    // filter for subfigures containing a certain keyword
+    if (props.keyword) {
+      if (props.keywordType === 'caption') {
+        newSubFigures = newSubFigures.filter((val) => val.keywords.indexOf(props.keyword) !== -1);
+      } else if (props.keywordType === 'general') {
+        newSubFigures = newSubFigures.filter((val) => val.general.indexOf(props.keyword) !== -1);
+      } else if (props.keywordType === 'title') {
+        newSubFigures = newSubFigures.filter((val) => subFigureFindArticle(val?.figure)?.title === props.keyword);
+      }
+    }
 
     // filter for subfigures of certain class(es)
     let subFigureClasses = Object.keys(props.classes).filter(function (k) {return props.classes[k];});
@@ -38,8 +42,8 @@ const Submit = (props) => {
       (val.width <= props.scales["maxWidth"] && val.width >= props.scales["minWidth"] &&
       val.height <= props.scales["maxHeight"] && val.height >= props.scales["minHeight"]));
     
+    // scales doesn't really work yet since example data doesn't have confidence threshold yet
     console.log(props.scales);
-    console.log(props.keywords);
 
     props.setSubFigures(newSubFigures);
   }

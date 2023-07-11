@@ -1,9 +1,12 @@
 import React from 'react'
+import { useState, useEffect } from 'react';
 import { Autocomplete, FormControlLabel, FormGroup, TextField, FormLabel, Radio, RadioGroup } from '@mui/material';
 
 // Focuses on the keywords contained in the subfigures
 
 const KeyWords = (props) => {
+
+  const [keywords, setKeywords] = useState([]); // set the displayed keywords
 
   // flatten a nested array to a normal array
   function flatten(arr) {
@@ -13,21 +16,28 @@ const KeyWords = (props) => {
   }
 
   // set user's query of where to look for keywords
-  const changeKeyWords = (event) => {
+  const changeKeywords = (event) => {
     var value = event.target.value;
 
-    //console.log(value);
+    props.setKeywordType(value);
+
     if (value === 'caption') {
-      let subFigureKeywords = props.subFigures.map((val) => val.keywords);
-      props.setKeywords(Array.from(new Set(flatten(subFigureKeywords))));
+      let subFigureKeywords = props.allSubFigures.map((val) => val.keywords);
+      setKeywords(Array.from(new Set(flatten(subFigureKeywords))));
     } else if (value === 'general') {
-      let generalKeywords = props.subFigures.map((val) => val.general);
-      props.setKeywords(Array.from(new Set(flatten(generalKeywords))));
+      let generalKeywords = props.allSubFigures.map((val) => val.general);
+      setKeywords(Array.from(new Set(flatten(generalKeywords))));
     } else if (value === 'title') {
       let titleKeywords = props.articles.map((val) => val.title);
-      props.setKeywords(Array.from(new Set(flatten(titleKeywords))));
+      setKeywords(Array.from(new Set(flatten(titleKeywords))));
     }
   }
+
+  useEffect(() => {
+    let subFigureKeywords = props.allSubFigures.map((val) => val.keywords);
+    setKeywords(Array.from(new Set(flatten(subFigureKeywords))));
+  
+  }, [props.allSubFigures])
 
   return (
     <div>
@@ -37,7 +47,7 @@ const KeyWords = (props) => {
           aria-labelledby="keywords buttons label"
           defaultValue="caption"
           name="keywords buttons"
-          onChange={changeKeyWords}
+          onChange={changeKeywords}
         >
           <FormControlLabel sx={{ height: 20 }}  value="caption" control={<Radio size="small" />} label="Subfigure Caption" />
           <FormControlLabel sx={{ height: 20 }}  value="general" control={<Radio size="small" />} label="General Article" />
@@ -48,30 +58,16 @@ const KeyWords = (props) => {
       <Autocomplete
         disablePortal
         id="combo-box-demo"
-        options={props.keywords}
+        options={keywords}
         sx={{ width: '65%', minHeight: 40, margin: 1 }}
         renderInput={(params) => <TextField {...params} label="Keywords" />}
         size="small"
+        onChange={(event, value) => {
+          props.setKeyword(value);
+        }}
       />
     </div>
   )
 }
 
 export default KeyWords;
-
-/*
-<FormGroup>
-        <FormControlLabel 
-          sx={{ height: 20 }} 
-          control={<Checkbox id="subfigure-caption" defaultChecked size="small" />} 
-          label="Caption" />
-        <FormControlLabel 
-          sx={{ height: 20 }} 
-          control={<Checkbox id="figure-caption" defaultChecked size="small" />}
-          label="General" />
-        <FormControlLabel 
-          sx={{ height: 20 }} 
-          control={<Checkbox id="article-title" defaultChecked size="small" />} 
-          label="Article Title" />
-      </FormGroup>
-*/

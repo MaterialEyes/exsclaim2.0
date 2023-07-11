@@ -4,6 +4,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import CropImage from '../images/CropImage';
 
 // Displays the subfigures of the user's input
+
 const ImagesPage = (props) => {
 
   // find figure data of a subfigure given the figure's id
@@ -23,7 +24,7 @@ const ImagesPage = (props) => {
   return (
     <div>
         {props.subFigures.length > 0 ? (
-          <ImageList sx={{ height: 590 }} cols={3}>
+          <ImageList sx={{ maxHeight: 590 }} cols={3}>
             {props.subFigures.map((val) => (
               <ImageListItem 
                 key={val.subfigure_id}
@@ -31,8 +32,6 @@ const ImagesPage = (props) => {
                 <CropImage 
                   url={subFigureFindFigure(val?.figure)?.url}
                   data={val}
-                  figureData={subFigureFindFigure(val?.figure)}
-                  articleData={subFigureFindArticle(val?.figure)}
                 />
                 <ImageListItemBar
                   title={val.subfigure_id}
