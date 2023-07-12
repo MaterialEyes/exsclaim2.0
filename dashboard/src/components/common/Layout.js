@@ -25,7 +25,6 @@ const boxDefault = {
   
 const Layout = () => {
 
-  
   const [articles, setArticles] = useState([]); // set all articles
   const [figures, setFigures] = useState([]); // set all figures
   const [allSubFigures, setAllSubFigures] = useState([]); // set all subfigures
@@ -79,7 +78,7 @@ const Layout = () => {
     setSubFigures(oldArray => [...oldArray, ...data]);
     setAllSubFigures(oldArray => [...oldArray, ...data]);  
 
-    if (subFiguresJson.next && page < 10) { // limiting image results to 10 pages for now
+    if (subFiguresJson.next) { // limiting image results to 10 pages for now
       getSubFigures(page+1);
     }
   }
