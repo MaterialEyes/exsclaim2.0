@@ -49,7 +49,6 @@ const ImagesPage = (props) => {
                     </Tooltip>
                   }
                 />
-                
               </ImageListItem>
             )
           )}

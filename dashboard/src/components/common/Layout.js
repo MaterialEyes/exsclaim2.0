@@ -2,7 +2,7 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import ImagesPage from '../results/ImagesPage';
 import SearchPage from '../search/SearchPage';
-import { Box, Grid, Paper, styled } from '@mui/material';
+import { Box, Grid, Paper, styled, Typography, CircularProgress, Stack } from '@mui/material';
 import { fetchArticles, fetchSubFigures, fetchFigures } from '../../services/ApiClient';
 
 // One big container divded into two: left side menu, right side figures
@@ -20,6 +20,16 @@ const boxDefault = {
   padding: 2,
   justifyContent: "center",
   alignItems: "center",
+  m: 2
+}
+
+const loadingDefault = {
+  width: '95%',
+  height: 350,
+  padding: 2,
+  justifyContent: "center",
+  alignItems: "center",
+  alignContent: "center",
   m: 2
 }
   
@@ -45,6 +55,13 @@ const Layout = () => {
   const [keywordType, setKeywordType] = useState('caption'); // set the keyword type
   const [keyword, setKeyword] = useState(''); // set the query keyword
   
+  const [articlesLoaded, setArticlesLoaded] = useState(false); // wait for API article requests to finish
+  const [figuresLoaded, setFiguresLoaded] = useState(false); // wait for API figure requests to finish
+  const [subFiguresLoaded, setSubFiguresLoaded] = useState(false); // wait for API subfigure requests to finish
+
+  const [figurePage, setFigurePage] = useState(1); // figure page
+  const [subFigurePage, setSubFigurePage] = useState(1); // subfigure page
+
   // all props that need to be passed to other components                                        
   const allProps = {
     subFigures: subFigures,
@@ -61,7 +78,14 @@ const Layout = () => {
     keywordType: keywordType,
     setKeywordType: setKeywordType,
     keyword: keyword,
-    setKeyword: setKeyword,
+    setKeyword: setKeyword
+  }
+
+  // flatten a nested array to a normal array
+  function flatten(arr) {
+    return arr.reduce(function (flat, toFlatten) {
+      return flat.concat(Array.isArray(toFlatten) ? flatten(toFlatten) : toFlatten);
+    }, []);
   }
 
   // get articles from API
@@ -78,8 +102,10 @@ const Layout = () => {
     setSubFigures(oldArray => [...oldArray, ...data]);
     setAllSubFigures(oldArray => [...oldArray, ...data]);  
 
-    if (subFiguresJson.next) { // limiting image results to 10 pages for now
-      getSubFigures(page+1);
+    if (subFiguresJson.next) {
+      setSubFigurePage(subFigurePage+1);
+    } else {
+      setSubFiguresLoaded(true);
     }
   }
 
@@ -90,41 +116,60 @@ const Layout = () => {
     setFigures(oldArray => [...oldArray, ...data]);  
 
     if (figuresJson.next) {
-      getFigures(page+1);
+      setFigurePage(figurePage+1);
+    } else {
+      setFiguresLoaded(true);
     }
   }
 
+  // loading in info from API
   useEffect(() => {
     getArticles();
-    getSubFigures(1);
-    getFigures(1);
-  
+    setArticlesLoaded(true);
   }, [])
 
+  useEffect(() => {
+    getSubFigures(subFigurePage);
+  }, [subFigurePage])
+
+  useEffect(() => {
+    getFigures(figurePage);
+  }, [figurePage])
+
+  // return a loading screen if API is still running, return menu and subfigures once loading is done
   return (
     <div>
-      <Box sx={boxDefault}>
-        <Grid container spacing={4}>
-          <Grid item xs={4}>
-            <HeaderBox>Menu</HeaderBox>
-          </Grid>
-          <Grid item xs={8}>
-            <HeaderBox>Figure Results</HeaderBox>
-          </Grid>
-          <Grid item xs={4}>
-            <SearchPage 
-              {...allProps}
-            />
-          </Grid>
-          <Grid item xs={8}>
-            <ImagesPage
-              subFigures={subFigures}
-              figures={figures}
-              articles={articles}
-            />
-          </Grid>
-        </Grid>
-      </Box>
+      {(!articlesLoaded || !figuresLoaded || !subFiguresLoaded) ? (
+        <Box sx={loadingDefault} display="flex">
+          <Stack alignItems="center"> 
+            <CircularProgress size={60} />
+            <Typography variant="h5" color="#4285F4">Loading Menu and Subfigures...</Typography>
+          </Stack>
+        </Box>
+      ) : (
+        <Box sx={boxDefault}>
+          <Grid container spacing={4}>
+            <Grid item xs={4}>
+              <HeaderBox>Menu</HeaderBox>
+            </Grid>
+            <Grid item xs={8}>
+              <HeaderBox>Figure Results</HeaderBox>
+            </Grid>
+            <Grid item xs={4}>
+              <SearchPage 
+                {...allProps}
+              />
+            </Grid>
+            <Grid item xs={8}>
+              <ImagesPage
+                subFigures={subFigures}
+                figures={figures}
+                articles={articles}
+              />
+            </Grid>
+          </Grid>  
+        </Box>
+      )}
     </ div>
   )
 }
