@@ -5,7 +5,7 @@ import SearchPage from '../search/SearchPage';
 import { Box, Grid, Paper, styled, Typography, CircularProgress, Stack } from '@mui/material';
 import { fetchArticles, fetchSubFigures, fetchFigures } from '../../services/ApiClient';
 
-// One big container divded into two: left side menu, right side figures
+// One big container divided into two: left side menu, right side figures
 
 const HeaderBox = styled(Paper)(({ theme }) => ({
   backgroundColor: '#0cb1f7',
@@ -20,6 +20,7 @@ const boxDefault = {
   padding: 2,
   justifyContent: "center",
   alignItems: "center",
+  display: 'flex',
   m: 2
 }
 

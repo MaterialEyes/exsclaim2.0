@@ -4,6 +4,7 @@ import './App.css';
 //} from 'react-router-dom'
 import Header from './common/Header'
 import Layout from './common/Layout';
+import Query from './common/Query';
 import Footer from './common/Footer';
 
 /*
@@ -17,7 +18,7 @@ function App() {
   return (
     <div className="App">
       <Header />
-      <Layout></Layout>
+      <Query></Query>
       <Footer />
     </div>
   );
