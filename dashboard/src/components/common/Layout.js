@@ -81,13 +81,6 @@ const Layout = () => {
     setKeyword: setKeyword
   }
 
-  // flatten a nested array to a normal array
-  function flatten(arr) {
-    return arr.reduce(function (flat, toFlatten) {
-      return flat.concat(Array.isArray(toFlatten) ? flatten(toFlatten) : toFlatten);
-    }, []);
-  }
-
   // get articles from API
   const getArticles = async () => {
     const articlesFromServer = await fetchArticles()
