@@ -1,28 +1,54 @@
 import React from 'react';
-//import { useState, useEffect } from 'react';
-import { Box, Grid, Paper, styled, Stack, Typography, Autocomplete, TextField, FormControlLabel, FormGroup, FormLabel, Radio, RadioGroup, Checkbox } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { Box, Grid, Paper, styled, Stack } from '@mui/material';
+import OutputName from '../inputs/OutputName';
+import JournalFamily from '../inputs/JournalFamily';
+import NumArticles from '../inputs/NumArticles';
+import SortBy from '../inputs/SortBy';
+import OpenAccess from '../inputs/OpenAccess';
+import InputTerm from '../inputs/InputTerm';
+import InputSynonyms from '../inputs/InputSynonyms';
+import InputButton from '../inputs/InputButton';
 
 // One big container containing the input query menu for the user to run EXSCLAIM
 
+const HeaderBox = styled(Paper)(({ theme }) => ({
+  backgroundColor: '#0cb1f7',
+  ...theme.typography.b1,
+  padding: theme.spacing(1),
+  textAlign: 'center',
+  color: '#fff',
+  width: '100%'
+}));
+  
+const boxDefault = {
+  width: '95%',
+  height: 400,
+  padding: 2,
+  justifyContent: "center",
+  display: 'flex',
+  m: 2,
+}
+
 const Query = () => {
 
-  const HeaderBox = styled(Paper)(({ theme }) => ({
-    backgroundColor: '#0cb1f7',
-    ...theme.typography.b1,
-    padding: theme.spacing(1),
-    textAlign: 'center',
-    color: '#fff',
-    width: '100%'
-  }));
-    
-  const boxDefault = {
-    width: '95%',
-    height: 350,
-    padding: 2,
-    justifyContent: "center",
-    alignItems: "center",
-    display: 'flex',
-    m: 2,
+  const [outputName, setOutputName] = useState(""); // set output EXSCLAIM result file name
+  const [numArticles, setNumArticles] = useState(0); // set number of articles to parse
+  const [term, setTerm] = useState(""); // set term
+  const [synonyms, setSynonyms] = useState([]); // set synonyms
+  const [journalFamily, setJournalFamily] = useState("nature"); // set the journal family
+  const [sort, setSort] = useState("revelant"); // set sort type
+  const [access, setAccess] = useState(false); // set open-access or not
+
+  // all props that need to be passed to other components                                        
+  const allProps = {
+    outputName: outputName,
+    numArticles: numArticles,
+    term: term,
+    synonyms: synonyms,
+    journalFamily: journalFamily,
+    sort: sort,
+    access: access
   }
   
   return (
@@ -35,11 +61,21 @@ const Query = () => {
             </Grid>
 
             <Grid item xs={6}>
-              <HeaderBox>First half</HeaderBox>
+              <Stack spacing={1}>
+                <OutputName setOutputName={setOutputName} />
+                <NumArticles setNumArticles={setNumArticles} />
+                <InputTerm setTerm={setTerm} />
+                <InputSynonyms setSynonyms={setSynonyms} />
+              </Stack>
             </Grid>
 
             <Grid item xs={6}>
-              <HeaderBox>Second half</HeaderBox>
+              <Stack spacing={1}>
+                <JournalFamily setJournalFamily={setJournalFamily} />
+                <SortBy setSort={setSort} />
+                <OpenAccess access={access} setAccess={setAccess} />
+                <InputButton {...allProps} />
+              </Stack>
             </Grid>
           </Grid>
         </Box>
@@ -49,130 +85,3 @@ const Query = () => {
 }
   
 export default Query;
-
-/* 
-<Stack>
-          <HeaderBox>Input Query</HeaderBox>
-          <Grid 
-            container 
-            spacing={2}
-            justify="center"
-          >
-            <Grid item xs={6}>
-              <Grid 
-                container 
-                spacing={2}
-                justify="center"
-              >
-                <Grid item xs={4}>
-                  <Typography>Output Name:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <TextField sx={{ width: 300, minHeight: 50 }}></TextField>
-                </Grid>
-                
-                <Grid item xs={4}>
-                  <Typography>Journal Family:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <FormGroup>
-                    <RadioGroup
-                      aria-labelledby="journal family label"
-                      defaultValue="nature"
-                      name="journal family buttons"
-                    >
-                      <FormControlLabel sx={{ height: 30 }} value="nature" control={<Radio />} label="Nature" />
-                      <FormControlLabel sx={{ height: 30 }} value="rcs" control={<Radio />} label="RCS" />
-                    </RadioGroup>
-                  </FormGroup>
-                </Grid>
-
-                <Grid item xs={4}>
-                  <Typography>Max Number of Articles:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <TextField
-                    id="max-number-articles"
-                    label="Max Articles"
-                    type="number"
-                    InputLabelProps={{
-                        shrink: true,
-                    }}
-                    size="small"
-                    margin="dense"
-                    sx={{ width: 300, minHeight: 50 }}
-                  />
-                </Grid>
-
-                <Grid item xs={4}>
-                  <Typography>Sort by:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <FormGroup>
-                    <RadioGroup
-                      aria-labelledby="sort label"
-                      defaultValue="revelant"
-                      name="sort buttons"
-                    >
-                      <FormControlLabel sx={{ height: 30 }}  value="revelant" control={<Radio />} label="Revelant" />
-                      <FormControlLabel sx={{ height: 30 }}  value="recent" control={<Radio />} label="Recent" />
-                    </RadioGroup>
-                  </FormGroup>
-                </Grid>
-              </Grid>
-            </Grid>
-
-            <Grid item xs={6}>
-              <Grid 
-                container 
-                spacing={2}
-                justify="center"
-              >
-                <Grid item xs={4}>
-                  <Typography>Open Access:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <FormGroup>
-                    <FormControlLabel
-                      sx={{ height: 20}} 
-                      control={
-                        <Checkbox
-                          id="access"
-                          size="small" 
-                        />
-                      }
-                    />
-                  </FormGroup>
-                </Grid>
-
-                <Grid item xs={4}>
-                  <Typography>Term:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <TextField></TextField>
-                </Grid>
-
-                <Grid item xs={4}>
-                  <Typography>Synonyms:</Typography>
-                </Grid>
-                <Grid item xs={8}>
-                  <Autocomplete
-                    multiple
-                    freeSolo
-                    id="synonyms"
-                    options={[]}
-                    getOptionLabel={(option) => option}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        variant="standard"
-                        label="Synonyms"
-                      />
-                    )}
-                  />
-                </Grid>
-              </Grid>
-            </Grid>
-          </Grid>  
-        </Stack>
-*/

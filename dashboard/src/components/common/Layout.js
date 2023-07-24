@@ -26,7 +26,7 @@ const boxDefault = {
 
 const loadingDefault = {
   width: '95%',
-  height: 350,
+  height: 400,
   padding: 2,
   justifyContent: "center",
   alignItems: "center",

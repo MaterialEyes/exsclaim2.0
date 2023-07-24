@@ -6,13 +6,15 @@ import logo from '../images/ExsclaimLogo.png';
 
 const Header = () => {
   return (
-    <Stack>
+    <Stack justifyContent="center">
       <div style={{ textAlign: "center" }}>
         <img src={logo} alt="EXSCLAIM Logo" style={{ maxWidth: 350, height: "auto" }}></img>
       </div>
       <Typography variant="h5" sx={{ fontWeight: "bold" }}>Welcome to the EXSCLAIM UI!</Typography>
       <Typography>
-        On this website, you can query the subfigures on the right to whatever you specified on the menu on the left.
+        On this website, you can submit a query for EXSCLAIM to run through. <br/>
+        Once you submit, a list of subfigures will appear on the right and a menu on the left. Then, you can query through the subfigures with the 
+        left-hand-side menu. <br/>
         Have fun querying!
       </Typography>
     </Stack>
