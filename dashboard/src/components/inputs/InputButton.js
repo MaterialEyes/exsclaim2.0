@@ -12,8 +12,10 @@ const InputButton = (props) => {
     console.log(props.journalFamily);
     console.log(props.sort);
     console.log(props.access);
+
+    props.setLoadResults(true);
   }
-    
+  
   return (
     <Box sx={{ padding: 1 }}>
       <Button sx={{ width: 200}} variant="contained" onClick={submitQuery}>Submit</Button>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Box, Grid, Paper, styled, Stack } from '@mui/material';
 import OutputName from '../inputs/OutputName';
 import JournalFamily from '../inputs/JournalFamily';
@@ -30,7 +30,7 @@ const boxDefault = {
   m: 2,
 }
 
-const Query = () => {
+const Query = (props) => {
 
   const [outputName, setOutputName] = useState(""); // set output EXSCLAIM result file name
   const [numArticles, setNumArticles] = useState(0); // set number of articles to parse
@@ -48,7 +48,8 @@ const Query = () => {
     synonyms: synonyms,
     journalFamily: journalFamily,
     sort: sort,
-    access: access
+    access: access,
+    setLoadResults: props.setLoadResults
   }
   
   return (

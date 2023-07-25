@@ -51,6 +51,10 @@ const Submit = (props) => {
   return (
     <div>
       <Button sx={{ width: 200}} variant="contained" onClick={getNewSubFigures}>Submit</Button>
+      <Button sx={{ width: 200}} onClick={() => {
+        props.setLoadResults(false);
+      }
+      }>Back to Query</Button>
     </div>
   )
 }

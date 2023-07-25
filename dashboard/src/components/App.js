@@ -2,6 +2,7 @@ import './App.css';
 //import {
 //  BrowserRouter, Routes, Route
 //} from 'react-router-dom'
+import { useState } from 'react';
 import Header from './common/Header'
 import Layout from './common/Layout';
 import Query from './common/Query';
@@ -15,10 +16,17 @@ import Footer from './common/Footer';
  */
 
 function App() {
+
+  const [loadResults, setLoadResults] = useState(false);
+
   return (
     <div className="App">
       <Header />
-      <Query></Query>
+      {(loadResults) ? (
+        <Layout setLoadResults={setLoadResults}></Layout>
+      ) : (
+        <Query setLoadResults={setLoadResults}></Query>
+      )}
       <Footer />
     </div>
   );

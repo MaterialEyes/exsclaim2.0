@@ -2,8 +2,9 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import ImagesPage from '../results/ImagesPage';
 import SearchPage from '../search/SearchPage';
-import { Box, Grid, Paper, styled, Typography, CircularProgress, Stack } from '@mui/material';
+import { Box, Grid, Paper, styled } from '@mui/material';
 import { fetchArticles, fetchSubFigures, fetchFigures } from '../../services/ApiClient';
+import Loading from './Loading';
 
 // One big container divided into two: left side menu, right side figures
 
@@ -23,18 +24,8 @@ const boxDefault = {
   display: 'flex',
   m: 2
 }
-
-const loadingDefault = {
-  width: '95%',
-  height: 400,
-  padding: 2,
-  justifyContent: "center",
-  alignItems: "center",
-  alignContent: "center",
-  m: 2
-}
   
-const Layout = () => {
+const Layout = (props) => {
 
   const [articles, setArticles] = useState([]); // set all articles
   const [figures, setFigures] = useState([]); // set all figures
@@ -79,7 +70,8 @@ const Layout = () => {
     keywordType: keywordType,
     setKeywordType: setKeywordType,
     keyword: keyword,
-    setKeyword: setKeyword
+    setKeyword: setKeyword,
+    setLoadResults: props.setLoadResults
   }
 
   // get articles from API
@@ -134,12 +126,7 @@ const Layout = () => {
   return (
     <div>
       {(!articlesLoaded || !figuresLoaded || !subFiguresLoaded) ? (
-        <Box sx={loadingDefault} display="flex">
-          <Stack alignItems="center"> 
-            <CircularProgress size={60} />
-            <Typography variant="h5" color="#4285F4">Loading Menu and Subfigures...</Typography>
-          </Stack>
-        </Box>
+        <Loading />
       ) : (
         <Box sx={boxDefault}>
           <Grid container spacing={4}>
@@ -149,6 +136,7 @@ const Layout = () => {
             <Grid item xs={8}>
               <HeaderBox>Figure Results</HeaderBox>
             </Grid>
+
             <Grid item xs={4}>
               <SearchPage 
                 {...allProps}
