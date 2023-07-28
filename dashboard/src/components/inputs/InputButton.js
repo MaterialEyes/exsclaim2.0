@@ -5,13 +5,30 @@ import { Box, Button } from '@mui/material';
 const InputButton = (props) => {
 
   function submitQuery() {
-    console.log(props.outputName);
-    console.log(props.numArticles);
-    console.log(props.term);
-    console.log(props.synonyms);
-    console.log(props.journalFamily);
-    console.log(props.sort);
-    console.log(props.access);
+
+    var search_dict = {
+      "term" : props.term,
+      "synonyms" : props.synonyms
+    };
+
+    var searchQuery = {
+      "search_field_" : search_dict
+    }
+
+    var inputData = {
+      "name" : props.outputName,
+      "journal_family" : props.journalFamily,
+      "maximum_scraped" : props.numArticles,
+      "sortby" : props.sort,
+      "query" : searchQuery,
+      "save_format" : "postgres",
+      "open" : props.access
+    };
+
+    fetch("http://localhost:8000/api/v1/query/", {
+      method: 'POST', 
+      body: JSON.stringify(inputData)
+    });
 
     props.setLoadResults(true);
   }

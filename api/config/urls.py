@@ -12,6 +12,7 @@ from apps.exsclaim.views import (
     ScaleBarViewSet,
     ScaleBarLabelViewSet,
     SubfigureLabelViewSet,
+    QueryViewSet
 )
 
 router = DefaultRouter()
@@ -21,6 +22,7 @@ router.register(r'subfigures',SubfigureViewSet)
 router.register(r'scalebars', ScaleBarViewSet)
 router.register(r'scalebarlabels', ScaleBarLabelViewSet)
 router.register(r'subfigurelabels', SubfigureLabelViewSet)
+router.register(r'query', QueryViewSet)
 
 urlpatterns = [
     path('admin/', admin.site.urls),

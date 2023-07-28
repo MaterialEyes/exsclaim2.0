@@ -114,4 +114,54 @@ class SubfigureLabel(models.Model):
     label_confidence = models.FloatField(null=True, blank=True)
     box_confidence = models.FloatField(null=True, blank=True)
     subfigure = models.ForeignKey('Subfigure', on_delete=models.CASCADE, null=True)  
-    
+
+class Query(models.Model):
+    name = models.TextField()
+    NATURE = "nature"
+    RCS = "rcs"
+    JOURNAL_CHOICES = [
+        (NATURE, "nature"),
+        (RCS, "rcs")
+    ]
+    journal_family = models.CharField(
+        max_length=10,
+        choices=JOURNAL_CHOICES
+    )
+    maximum_scraped = models.IntegerField(null=True)
+    REVELANT = "relevant"
+    RECENT = "recent"
+    SORT_CHOICES = [
+        (REVELANT, "relevant"),
+        (RECENT, "recent")
+    ]
+    sortby = models.CharField(
+        max_length=10,
+        choices=SORT_CHOICES
+    )
+    results_dir = models.TextField()
+    query = models.JSONField()
+    MONGO = "mongo"
+    CSV = "csv"
+    POSTGRES = "postgres"
+    VISUALIZE = "visualize"
+    BOXES = "boxes"
+    SUBFIGURES = "save_subfigures"
+    FORMAT_CHOICES = [
+        (MONGO, "mongo"),
+        (CSV, "csv"),
+        (POSTGRES, "postgres"),
+        (VISUALIZE, "visualize"),
+        (BOXES, "boxes"),
+        (SUBFIGURES, "save_subfigures")
+    ]
+    save_format = models.CharField(
+        max_length=20,
+        choices=FORMAT_CHOICES,
+        default=POSTGRES
+    )
+    mongo_connection = models.TextField()
+    open = models.BooleanField(null=True, blank=True)
+    logging = ArrayField(
+        models.CharField(max_length=20),
+        null=True, blank=True
+    )

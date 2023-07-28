@@ -5,7 +5,8 @@ from .models import (
     Subfigure,
     ScaleBar,
     ScaleBarLabel,
-    SubfigureLabel
+    SubfigureLabel,
+    Query
 )
 
 
@@ -49,3 +50,8 @@ class SubfigureLabelSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubfigureLabel
         fields = "__all__"
+
+class QuerySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Query
+        fields = ('name', 'journal_family', 'maximum_scraped', 'sortby', 'query', 'save_format', 'open')
