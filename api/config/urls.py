@@ -12,7 +12,7 @@ from apps.exsclaim.views import (
     ScaleBarViewSet,
     ScaleBarLabelViewSet,
     SubfigureLabelViewSet,
-    QueryViewSet
+    QueryViewSet,
 )
 
 router = DefaultRouter()

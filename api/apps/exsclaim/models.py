@@ -116,7 +116,8 @@ class SubfigureLabel(models.Model):
     subfigure = models.ForeignKey('Subfigure', on_delete=models.CASCADE, null=True)  
 
 class Query(models.Model):
-    name = models.TextField()
+    id = models.AutoField(primary_key=True)
+    name = models.TextField(null=True)
     NATURE = "nature"
     RCS = "rcs"
     JOURNAL_CHOICES = [
@@ -138,8 +139,12 @@ class Query(models.Model):
         max_length=10,
         choices=SORT_CHOICES
     )
-    results_dir = models.TextField()
-    query = models.JSONField()
+    #results_dir = models.TextField(null=True)
+    term = models.TextField(null=True)
+    synonyms = ArrayField(
+        models.CharField(max_length=30),
+        null=True, blank=True
+    )
     MONGO = "mongo"
     CSV = "csv"
     POSTGRES = "postgres"
@@ -159,9 +164,11 @@ class Query(models.Model):
         choices=FORMAT_CHOICES,
         default=POSTGRES
     )
-    mongo_connection = models.TextField()
+    #mongo_connection = models.TextField()
     open = models.BooleanField(null=True, blank=True)
+    '''
     logging = ArrayField(
         models.CharField(max_length=20),
         null=True, blank=True
     )
+    '''
