@@ -8,6 +8,7 @@ import SortBy from '../inputs/SortBy';
 import OpenAccess from '../inputs/OpenAccess';
 import InputTerm from '../inputs/InputTerm';
 import InputSynonyms from '../inputs/InputSynonyms';
+import Model from '../inputs/Model';
 import InputButton from '../inputs/InputButton';
 
 // One big container containing the input query menu for the user to run EXSCLAIM
@@ -23,7 +24,7 @@ const HeaderBox = styled(Paper)(({ theme }) => ({
   
 const boxDefault = {
   width: '95%',
-  height: 400,
+  height: 450,
   padding: 2,
   justifyContent: "center",
   display: 'flex',
@@ -39,6 +40,8 @@ const Query = (props) => {
   const [journalFamily, setJournalFamily] = useState("nature"); // set the journal family
   const [sort, setSort] = useState("revelant"); // set sort type
   const [access, setAccess] = useState(false); // set open-access or not
+  const [model, setModel] = useState("vicuna");
+  const [modelKey, setModelKey] = useState("");
 
   // all props that need to be passed to other components                                        
   const allProps = {
@@ -49,6 +52,8 @@ const Query = (props) => {
     journalFamily: journalFamily,
     sort: sort,
     access: access,
+    model: model,
+    modelKey: modelKey,
     setLoadResults: props.setLoadResults
   }
   
@@ -75,6 +80,7 @@ const Query = (props) => {
                 <JournalFamily setJournalFamily={setJournalFamily} />
                 <SortBy setSort={setSort} />
                 <OpenAccess access={access} setAccess={setAccess} />
+                <Model model={model} setModel={setModel} modelKey={modelKey} setModelKey={setModelKey} />
                 <InputButton {...allProps} />
               </Stack>
             </Grid>

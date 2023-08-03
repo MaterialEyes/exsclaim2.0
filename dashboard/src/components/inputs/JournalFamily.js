@@ -19,7 +19,7 @@ const JournalFamily = (props) => {
             <FormControlLabel sx={{ height: 30 }} value="nature" control={<Radio />} label="Nature" />
             <FormControlLabel sx={{ height: 30 }} value="rcs" control={<Radio />} label="RCS" />
           </RadioGroup>
-          </FormGroup>
+        </FormGroup>
       </Stack>
     </Box>
   )
