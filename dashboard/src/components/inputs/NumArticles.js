@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Stack, Typography, TextField } from '@mui/material';
 
+// Handles the number of articles EXSCLAIM will parse through
+
 const NumArticles = (props) => {
 
   // set user's query of a minimum width/height

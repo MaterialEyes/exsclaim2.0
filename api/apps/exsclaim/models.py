@@ -162,7 +162,7 @@ class Query(models.Model):
     save_format = models.CharField(
         max_length=20,
         choices=FORMAT_CHOICES,
-        default=POSTGRES
+        default="postgres"
     )
     #mongo_connection = models.TextField()
     open = models.BooleanField(null=True, blank=True)
@@ -172,3 +172,17 @@ class Query(models.Model):
         null=True, blank=True
     )
     '''
+    VICUNA = "vicuna"
+    GPT3 = "gpt3.5-turbo"
+    GPT4 = "gpt-4"
+    MODEL_CHOICES = [
+        (VICUNA, "vicuna"),
+        (GPT3, "gpt3.5-turbo"),
+        (GPT4, "gpt-4")
+    ]
+    llm = models.CharField(
+        max_length=15,
+        choices=MODEL_CHOICES,
+        default=POSTGRES
+    )
+    model_key = models.TextField(null=True)

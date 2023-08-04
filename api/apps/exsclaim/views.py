@@ -1,5 +1,6 @@
-from rest_framework import viewsets, mixins, views, response, generics, status
+from rest_framework import viewsets, mixins, response
 #import exsclaim
+import json
 
 from .models import (
     Article,
@@ -45,15 +46,13 @@ class SubfigureLabelViewSet(viewsets.ModelViewSet):
     queryset = SubfigureLabel.objects.all()
     serializer_class = SubfigureLabelSerializer
 
-# watch this: https://www.youtube.com/watch?v=H9rHrlNTpq8&ab_channel=TechWithTim
-
 class QueryViewSet(viewsets.ModelViewSet):
-    queryset = Query.objects.all()
     serializer_class = QuerySerializer
 
     # deleting test data
     #queryset.delete()
 
+    # receives input query data from UI and posts it to API
     def create(self, request, *args, **kwargs):
         if not self.request.session.exists(self.request.session.session_key):
             self.request.session.create()
@@ -68,9 +67,26 @@ class QueryViewSet(viewsets.ModelViewSet):
         synonyms = input_query.get('synonyms')
         save_format = input_query.get('save_format')
         open = input_query.get('open')
+        llm = input_query.get('llm')
+        model_key = input_query.get('model_key')
+
+        # input data is also stored in a json file to be used for EXSCLAIM
+        input_query_json = {
+            "name" : name,
+            "journal_family" : journal_family,
+            "maximum_scraped" : maximum_scraped,
+            "sortby" : sortby,
+            "term" : term,
+            "synonyms" : synonyms,
+            "save_format" : save_format,
+            "open" : open,
+            "llm" : llm,
+            "model_key" : model_key
+        }
 
         queryset = Query.objects.all()
 
+        # if there is a query that exists already, replace it with the new query
         if queryset.exists():
             input_query = queryset.first()
             input_query.name = name
@@ -81,55 +97,19 @@ class QueryViewSet(viewsets.ModelViewSet):
             input_query.synonyms = synonyms
             input_query.save_format = save_format
             input_query.open = open
-            input_query.save(update_fields=['name', 'journal_family', 'maximum_scraped', 'sortby', 'term', 'synonyms', 'save_format', 'open'])
+            input_query.llm = llm
+            input_query.model_key = model_key
+            input_query.save(update_fields=['name', 'journal_family', 'maximum_scraped', 'sortby', 'term', 'synonyms', 'save_format', 'open', 'llm', 'model_key'])
 
             serializer = QuerySerializer(input_query)
 
             return response.Response(serializer.data)
 
+        # make a new query and store it
         else:
-            input_query = Query.objects.create(name=name, journal_family=journal_family, maximum_scraped=maximum_scraped, sortby=sortby, term=term, synonyms=synonyms, save_format=save_format, open=open)
+            input_query = Query.objects.create(name=name, journal_family=journal_family, maximum_scraped=maximum_scraped, sortby=sortby, term=term, synonyms=synonyms, save_format=save_format, open=open, llm=llm, model_key=model_key)
             input_query.save()
 
             serializer = QuerySerializer(input_query)
 
             return response.Response(serializer.data)
-
-    '''
-
-    def create(self, request, *args, **kwargs):
-        if not self.request.session.exists(self.request.session.session_key):
-            self.request.session.create()
-
-        queryset = Query.objects.all()
-        serializer = self.serializer_class(data = request.data)
-
-        if serializer.is_valid():
-            name = serializer.data.get('name')
-            journal_family = serializer.data.get('journal_family')
-            maximum_scraped = serializer.data.get('maximum_scraped')
-            sortby = serializer.data.get('sortby')
-            term = serializer.data.get('term')
-            synonyms = serializer.data.get('synonyms')
-            save_format = serializer.data.get('save_format')
-            open = serializer.data.get('open')
-
-            if queryset.exists():
-                input_query = queryset[0]
-                input_query.name = name
-                input_query.journal_family = journal_family
-                input_query.maximum_scraped = maximum_scraped
-                input_query.sortby = sortby
-                input_query.term = term
-                input_query.synonyms = synonyms
-                input_query.save_format = save_format
-                input_query.open = open
-                input_query.save(update_fields=['name', 'journal_family', 'maximum_scraped', 'sortby', 'term', 'synonyms', 'save_format', 'open'])
-                
-            else:
-                input_query = Query(name=name, journal_family=journal_family, maximum_scraped=maximum_scraped, sortby=sortby, term=term, synonyms=synonyms, save_format=save_format, open=open)
-                input_query.save()
-
-        return response.Response(status=200)
-
-        '''

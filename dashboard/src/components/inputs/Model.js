@@ -2,6 +2,8 @@ import React from 'react';
 import { useState } from 'react';
 import { Box, Stack, Typography, FormControlLabel, FormGroup, Radio, RadioGroup, TextField } from '@mui/material';
 
+// Handles what kind of llm EXSCLAIM will use
+
 const Model = (props) => {
 
   const [showKey, setShowKey] = useState(false);

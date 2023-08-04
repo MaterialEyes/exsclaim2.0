@@ -40,8 +40,8 @@ const Query = (props) => {
   const [journalFamily, setJournalFamily] = useState("nature"); // set the journal family
   const [sort, setSort] = useState("revelant"); // set sort type
   const [access, setAccess] = useState(false); // set open-access or not
-  const [model, setModel] = useState("vicuna");
-  const [modelKey, setModelKey] = useState("");
+  const [model, setModel] = useState("vicuna"); // set the llm
+  const [modelKey, setModelKey] = useState(""); // set the user's personal key to run certain llms
 
   // all props that need to be passed to other components                                        
   const allProps = {

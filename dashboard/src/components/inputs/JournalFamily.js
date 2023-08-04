@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Stack, Typography, FormControlLabel, FormGroup, Radio, RadioGroup } from '@mui/material';
 
+// Handles the journal family where EXSCLAIM will parse through
+
 const JournalFamily = (props) => {
     
   return (

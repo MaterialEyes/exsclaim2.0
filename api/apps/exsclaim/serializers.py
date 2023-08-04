@@ -54,4 +54,4 @@ class SubfigureLabelSerializer(serializers.ModelSerializer):
 class QuerySerializer(serializers.ModelSerializer):
     class Meta:
         model = Query
-        fields = ('name', 'journal_family', 'maximum_scraped', 'sortby', 'term', 'synonyms', 'save_format', 'open')
+        fields = ('name', 'journal_family', 'maximum_scraped', 'sortby', 'term', 'synonyms', 'save_format', 'open', 'llm', 'model_key')

@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Stack, Typography, FormControlLabel, FormGroup, Radio, RadioGroup } from '@mui/material';
 
+// Handles the sort query inputted by the user
+
 const SortBy = (props) => {
     
   return (

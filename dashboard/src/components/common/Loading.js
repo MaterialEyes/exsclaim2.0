@@ -3,7 +3,7 @@ import { Box, Typography, CircularProgress, Stack } from '@mui/material';
 
 const loadingDefault = {
   width: '95%',
-  height: 400,
+  height: 450,
   padding: 2,
   justifyContent: "center",
   alignItems: "center",

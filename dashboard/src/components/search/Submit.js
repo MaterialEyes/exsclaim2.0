@@ -1,7 +1,7 @@
 import React from 'react'
 import { Button } from '@mui/material';
 
-// Submit user's query
+// Submit user's query for filtered subfigures
 
 const Submit = (props) => {
 

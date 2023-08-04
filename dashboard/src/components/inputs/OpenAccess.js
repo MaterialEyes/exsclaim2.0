@@ -1,6 +1,8 @@
 import React from 'react';
 import { Box, Stack, Typography, FormControlLabel, FormGroup, Checkbox } from '@mui/material';
 
+// Toggles if EXSCLAIM should only have open access results
+
 const OpenAccess = (props) => {
     
   return (
