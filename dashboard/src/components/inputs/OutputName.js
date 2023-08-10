@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Stack, Typography, TextField } from '@mui/material';
 
-// Handles the output exsclaim file name inputted by the user
+// Handles and gets the output EXSCLAIM file name inputted by the user
 
 const OutputName = (props) => {
     

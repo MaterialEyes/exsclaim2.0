@@ -1,5 +1,7 @@
 import React from 'react'
 
+// Header navigation bar
+// THIS PAGE IS NOT USED IN THE CURRENT UI
 
 const NavigationBar = () => {
     return (

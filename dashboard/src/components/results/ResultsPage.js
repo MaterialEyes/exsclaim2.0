@@ -2,8 +2,8 @@ import React from 'react'
 import { useState, useEffect } from 'react'
 import { fetchArticles } from '../../services/ApiClient'
 
-// need to intergrate API with results
-// need to access articles, figures, subfigures, and subfigurelabels
+// Old results page
+// THIS PAGE IS NOT USED IN THE CURRENT UI
 
 const ResultsPage = () => {
     const [articles, setArticles] = useState([])

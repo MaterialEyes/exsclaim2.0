@@ -1,7 +1,7 @@
 import React from 'react'
 import { TextField, Slider, Grid, InputAdornment, FormLabel } from '@mui/material';
 
-// Focuses on the scale and size of the subfigures
+// Gets the scale and size of the subfigure results should be
 
 const Scale = (props) => {
 
@@ -33,6 +33,7 @@ const Scale = (props) => {
   }
 
   // set user's query of confidence threshold
+  // CURRENT DATA IN UI DOESN'T HAVE CONFIDENCE THRESHOLD VALUES
   const sliderChange = (event, newValue) => {
     /*
     let newScales = { ...props.scales};

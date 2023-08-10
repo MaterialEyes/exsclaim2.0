@@ -17,7 +17,7 @@ import Footer from './common/Footer';
 
 function App() {
 
-  const [loadResults, setLoadResults] = useState(false);
+  const [loadResults, setLoadResults] = useState(false); // toggles between the query page and the results page
 
   return (
     <div className="App">

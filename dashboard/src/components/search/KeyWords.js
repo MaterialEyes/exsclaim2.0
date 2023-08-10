@@ -2,7 +2,7 @@ import React from 'react'
 import { useState, useEffect } from 'react';
 import { Autocomplete, FormControlLabel, FormGroup, TextField, FormLabel, Radio, RadioGroup } from '@mui/material';
 
-// Focuses on the keywords contained in the subfigures
+// Gets what keywords should be contained in/related to the subfigures
 
 const KeyWords = (props) => {
 
@@ -33,6 +33,7 @@ const KeyWords = (props) => {
     }
   }
 
+  // set default keywords to be from the captions
   useEffect(() => {
     let subFigureKeywords = props.allSubFigures.map((val) => val.keywords);
     setKeywords(Array.from(new Set(flatten(subFigureKeywords))));

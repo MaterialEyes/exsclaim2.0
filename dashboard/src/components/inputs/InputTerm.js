@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Stack, Typography, TextField } from '@mui/material';
 
-// Handles the main search term of EXSCLAIM
+// Gets the main search term to be used in EXSCLAIM
 
 const InputTerm = (props) => {
     

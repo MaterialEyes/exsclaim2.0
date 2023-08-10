@@ -11,8 +11,9 @@ import InputSynonyms from '../inputs/InputSynonyms';
 import Model from '../inputs/Model';
 import InputButton from '../inputs/InputButton';
 
-// One big container containing the input query menu for the user to run EXSCLAIM
+// One big container with the input query menu for the user to run EXSCLAIM
 
+// a blue-colored header box
 const HeaderBox = styled(Paper)(({ theme }) => ({
   backgroundColor: '#0cb1f7',
   ...theme.typography.b1,
@@ -22,6 +23,7 @@ const HeaderBox = styled(Paper)(({ theme }) => ({
   width: '100%'
 }));
   
+// box container containing the query menu
 const boxDefault = {
   width: '95%',
   height: 450,
@@ -43,7 +45,7 @@ const Query = (props) => {
   const [model, setModel] = useState("vicuna"); // set the llm
   const [modelKey, setModelKey] = useState(""); // set the user's personal key to run certain llms
 
-  // all props that need to be passed to other components                                        
+  // all props that need to be passed to the submit button and the API                                   
   const allProps = {
     outputName: outputName,
     numArticles: numArticles,

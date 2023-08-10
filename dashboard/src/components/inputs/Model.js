@@ -2,12 +2,13 @@ import React from 'react';
 import { useState } from 'react';
 import { Box, Stack, Typography, FormControlLabel, FormGroup, Radio, RadioGroup, TextField } from '@mui/material';
 
-// Handles what kind of llm EXSCLAIM will use
+// Gets what kind of llm (large langauge model) EXSCLAIM will use
 
 const Model = (props) => {
 
   const [showKey, setShowKey] = useState(false);
 
+  // handles whether or not to show the model key text box depending on what model the user chooses to use
   function handleModelChange(value)  {
     props.setModel(value);
 
@@ -38,6 +39,7 @@ const Model = (props) => {
             <FormControlLabel sx={{ height: 30 }} value="gpt-4" control={<Radio />} label="GPT-4" />
           </RadioGroup>
         </FormGroup>
+        { /* show model key text box depending on if the user wants to use GPT or not */ }
         {
           showKey &&
             <TextField

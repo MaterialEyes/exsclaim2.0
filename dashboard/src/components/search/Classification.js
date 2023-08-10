@@ -1,7 +1,7 @@
 import React from 'react'
 import { FormGroup, FormControlLabel, Checkbox, Grid } from '@mui/material';
 
-// Focuses on what type the subfigure is
+// Gets what type the subfigure results should be
 
 const Classification = (props) => {
 

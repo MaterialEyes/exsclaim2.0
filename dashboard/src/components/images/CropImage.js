@@ -10,10 +10,10 @@ const CropImage = (props) => {
   
   // get the dimensions of the crop
   function cropImageAPI(data) {
-    var topLeft_x = data["x1"];
-    var topLeft_y = data["y1"];
-    var sub_width = data["width"];
-    var sub_height = data["height"];
+    var topLeft_x = data["x1"]; // top left corner x-coordinate of the subfigure
+    var topLeft_y = data["y1"]; // top left corner y-coordinate of the subfigure
+    var sub_width = data["width"]; // width of the subfigure
+    var sub_height = data["height"]; // height of the subfigure
 
     var crop_dimensions = []
 
@@ -28,6 +28,7 @@ const CropImage = (props) => {
     const url = props.url;
     const data = props.data;
 
+    // load in the cropped image
     const image = new Image();
     image.src = url;
     image.onload = () => {

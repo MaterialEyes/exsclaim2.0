@@ -74,6 +74,7 @@ class QueryViewSet(viewsets.ModelViewSet):
         llm = input_query.get('llm')
         model_key = input_query.get('model_key')
 
+        # running user input through EXSCLAIM
         # follow this: https://github.com/MaterialEyes/exsclaim-ui/blob/main/query/views.py
 
         exsclaim_input = {

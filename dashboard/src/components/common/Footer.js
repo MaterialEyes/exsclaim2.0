@@ -9,19 +9,20 @@ const Footer = () => {
     <Box sx={{
       width: "100%",
       height: 120,
-      // backgroundColor: '#07004D',
       boxShadow: 10,
       bottom: 0,
       alignContent: "top"
     }}>
       <Grid container spacing={1} alignItems="center" justifyContent="center" >
         <Grid item xs={4}>
+          {/* image and link to Argonne website */}
           <a href="https://www.anl.gov/">
             <img src={logo} alt="Argonne Logo" height={60} />
           </a>
         </Grid>
         <Grid item xs={8}>
           <Stack>
+            {/* some links pertaining to EXSCLAIM */}
             <Typography variant="h6" sx={{ fontWeight: "bold" }}>More Info</Typography>
             <Link href="https://github.com/MaterialEyes/exsclaim" underline="hover"> EXSCLAIM GitHub Page</Link>
             <Link href="https://github.com/MaterialEyes/exsclaim-ui" underline="hover"> EXSCLAIM UI GitHub Page</Link>

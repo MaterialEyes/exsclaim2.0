@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Stack, Typography, Autocomplete, TextField } from '@mui/material';
 
-// Handles alternative search terms of EXSCLAIM
+// Gets the alternative search terms (synonyms) to be used in EXSCLAIM
 
 const InputSynonyms = (props) => {
     

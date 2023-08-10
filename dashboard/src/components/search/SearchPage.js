@@ -11,6 +11,9 @@ import Submit from './Submit';
 // to send a post request to the api that will initiate
 // a run of the pipeline
 
+// The left-hand side menu in the results page
+
+// a light-blue-colored subheader box
 const SubHeaderBox = styled(Paper)(({ theme }) => ({
   width: "98%",
   backgroundColor: '#00CAF5',

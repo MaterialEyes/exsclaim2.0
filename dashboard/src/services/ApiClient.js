@@ -1,3 +1,4 @@
+// some functions to get data from the API
 const baseUrl = "http://localhost:8000/api/v1";
 
 export const fetchArticles = async () => {

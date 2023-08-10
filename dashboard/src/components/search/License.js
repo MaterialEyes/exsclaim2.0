@@ -1,7 +1,7 @@
 import React from 'react'
 import { FormGroup, FormControlLabel, Checkbox } from '@mui/material';
 
-//Focuses on if the subfigure comes from an open-source project or not
+// Gets whether the subfigure should come from an open-source project or not
 
 const License = (props) => {
 

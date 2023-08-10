@@ -1,5 +1,4 @@
 import React from 'react';
-//import { useState, useEffect } from 'react';
 import { Box, Button } from '@mui/material';
 
 // Submits the user query to the API, which then runs EXSCLAIM. After the subfigure results are loaded, 
@@ -7,18 +6,8 @@ import { Box, Button } from '@mui/material';
 
 const InputButton = (props) => {
 
+  // the function that will send a post request with the user's input query to the API
   function submitQuery() {
-
-    /*
-    var search_dict = {
-      "term" : props.term,
-      "synonyms" : props.synonyms
-    };
-
-    var searchQuery = {
-      "search_field_" : search_dict
-    }
-    */
 
     // data that will be posted to the API
     var inputData = {

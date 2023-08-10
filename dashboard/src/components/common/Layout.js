@@ -6,8 +6,9 @@ import { Box, Grid, Paper, styled } from '@mui/material';
 import { fetchArticles, fetchSubFigures, fetchFigures } from '../../services/ApiClient';
 import Loading from './Loading';
 
-// One big container divided into two: left side menu, right side figures
+// One big container containing the UI results page. It is divided into two parts: left side menu, right side figures
 
+// a blue-colored header box
 const HeaderBox = styled(Paper)(({ theme }) => ({
   backgroundColor: '#0cb1f7',
   ...theme.typography.b1,
@@ -16,6 +17,7 @@ const HeaderBox = styled(Paper)(({ theme }) => ({
   color: '#fff',
 }));
 
+// box container containing the menu and results
 const boxDefault = {
   width: '95%',
   padding: 2,
@@ -51,10 +53,10 @@ const Layout = (props) => {
   const [figuresLoaded, setFiguresLoaded] = useState(false); // wait for API figure requests to finish
   const [subFiguresLoaded, setSubFiguresLoaded] = useState(false); // wait for API subfigure requests to finish
 
-  const [figurePage, setFigurePage] = useState(1); // figure page
-  const [subFigurePage, setSubFigurePage] = useState(1); // subfigure page
+  const [figurePage, setFigurePage] = useState(1); // current figure page in the API
+  const [subFigurePage, setSubFigurePage] = useState(1); // current subfigure page in the API
 
-  // all props that need to be passed to other components                                        
+  // all props that need to be passed to the search page/ left-hand side menu                                  
   const allProps = {
     subFigures: subFigures,
     setSubFigures: setSubFigures,
@@ -138,11 +140,13 @@ const Layout = (props) => {
             </Grid>
 
             <Grid item xs={4}>
+              {/* left-hand side menu */}
               <SearchPage 
                 {...allProps}
               />
             </Grid>
             <Grid item xs={8}>
+              {/* right-hand side subfigure results */}
               <ImagesPage
                 subFigures={subFigures}
                 figures={figures}
