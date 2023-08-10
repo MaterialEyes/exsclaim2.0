@@ -4,10 +4,10 @@ Implements a user interface for viewing results from the [exsclaim](https://gith
 
 ## How it Works
 Once the UI loads, the user starts at the query page. Here, the user can input their own EXSCLAIM query, which is submitted to the API once they press the Submit button.
-![plot](exsclaim-ui/dashboard/src/components/images/EXSCLAIM_UI_Query.png)
+![EXSCLAIM UI Query](dashboard/src/components/images/EXSCLAIM_UI_Query.png)
 
 After submitting, the UI will load in the subfigure results along with a subfigure menu. In this menu, users can query and filter through the results for what they want. Pressing the "Back to Query" button will send the people back to the original query page.
-![plot](exsclaim-ui/dashboard/src/components/images/New_UI.png)
+![EXSCLAIM UI Results](dashboard/src/components/images/New_UI.png)
 
 Right now, the subfigure results page and query page are working on their own. People can filter through the results and the EXSCLAIM inputs are getting added to the API. The goal right now is to get exsclaim running on the users' inputs and returning the results to the subfigures page.
 
