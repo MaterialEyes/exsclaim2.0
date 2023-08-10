@@ -139,7 +139,6 @@ class Query(models.Model):
         max_length=10,
         choices=SORT_CHOICES
     )
-    #results_dir = models.TextField(null=True)
     term = models.TextField(null=True)
     synonyms = ArrayField(
         models.CharField(max_length=30),
@@ -164,14 +163,7 @@ class Query(models.Model):
         choices=FORMAT_CHOICES,
         default="postgres"
     )
-    #mongo_connection = models.TextField()
-    open = models.BooleanField(null=True, blank=True)
-    '''
-    logging = ArrayField(
-        models.CharField(max_length=20),
-        null=True, blank=True
-    )
-    '''
+    access = models.BooleanField(null=True, blank=True)
     VICUNA = "vicuna"
     GPT3 = "gpt3.5-turbo"
     GPT4 = "gpt-4"

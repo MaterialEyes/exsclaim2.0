@@ -29,7 +29,7 @@ const InputButton = (props) => {
       "term" : props.term,
       "synonyms" : props.synonyms,
       "save_format" : "postgres",
-      "open" : props.access,
+      "access" : props.access,
       "llm" : props.model,
       "model_key" : props.modelKey
     };

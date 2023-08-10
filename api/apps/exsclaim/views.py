@@ -1,5 +1,8 @@
 from rest_framework import viewsets, mixins, response
-#import exsclaim
+try:
+    import exsclaim
+except:
+    print("can't load exsclaim")
 import json
 
 from .models import (
@@ -47,6 +50,7 @@ class SubfigureLabelViewSet(viewsets.ModelViewSet):
     serializer_class = SubfigureLabelSerializer
 
 class QueryViewSet(viewsets.ModelViewSet):
+    queryset = Query.objects.all()
     serializer_class = QuerySerializer
 
     # deleting test data
@@ -66,23 +70,34 @@ class QueryViewSet(viewsets.ModelViewSet):
         term = input_query.get('term')
         synonyms = input_query.get('synonyms')
         save_format = input_query.get('save_format')
-        open = input_query.get('open')
+        access = input_query.get('access')
         llm = input_query.get('llm')
         model_key = input_query.get('model_key')
 
-        # input data is also stored in a json file to be used for EXSCLAIM
-        input_query_json = {
+        # follow this: https://github.com/MaterialEyes/exsclaim-ui/blob/main/query/views.py
+
+        exsclaim_input = {
             "name" : name,
             "journal_family" : journal_family,
             "maximum_scraped" : maximum_scraped,
             "sortby" : sortby,
-            "term" : term,
-            "synonyms" : synonyms,
-            "save_format" : save_format,
-            "open" : open,
+            "query" : {
+                "search_field_1" : {
+                    "term" : term,
+                    "synonyms" : synonyms
+                }
+            },
             "llm" : llm,
-            "model_key" : model_key
+            "openai_API" : model_key,
+            "open" : access,
+            "save_format" : save_format,
+            "logging" : []
         }
+
+        #test_pipeline = Pipeline(exsclaim_input)
+        #results = test_pipeline.run()
+
+        #print(results)
 
         queryset = Query.objects.all()
 
@@ -96,10 +111,10 @@ class QueryViewSet(viewsets.ModelViewSet):
             input_query.term = term
             input_query.synonyms = synonyms
             input_query.save_format = save_format
-            input_query.open = open
+            input_query.access = access
             input_query.llm = llm
             input_query.model_key = model_key
-            input_query.save(update_fields=['name', 'journal_family', 'maximum_scraped', 'sortby', 'term', 'synonyms', 'save_format', 'open', 'llm', 'model_key'])
+            input_query.save(update_fields=['name', 'journal_family', 'maximum_scraped', 'sortby', 'term', 'synonyms', 'save_format', 'access', 'llm', 'model_key'])
 
             serializer = QuerySerializer(input_query)
 
@@ -107,7 +122,7 @@ class QueryViewSet(viewsets.ModelViewSet):
 
         # make a new query and store it
         else:
-            input_query = Query.objects.create(name=name, journal_family=journal_family, maximum_scraped=maximum_scraped, sortby=sortby, term=term, synonyms=synonyms, save_format=save_format, open=open, llm=llm, model_key=model_key)
+            input_query = Query.objects.create(name=name, journal_family=journal_family, maximum_scraped=maximum_scraped, sortby=sortby, term=term, synonyms=synonyms, save_format=save_format, access=access, llm=llm, model_key=model_key)
             input_query.save()
 
             serializer = QuerySerializer(input_query)
