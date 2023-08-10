@@ -116,7 +116,7 @@ class SubfigureLabel(models.Model):
     subfigure = models.ForeignKey('Subfigure', on_delete=models.CASCADE, null=True)  
 
 class Query(models.Model):
-    id = models.AutoField(primary_key=True)
+    id = models.AutoField(primary_key=True) # auto-create id for query
     name = models.TextField(null=True)
     NATURE = "nature"
     RCS = "rcs"
