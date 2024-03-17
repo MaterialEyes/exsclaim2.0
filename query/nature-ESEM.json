@@ -1,0 +1,29 @@
+{
+    "name": "nature_ESEM",
+
+    "journal_family": "nature",
+
+    "maximum_scraped": 500,
+
+    "sortby": "relevant",
+
+    "query":
+    {
+        "search_field_1":
+        {
+            "term":"ESEM",  
+            "synonyms":["Environmental SEM", "Environmental Scanning Electron Microscope"]
+        }
+    },
+
+    "llm": "gpt-3.5-turbo",
+
+    "openai_API": "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",
+
+
+    "open": false,
+
+    "save_format": ["boxes", "save_subfigures", "csv"],
+
+    "logging": ["print", "exsclaim.log"]
+}

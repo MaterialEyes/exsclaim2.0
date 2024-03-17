@@ -1,0 +1,21 @@
+{
+    "name": "nature-test",
+
+    "journal_family": "nature",
+
+    "maximum_scraped": 2,
+
+    "sortby": "relevant",
+
+    "query":
+    {
+        "search_field_1":
+        {
+            "term":"Ag nanoparticle"
+        }
+    },
+
+    "save_format": ["boxes"],
+
+    "open": false
+}
