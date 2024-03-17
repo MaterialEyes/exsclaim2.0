@@ -18,7 +18,7 @@
 
     "llm": "gpt-3.5-turbo",
 
-    "openai_API": "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",
+    "openai_API": YOUR_API_KEY,
 
 
     "open": false,
