@@ -45,10 +45,6 @@ wget https://chromedriver.storage.googleapis.com/90.0.4430.24/chromedriver_linux
 If you run into errors, please check [Troubleshooting](https://github.com/MaterialEyes/exsclaim/wiki/Troubleshooting). If they persist, please open an issue.
 
 
-## Processing multimodal datasets
-EXSCLAIM2.0 is a Python package combining EXSCLAIM! code with Large Language models (LLMs) that can be used for the automatic generation of datasets of labelled images from published papers. It in three main steps:
-
-
 ## Acknowledgements <a name="credits"></a>
 This material is based upon work supported by Laboratory Directed Research and Development (LDRD) funding from Argonne National Laboratory, provided by the Director, Office of Science, of the U.S. Department of Energy under Contract No. DE-AC02-06CH11357
 
