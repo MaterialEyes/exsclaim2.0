@@ -17,7 +17,7 @@ EXSCLAIM2.0 is a Python package combining EXSCLAIM! code with Large Language mod
 We provide several tutotials demonstrating how to use EXSCLAIM2.0:
 1. [Nature_exsclaim_search](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): automatically scrapping data from literature and performing Named Entity Recognition (NER) on the extracted captions.
 2. [HTMLScrapper](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): automatically scrapping data from user provided HTML files
-3. [HTMLScrapper](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): automatically scrapping data from user provided HTML files
+3. [Microscopy_CLIP_retrieval](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): Using Microscopy_CLIP to perform image-to-image and text-to-image retrieval on our multimodal microscopy dataset.
 
 
 ## Using EXSCLAIM
@@ -43,6 +43,11 @@ wget https://chromedriver.storage.googleapis.com/90.0.4430.24/chromedriver_linux
 ```
 
 If you run into errors, please check [Troubleshooting](https://github.com/MaterialEyes/exsclaim/wiki/Troubleshooting). If they persist, please open an issue.
+
+
+## Processing multimodal datasets
+EXSCLAIM2.0 is a Python package combining EXSCLAIM! code with Large Language models (LLMs) that can be used for the automatic generation of datasets of labelled images from published papers. It in three main steps:
+
 
 ## Acknowledgements <a name="credits"></a>
 This material is based upon work supported by Laboratory Directed Research and Development (LDRD) funding from Argonne National Laboratory, provided by the Director, Office of Science, of the U.S. Department of Energy under Contract No. DE-AC02-06CH11357
