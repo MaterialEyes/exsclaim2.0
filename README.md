@@ -8,16 +8,16 @@ If you find this tool or any of its derived capabilities useful, please consider
 ## Introduction to EXSCLAIM2.0
 
 EXSCLAIM2.0 is a Python package combining EXSCLAIM! code with Large Language models (LLMs) that can be used for the automatic generation of datasets of labelled images from published papers. It in three main steps:
-1. [JournalScraper](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): scrap journal websites, acquiring figures, captions, and metadata
+1. [JournalScraper]: scrap journal websites, acquiring figures, captions, and metadata
 2. [HTMLScraper](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): scrap user provided HTML files, acquiring figures, captions, and metadata 
 3. [CaptionDistributor](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): separate figure captions into the component chunks that refer to the figure's subfigures using LLMs and prompt engineering
 4. [FigureSeparator](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): separate figures into subfigures, detect scale information, label, and type of image
 
 ## Examples and tutorials
 We provide several tutotials demonstrating how to use EXSCLAIM2.0:
-1. [Nature_exsclaim_search](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): automatically scrapping data from literature and performing Named Entity Recognition (NER) on the extracted captions.
-2. [HTMLScrapper](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): automatically scrapping data from user provided HTML files
-3. [Microscopy_CLIP_retrieval](https://github.com/MaterialEyes/exsclaim/wiki/JournalScraper): Using Microscopy_CLIP to perform image-to-image and text-to-image retrieval on our multimodal microscopy dataset.
+1. [Nature_exsclaim_search](https://github.com/MaterialEyes/exsclaim2.0/blob/main/notebooks/1_Nature_exsclaim_search.ipynb): automatically scrapping data from literature and performing Named Entity Recognition (NER) on the extracted captions.
+2. [HTMLScrapper](https://github.com/MaterialEyes/exsclaim2.0/blob/main/notebooks/2_HTMLScraper.ipynb): automatically scrapping data from user provided HTML files
+3. [Microscopy_CLIP_retrieval](https://github.com/MaterialEyes/exsclaim2.0/blob/main/notebooks/3_Microscopy_CLIP_retrieval.ipynb): Using Microscopy_CLIP to perform image-to-image and text-to-image retrieval on our multimodal microscopy dataset.
 
 
 ## Using EXSCLAIM
