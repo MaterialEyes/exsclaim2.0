@@ -2,6 +2,9 @@
 import yaml
 
 
+__ALL__ = ["load_yaml"]
+
+
 def load_yaml(filename):
     with open(filename, "r") as stream:
         try:

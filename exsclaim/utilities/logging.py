@@ -3,6 +3,9 @@ import os
 import sys
 
 
+__ALL__ = ["blockPrint", "enablePrint", "Printer"]
+
+
 # Disable
 def blockPrint():
     sys.stdout = open(os.devnull, "w")

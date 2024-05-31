@@ -2,63 +2,96 @@
 #  https://github.com/githubharald/CTCDecoder/blob/master/src/BeamSearch.py
 from __future__ import division, print_function
 
-import pathlib
-
+from pathlib import Path
 from .lm import LanguageModel
 
 
-class BeamEntry:
-    "information about one single beam at specific time-step"
+__ALL__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "get_legal_next_characters", "postprocess_ctc", "run_ctc"]
 
+
+class BeamEntry:
+    """Information about one single beam at a specific time-step"""
     def __init__(self):
-        self.prTotal = 0  # blank and non-blank
-        self.prNonBlank = 0  # non-blank
-        self.prBlank = 0  # blank
+        self._prNonBlank = 0
+        self._prBlank = 0
         self.prText = 1  # LM score
         self.lmApplied = False  # flag if LM was already applied to this beam
-        self.labeling = ()  # beam-labeling
+        self.labeling = ()
+
+    @property
+    def prTotal(self):
+        """blank and non-blank"""
+        return self._prNonBlank + self._prBlank
+
+    @property
+    def prNonBlank(self) -> int:
+        """non-blank"""
+        return self._prNonBlank
+
+    @prNonBlank.setter
+    def prNonBlank(self, prNonBlank:int):
+        self._prNonBlank = prNonBlank
+
+    @property
+    def prBlank(self) -> int:
+        """blank"""
+        return self._prBlank
+
+    @prBlank.setter
+    def prBlank(self, prBlank:int):
+        self._prBlank = prBlank
+
+    @property
+    def labeling(self) -> tuple:
+        """Beam-labeling"""
+        return self._labeling
+
+    @labeling.setter
+    def labeling(self, labeling:tuple):
+        self._labeling = labeling
 
 
 class BeamState:
-    "information about the beams at specific time-step"
-
+    """Information about the beams at specific time-step."""
     def __init__(self):
         self.entries = {}
 
     def norm(self):
-        "length-normalise LM score"
-        for (k, _) in self.entries.items():
+        """length-normalize LM score"""
+        for k, _ in self.entries.items():
             labelingLen = len(self.entries[k].labeling)
             self.entries[k].prText = self.entries[k].prText ** (
                 1.0 / (labelingLen if labelingLen else 1.0)
             )
 
     def sort(self):
-        "return beam-labelings, sorted by probability"
-        beams = [v for (_, v) in self.entries.items()]
+        """return beam-labelings, sorted by probability"""
+        beams = list(self.entries.values())
         sortedBeams = sorted(beams, reverse=True, key=lambda x: x.prTotal * x.prText)
         return [(x.labeling, x.prTotal * x.prText) for x in sortedBeams]
 
 
 def applyLM(parentBeam, childBeam, classes, lm):
     """Get LM score of child beam"""
-    if lm and not childBeam.lmApplied:
-        c1 = classes[
-            parentBeam.labeling[-1] if parentBeam.labeling else classes.index(" ")
-        ]  # first char
-        c2 = classes[childBeam.labeling[-1]]  # second char
-        lmFactor = 0.01  # influence of language model
-        bigramProb = (
-            lm.getCharBigram(c1, c2) ** lmFactor
-        )  # probability of seeing first and second char next to each other
-        childBeam.prText = (
-            parentBeam.prText * bigramProb
-        )  # probability of char sequence
-        childBeam.lmApplied = True  # only apply LM once per beam entry
+    if not (lm and not childBeam.lmApplied):
+        return
+
+    # first char
+    c1 = classes[parentBeam.labeling[-1] if parentBeam.labeling else classes.index(" ")]
+    # second char
+    c2 = classes[childBeam.labeling[-1]]
+    # influence of the language model
+    lmFactor = 0.01
+    # probability of seeing first and second char next to each other
+    bigramProb = lm.getCharBigram(c1, c2) ** lmFactor
+    # probability of the character sequence
+    childBeam.prText = parentBeam.prText * bigramProb
+    # only apply LM once per beam entry
+    childBeam.lmApplied = True
 
 
 def addBeam(beamState, labeling):
-    "add beam if it does not yet exist"
+    """add beam if it does not yet exist"""
     if labeling not in beamState.entries:
         beamState.entries[labeling] = BeamEntry()
 
@@ -69,12 +102,11 @@ def ctcBeamSearch(mat, classes, lm, beamWidth=25):
     blankIdx = len(classes)
     maxT, maxC = mat.shape
 
-    # initialise beam state
+    # initialize beam state
     last = BeamState()
     labeling = ()
     last.entries[labeling] = BeamEntry()
     last.entries[labeling].prBlank = 1
-    last.entries[labeling].prTotal = 1
 
     # go over all time-steps
     for t in range(maxT):
@@ -103,15 +135,10 @@ def ctcBeamSearch(mat, classes, lm, beamWidth=25):
             curr.entries[labeling].labeling = labeling
             curr.entries[labeling].prNonBlank += prNonBlank
             curr.entries[labeling].prBlank += prBlank
-            curr.entries[labeling].prTotal += prBlank + prNonBlank
-            curr.entries[labeling].prText = last.entries[
-                labeling
-            ].prText  # beam-labeling not changed, therefore also LM score unchanged
-            curr.entries[
-                labeling
-            ].lmApplied = (
-                True  # LM already applied at previous time-step for this beam-labeling
-            )
+            # beam-labeling not changed, therefore also LM score unchanged
+            curr.entries[labeling].prText = last.entries[labeling].prText
+            # LM already applied at previous time-step for this beam-labeling
+            curr.entries[labeling].lmApplied = True
 
             # extend current beam-labeling
             for c in range(maxC - 1):
@@ -131,7 +158,6 @@ def ctcBeamSearch(mat, classes, lm, beamWidth=25):
                 # fill in data
                 curr.entries[newLabeling].labeling = newLabeling
                 curr.entries[newLabeling].prNonBlank += prNonBlank
-                curr.entries[newLabeling].prTotal += prNonBlank
 
                 # apply LM
                 applyLM(curr.entries[labeling], curr.entries[newLabeling], classes, lm)
@@ -139,7 +165,7 @@ def ctcBeamSearch(mat, classes, lm, beamWidth=25):
         # set new beam state
         last = curr
 
-    # normalise LM scores according to beam-labeling-length
+    # normalize LM scores according to beam-labeling-length
     last.norm()
 
     #  # sort by probability
@@ -157,130 +183,17 @@ def ctcBeamSearch(mat, classes, lm, beamWidth=25):
 
 
 def get_legal_next_characters(path, sequence_length=8):
-    path_length = len(path)
-    spots_left = sequence_length - path_length
-    if path_length == 0:
-        return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    prefix = False
-    base_unit = False
-    nonzero_digits = 0
-    digits = 0
-    decimals = 0
-
-    for label in path:
-        if label in [1, 2, 3, 4, 5, 6, 7, 8, 9]:
-            nonzero_digits += 1
-            digits += 1
-        elif label == 0:
-            digits += 1
-        elif label == 19:
-            decimals += 1
-        elif label in [10, 11, 12, 13, 14, 15, 16, 17] and not prefix:
-            prefix = True
-        elif label == 20:
-            prefix = True
-            base_unit = True
-        elif label in [10, 11] and prefix:
-            base_unit = True
-        elif label in [18, 21, 22]:
-            continue
-        else:
-            print("How did I get here?\nThe path is: ", path)
-
-    # unit has been started, no digits or decimals allowed
-    if prefix:
-        # unit has not been finished, no prefixes allowed
-        if not base_unit:
-            # only one spot left, must finish unit
-            if spots_left == 1:
-                return [10, 11]
-            else:
-                return [10, 11, 18, 21]
-        # unit has been finished, only blanks left
-        else:
-            return [18, 21]
-    # unit has not been started
-    # decimal must be followed by a digit
-    if label == 19:
-        return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 18, 21]
-    # if unit hasn't started and only one spot left, must be A
-    if spots_left == 1:
-        return [20]
-    elif spots_left == 2:
-        # current label is a space, can go right into unit
-        if label in [18, 21]:
-            return [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 21]
-        else:
-            return [18, 21]
-    # more than 2 spots left
-    # if last spot is not a blank, must be followed by more numbers or spaces
-    if label not in [18, 21]:
-        if decimals == 1:
-            return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 18, 21]
-        else:
-            return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 19, 18, 21]
-    # last spot is blank, can be followed by anything
-    if decimals == 1:
-        return [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            15,
-            16,
-            17,
-            18,
-            20,
-            21,
-        ]
-    else:
-        return [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            15,
-            16,
-            17,
-            18,
-            19,
-            20,
-            21,
-        ]
+    from .train_label_reader import valid_next_char
+    return valid_next_char(path, sequence_length=sequence_length)
 
 
-def postprocess_ctc(results):
+def postprocess_ctc(results) -> tuple[float, str, float]:
     classes = "0123456789mMcCuUnN .A"
     idx_to_class = classes + "-"
     for result, confidence in results:
         confidence = float(confidence)
-        word = ""
-        for step in result:
-            word += idx_to_class[step]
-        word = word.strip()
-        word = "".join(word.split("-"))
+
+        word = "".join(map(lambda step: idx_to_class[step], result)).strip().replace('-', '')
         try:
             number, unit = word.split()
             number = float(number)
@@ -297,10 +210,9 @@ def postprocess_ctc(results):
     return -1, "m", 0
 
 
-def run_ctc(probs, classes):
-    current_file = pathlib.Path(__file__).resolve(strict=True)
+def run_ctc(probs, classes) -> tuple[float, str, float]:
+    current_file = Path(__file__).resolve(strict=True)
     language_model_file = "corpus.txt"
     language_model = LanguageModel(current_file.parent / language_model_file, classes)
     top_results = ctcBeamSearch(probs, classes, lm=language_model, beamWidth=15)
-    magnitude, unit, confidence = postprocess_ctc(top_results)
-    return magnitude, unit, confidence
+    return postprocess_ctc(top_results)

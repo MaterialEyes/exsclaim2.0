@@ -5,8 +5,11 @@ boxes are sometimes stored as x1,y1,x2,y2 or 'coords' and sometimes
 as [{"x": x1, "y": y1}, ...] or 'labelbox'
 
 In addition, we often want to check the relation of two bounding
-boxes and their properites (like center point)
+boxes and their properties (like center point)
 """
+
+
+__ALL__ = ["convert_coords_to_labelbox", "convert_labelbox_to_coords", "find_box_center", "crop_from_geometry", "is_contained"]
 
 
 def convert_coords_to_labelbox(bbox_coordinates):
@@ -36,7 +39,7 @@ def find_box_center(geometry):
     return (x2 + x1) / 2.0, (y2 + y1) / 2.0
 
 
-def crop_from_geometry(geometry, image):
+def crop_from_geometry(geometry:list[dict], image:"np.ndarray"):
     """Returns an image cropped to include coordinates in geometry
 
     Args:
@@ -52,19 +55,16 @@ def crop_from_geometry(geometry, image):
     return image[y1:y2, x1:x2]
 
 
-def is_contained(inner, outer, padding=0):
+def is_contained(inner, outer, padding=0) -> bool:
     """tests whether one bounding box is within another"""
     inner_x1, inner_y1, inner_x2, inner_y2 = convert_labelbox_to_coords(inner)
     outer_x1, outer_y1, outer_x2, outer_y2 = convert_labelbox_to_coords(outer)
     outer_x1, outer_y1 = outer_x1 - padding, outer_y1 - padding
     outer_x2, outer_y2 = outer_x2 + padding, outer_y2 + padding
 
-    if (
+    return (
         inner_x1 > outer_x1
         and inner_x2 < outer_x2
         and inner_y1 > outer_y1
         and inner_y2 < outer_y2
-    ):
-        return True
-    else:
-        return False
+    )

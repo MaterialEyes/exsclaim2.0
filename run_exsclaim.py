@@ -1,9 +1,10 @@
-from exsclaim import journal
-from exsclaim import pipeline
-from exsclaim import tool
+from exsclaim import journal, pipeline, tool
 from exsclaim.pipeline import Pipeline
 
 
-test_pipeline = Pipeline('./query/nature-ESEM.json') #(test_json)
+test_pipeline = Pipeline('./query/nature-ESEM.json')
 results = test_pipeline.run(caption_distributor=True,
-        journal_scraper=True, figure_separator=True, html_scraper=False)
+        journal_scraper=True,
+        figure_separator=True,
+        html_scraper=False
+)

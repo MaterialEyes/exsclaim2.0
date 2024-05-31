@@ -45,8 +45,7 @@ class FigureSeparator(ExsclaimTool):
     """
 
     def __init__(self, search_query):
-        self.logger = logging.getLogger(__name__)
-        self.initialize_query(search_query)
+        super().__init__(search_query)
         self._load_model()
         self.exsclaim_json = {}
 

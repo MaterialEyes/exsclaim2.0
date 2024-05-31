@@ -11,7 +11,10 @@ import torch._six
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
-from . import utils
+from .utils import all_gather
+
+
+__ALL__ = ["CocoEvaluator", "convert_to_xywh", "merge", "create_common_coco_eval", "createIndex", "loadRes", "evaluate"]
 
 
 class CocoEvaluator(object):
@@ -199,8 +202,8 @@ def convert_to_xywh(boxes):
 
 
 def merge(img_ids, eval_imgs):
-    all_img_ids = utils.all_gather(img_ids)
-    all_eval_imgs = utils.all_gather(eval_imgs)
+    all_img_ids = all_gather(img_ids)
+    all_eval_imgs = all_gather(eval_imgs)
 
     merged_img_ids = []
     for p in all_img_ids:

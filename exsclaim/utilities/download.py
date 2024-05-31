@@ -2,21 +2,24 @@
 
 Adapted from `this StackOverflow <https://stackoverflow.com/questions/38511444/>`_
 """
-import requests
+from requests import Session, Response
 
 
-def download_file_from_google_drive(id, destination):
+__ALL__ = ["download_file_from_google_drive", "get_confirm_token", "save_response_content"]
+
+
+def download_file_from_google_drive(file_id:str, destination:str):
     URL = "https://docs.google.com/uc?export=download"
-    session = requests.Session()
-    response = session.get(URL, params={"id": id}, stream=True)
+    session = Session()
+    response = session.get(URL, params={"id": file_id}, stream=True)
     token = get_confirm_token(response)
     if token:
-        params = {"id": id, "confirm": token}
+        params = {"id": file_id, "confirm": token}
         response = session.get(URL, params=params, stream=True)
     save_response_content(response, destination)
 
 
-def get_confirm_token(response):
+def get_confirm_token(response:Response):
     for key, value in response.cookies.items():
         if key.startswith("download_warning"):
             return value
@@ -24,7 +27,7 @@ def get_confirm_token(response):
 
 
 def save_response_content(response, destination):
-    CHUNK_SIZE = 32768
+    CHUNK_SIZE = 32_768
     with open(destination, "wb") as f:
         for chunk in response.iter_content(CHUNK_SIZE):
             if chunk:  # filter out keep-alive new chunks

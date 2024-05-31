@@ -399,7 +399,7 @@ def score_candidate(path, is_final=False):
     return score
 
 
-def valid_next_char(path, sequence_length):
+def valid_next_char(path, sequence_length=8):
     path_length = len(path)
     spots_left = sequence_length - path_length + 1
     if path_length == 1:
@@ -410,7 +410,7 @@ def valid_next_char(path, sequence_length):
     digits = 0
     decimals = 0
 
-    for label, logp in path:
+    for label, _ in path:
         if label in [1, 2, 3, 4, 5, 6, 7, 8, 9]:
             nonzero_digits += 1
             digits += 1
@@ -464,54 +464,10 @@ def valid_next_char(path, sequence_length):
             return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 19, 18, 21]
     # last spot is blank, can be followed by anything
     if decimals == 1:
-        return [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            15,
-            16,
-            17,
-            18,
-            20,
-            21,
-        ]
+        # 0 through 21 inclusive without 19
+        return list(filter(lambda x: x != 19, range(22)))
     else:
-        return [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            15,
-            16,
-            17,
-            18,
-            19,
-            20,
-            21,
-        ]
+        return list(range(22))
 
 
 def create_rules():
@@ -529,29 +485,6 @@ def create_rules():
     for i in range(10, 18):
         legal_next_chars[i] = [10, 11, 18, 21]
     # a blanks can be followed by all
-    legal_next_chars[21] = [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        17,
-        18,
-        19,
-        20,
-        21,
-    ]
+    legal_next_chars[21] = list(range(22))
     legal_next_chars[22] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 18, 21]
     return legal_next_chars
