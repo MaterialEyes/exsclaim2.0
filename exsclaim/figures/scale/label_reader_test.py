@@ -12,7 +12,8 @@ from torchvision import models
 class ScaleBarReaderTest:
 
     # Utility Functions ####
-    def is_number(self, n):
+    @staticmethod
+    def is_number(n):
         """returns true if a string n represents a float"""
         try:
             float(n)
@@ -455,7 +456,7 @@ class ScaleBarReaderTest:
         }
 
     def test_many_models(self, checkpoint_dir):
-        """tests accuracy of diffferent scale label reading methods"""
+        """tests accuracy of different scale label reading methods"""
         results_dict = {}
         for filename in os.listdir(checkpoint_dir):
             model_name, filetype = str(filename).split(".")
@@ -471,7 +472,7 @@ class ScaleBarReaderTest:
                 checkpoint_path = checkpoint_dir / filename
                 single_result_dict = self.test_single_model(str(checkpoint_path))
                 results_dict[filename] = single_result_dict
-                with open("results_breif.txt", "w") as f:
+                with open("results_brief.txt", "w") as f:
                     json.dump(results_dict, f)
 
 

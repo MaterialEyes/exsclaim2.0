@@ -16,6 +16,9 @@ from .tool import CaptionDistributor, JournalScraper, HTMLScraper
 from .utilities import boxes, paths
 
 
+__ALL__ = ["Pipeline"]
+
+
 class Pipeline:
     """Defines the exsclaim! pipeline"""
 
@@ -387,7 +390,7 @@ class Pipeline:
         """Save subfigures and their labels as images
 
         Args:
-            figure_path (str): A path to the image (.png, .jpg, or .gif)
+            figure_name (str): A path to the image (.png, .jpg, or .gif)
                 file containing the article figure
         Modifies:
             Creates images and text files in <save_path>/extractions folders

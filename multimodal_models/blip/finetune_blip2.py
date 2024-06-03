@@ -72,69 +72,69 @@ def save_checkpoint(epoch, model, optimizer, loss, checkpoint_dir="checkpoints")
     }, checkpoint_path)
     print(f"Checkpoint saved to {checkpoint_path}")
 
-# Initialize a list to keep track of loss history
-loss_history = []
-optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-# Specify your checkpoint directory
-checkpoint_dir = "checkpoints_full_captions"
-
-# Attempt to find and load the latest checkpoint
-latest_checkpoint_path = find_latest_checkpoint(checkpoint_dir)
-if latest_checkpoint_path:
-    print(f"Found latest checkpoint: {latest_checkpoint_path}")
-    start_epoch, loss_history = load_checkpoint(latest_checkpoint_path, model, optimizer)
-    print(f"Resuming training from epoch {start_epoch + 1}")
-else:
-    print("No checkpoint found, starting training from scratch")
-    start_epoch = 0
+if __name__ == "__main__":
+    # Initialize a list to keep track of loss history
     loss_history = []
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
 
-# Ensure the model is on the correct device
-model.to(device)
-model = get_peft_model(model, config)
-model.print_trainable_parameters()    
-checkpoint = torch.load(latest_checkpoint_path)
-model_state_dict = checkpoint['model_state_dict']
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # Specify your checkpoint directory
+    checkpoint_dir = "checkpoints_full_captions"
 
-# Load the model state dictionary into the model
-model.load_state_dict(model_state_dict)
-optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    # Attempt to find and load the latest checkpoint
+    latest_checkpoint_path = find_latest_checkpoint(checkpoint_dir)
+    if latest_checkpoint_path:
+        print(f"Found latest checkpoint: {latest_checkpoint_path}")
+        start_epoch, loss_history = load_checkpoint(latest_checkpoint_path, model, optimizer)
+        print(f"Resuming training from epoch {start_epoch + 1}")
+    else:
+        print("No checkpoint found, starting training from scratch")
+        start_epoch = 0
+        loss_history = []
 
+    # Ensure the model is on the correct device
+    model.to(device)
+    model = get_peft_model(model, config)
+    model.print_trainable_parameters()
+    checkpoint = torch.load(latest_checkpoint_path)
+    model_state_dict = checkpoint['model_state_dict']
 
-train_dataset = ImageCaptioningDataset(dataset, processor)
-train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=4, collate_fn=collate_fn)
-model.train()
-# Your training loop
-accumulation_steps = 4  # Number of steps to accumulate gradients before updating model parameters
-EPOCH = 20
-for epoch in range(EPOCH):
-    print("Epoch:", epoch)
-    total_loss = 0.0
-    for idx, batch in enumerate(train_dataloader):
-        input_ids = batch.pop("input_ids").to(device)
-        pixel_values = batch.pop("pixel_values").to(device, torch.float16)
+    # Load the model state dictionary into the model
+    model.load_state_dict(model_state_dict)
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-        outputs = model(input_ids=input_ids, pixel_values=pixel_values, labels=input_ids)
+    train_dataset = ImageCaptioningDataset(dataset, processor)
+    train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=4, collate_fn=collate_fn)
+    model.train()
+    # Your training loop
+    accumulation_steps = 4  # Number of steps to accumulate gradients before updating model parameters
+    EPOCH = 20
+    for epoch in range(EPOCH):
+        print("Epoch:", epoch)
+        total_loss = 0.0
+        for idx, batch in enumerate(train_dataloader):
+            input_ids = batch.pop("input_ids").to(device)
+            pixel_values = batch.pop("pixel_values").to(device, torch.float16)
 
-        loss = outputs.loss
-        total_loss += loss.item()
+            outputs = model(input_ids=input_ids, pixel_values=pixel_values, labels=input_ids)
 
-        print("Loss:", loss.item())
+            loss = outputs.loss
+            total_loss += loss.item()
 
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-    
-    # Save checkpoint at the end of each epoch
-    average_loss = total_loss / len(train_dataloader)
-    save_checkpoint(epoch, model, optimizer, average_loss)
-  
+            print("Loss:", loss.item())
 
-# Set your API key as an environment variable
-os.environ["HF_API_KEY"] = "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"
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
 
-# Then use it in the push_to_hub call
-#model.push_to_hub("kvriza8/blip2-microscopy-captions", use_auth_token=os.environ["HF_API_KEY"])
-model.push_to_hub("kvriza8/blip2-opt-2.7b-microscopy-20-epoch-caption_summary", use_auth_token=os.environ["HF_API_KEY"])
+        # Save checkpoint at the end of each epoch
+        average_loss = total_loss / len(train_dataloader)
+        save_checkpoint(epoch, model, optimizer, average_loss)
+
+    # Set your API key as an environment variable
+    os.environ["HF_API_KEY"] = "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"
+
+    # Then use it in the push_to_hub call
+    # model.push_to_hub("kvriza8/blip2-microscopy-captions", use_auth_token=os.environ["HF_API_KEY"])
+    model.push_to_hub("kvriza8/blip2-opt-2.7b-microscopy-20-epoch-caption_summary", use_auth_token=os.environ["HF_API_KEY"])

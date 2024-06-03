@@ -98,7 +98,7 @@ class TestNatureFull(unittest.TestCase):
 
         # Band-aid to handle https://github.com/MaterialEyes/exsclaim/issues/5
         # in testing. This will call the test a pass if we find either of the
-        # results that appear seemingly nondeterministically.
+        # results that appear seemingly nondeterministic.
         accepted_difference = {
             "values_changed": {
                 (
@@ -124,7 +124,7 @@ class TestNatureFull(unittest.TestCase):
                 "change has been made to the code that changes results. If you "
                 "have made a change that you believe improves results, you "
                 "should use other methods to check correctness and accuracy. "
-                "The diff of the result and extpected is: {}".format(diff)
+                f"The diff of the result and expected is: {diff}"
             ),
         )
 

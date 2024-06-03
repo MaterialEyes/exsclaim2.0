@@ -119,7 +119,7 @@ def nms(bbox, thresh, score=None, limit=None):
     return selec.astype(np.int32)
 
 
-def postprocess(prediction, dtype, conf_thre=0.7, nms_thre=0.45):
+def postprocess(prediction, dtype, conf_thres=0.7, nms_thres=0.45):
     """
     Postprocess for the output of YOLO model
     perform box transformation, specify the class for each detection,
@@ -132,10 +132,10 @@ def postprocess(prediction, dtype, conf_thre=0.7, nms_thre=0.45):
             of a bounding box.
         num_classes (int):
             number of dataset classes.
-        conf_thre (float):
+        conf_thres (float):
             confidence threshold ranging from 0 to 1,
             which is defined in the config file.
-        nms_thre (float):
+        nms_thres (float):
             IoU threshold of non-max suppression ranging from 0 to 1.
 
     Returns:
@@ -152,7 +152,7 @@ def postprocess(prediction, dtype, conf_thre=0.7, nms_thre=0.45):
     output = [None for _ in range(len(prediction))]
     for i, image_pred in enumerate(prediction):
         # Filter out confidence scores below threshold
-        conf_mask = (image_pred[:, 4] >= conf_thre).squeeze()
+        conf_mask = (image_pred[:, 4] >= conf_thres).squeeze()
         image_pred = image_pred[conf_mask]
 
         # If none are remaining => process next image
@@ -175,7 +175,7 @@ def postprocess(prediction, dtype, conf_thre=0.7, nms_thre=0.45):
             detections_class = detections[detections[:, -1] == c]
             nms_in = detections_class.cpu().numpy()
             nms_out_index = nms(
-                nms_in[:, :4], nms_thre, score=nms_in[:, 4] * nms_in[:, 5]
+                nms_in[:, :4], nms_thres, score=nms_in[:, 4] * nms_in[:, 5]
             )
             detections_class = detections_class[nms_out_index]
             if output[i] is None:

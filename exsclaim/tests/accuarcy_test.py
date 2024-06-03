@@ -12,6 +12,7 @@ from .. import figure
 from ..figures.scale.dataset import ScaleBarDataset
 from ..figures.scale.engine import evaluate
 from ..figures.scale.utils import collate_fn
+from .test_figure import TestSubfigureDetection
 
 
 class TestScaleDetection(unittest.TestCase):
@@ -76,11 +77,12 @@ class TestScaleDetection(unittest.TestCase):
 
             if confidence < low_confidence_threshold:
                 continue
-            # if confidence above lower threshold
+            # if the confidence is above the lower threshold
             low_total += 1
             if result == label:
                 low_correct += 1
-            # if confidence above higher threshold
+
+            # if the confidence is above the  higher threshold
             if confidence >= high_confidence_threshold:
                 high_total += 1
                 if result == label:

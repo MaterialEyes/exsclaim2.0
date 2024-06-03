@@ -6,8 +6,7 @@ from collections import defaultdict
 
 import numpy as np
 import pycocotools.mask as mask_util
-import torch
-import torch._six
+from torch import stack
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
@@ -198,7 +197,7 @@ class CocoEvaluator(object):
 
 def convert_to_xywh(boxes):
     xmin, ymin, xmax, ymax = boxes.unbind(1)
-    return torch.stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
+    return stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
 
 
 def merge(img_ids, eval_imgs):
@@ -277,24 +276,25 @@ def createIndex(self):
 maskUtils = mask_util
 
 
-def loadRes(self, resFile):
+def loadRes(self, resFile:str):
     """
     Load result file and return a result api object.
-    :param   resFile (str)     : file name of result file
-    :return: res (obj)         : result api object
+    :param   self       :
+    :param   resFile    : file name of result file
+    :return: res (obj)  : result api object
     """
     res = COCO()
     res.dataset["images"] = [img for img in self.dataset["images"]]
 
     # print('Loading and preparing results...')
     # tic = time.time()
-    if isinstance(resFile, torch._six.string_classes):
+    if isinstance(resFile, str): # FIXME torch._six.string_classes was removed, figure out what its proper successor is
         anns = json.load(open(resFile))
-    elif type(resFile) == np.ndarray:
+    elif isinstance(resFile, np.ndarray):
         anns = self.loadNumpyAnnotations(resFile)
     else:
         anns = resFile
-    assert type(anns) == list, "results in not an array of objects"
+    assert isinstance(anns, list), "results in not an array of objects"
     annsImgIds = [ann["image_id"] for ann in anns]
     assert set(annsImgIds) == (
         set(annsImgIds) & set(self.getImgIds())

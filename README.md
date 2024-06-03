@@ -35,7 +35,7 @@ python load_models.py
 ```
 
 #### Scrapping data from dynamic journal webpages
-If scrapping data from Journals that use javascript (e.g. RSC, ACS) you need to setup chome-driver and chome and add their path to the `exsclaim/journal.py` file.
+If scrapping data from Journals that use javascript (e.g. RSC, ACS) you need to setup chrome-driver and chrome and add their path to the `exsclaim/journal.py` file.
 ```
 e.g. for a linux terminal you need the following:
 wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb

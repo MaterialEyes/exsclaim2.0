@@ -11,24 +11,23 @@ import json
 import logging
 import os
 import time
+from time import time_ns as timer
 from abc import ABC, abstractmethod
-from langchain.document_loaders import UnstructuredHTMLLoader
 from . import caption, journal
-from .utilities import paths
-from .utilities.logging import Printer
-from langchain.embeddings import HuggingFaceEmbeddings
+from .utilities import initialize_results_dir, Printer
+from langchain.document_loaders import UnstructuredHTMLLoader
+from langchain.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 import glob
 import requests
-from bs4 import BeautifulSoup
 import shutil
-import pathlib
+from pathlib import Path
 import shutil
 import cv2
 import numpy as np
 from PIL import Image
-import numpy as np
 from bs4 import BeautifulSoup
-from langchain.embeddings import OpenAIEmbeddings
+from typing import Callable
+
 
 try:
     from selenium_stealth import stealth
@@ -45,9 +44,13 @@ try:
 except:
     pass
 
+
+__ALL__ = ["ExsclaimTool", "JournalScraper", "HTMLScraper", "CaptionDistributor"]
+
+
 class ExsclaimTool(ABC):
-    def __init__(self, search_query):
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, search_query, logger_name=None):
+        self.logger = logging.getLogger(logger_name if logger_name is not None else __name__)
         self.initialize_query(search_query)
 
     def initialize_query(self, search_query):
@@ -60,13 +63,13 @@ class ExsclaimTool(ABC):
             with open(search_query) as f:
                 # Load query file to dict
                 self.search_query = json.load(f)
-        except Exception:
-            self.logger.debug(
-                ("Search Query path {} not found. Using it as" " dictionary instead")
-            )
+        except Exception as e:
+            self.logger.debug("Search Query path {} not found. Using it as" " dictionary instead")
+            self.logger.exception(e)
             self.search_query = search_query
+
         # Set up file structure
-        base_results_dir = paths.initialize_results_dir(
+        base_results_dir = initialize_results_dir(
             self.search_query.get("results_dirs", None)
         )
         self.results_directory = base_results_dir / self.search_query["name"]
@@ -82,7 +85,60 @@ class ExsclaimTool(ABC):
         pass
 
     @abstractmethod
-    def run(self):
+    def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated:set):
+        ...
+
+    def _run(self, search_query, exsclaim_dict:dict, display_name:str, subdirectory:str, loop_process_string:str,
+             path:Path=None, N:int=100):
+        self.display_info(f"Running {display_name}\n")
+        self.results_directory.mkdir(exist_ok=True)
+
+        t0 = timer()
+        # List of objects (figures, captions, etc) that have already been separated
+        file = self.results_directory / subdirectory
+
+        if file.is_file():
+            with open(file, "r", encoding="utf-8") as f:
+                separated = {line.strip() for line in f.readlines()}
+        else:
+            separated = set()
+
+        with open(file, "w", encoding="utf-8") as f:
+            for figure in separated:
+                f.write(f"{Path(figure).name}\n")
+        # Figure extra goes here
+        new_separated = set()
+
+        counter = 1
+        figures = [
+            (path / exsclaim_dict[figure]["figure_name"] if path is not None else exsclaim_dict[figure]["figure_name"])
+            for figure in exsclaim_dict
+            if exsclaim_dict[figure]["figure_name"] not in separated
+        ]
+
+        for _path in figures:
+            self.display_info(f">>> ({counter:,} of {+len(figures):,}) {loop_process_string} from: {figure_path}")
+
+            try:
+                exsclaim_dict = self._loop_func(search_query, exsclaim_dict, _path, new_separated)
+            except Exception as e:
+                self.display_exception(e)
+
+            # Save to file every N iterations (to accommodate restart scenarios)
+            if counter % N == 0:
+                self._appendJSON(self.exsclaim_json, new_separated)
+                new_separated = set()
+            counter += 1
+
+        t1 = timer()
+        # The timer measures in nanoseconds, this will convert it to seconds
+        time_diff = (t1 - t0) / 1e9
+        self.display_info(f">>> Time Elapsed: {time_diff:,.2f} sec\t({counter - 1:,} figures)\n")
+        self._appendJSON(exsclaim_dict, new_separated)
+        return self.exsclaim_dict
+
+    @abstractmethod
+    def run(self, search_query:dict, exsclaim_json:dict):
         pass
 
     def display_info(self, info):
@@ -94,6 +150,13 @@ class ExsclaimTool(ABC):
         if self.print:
             Printer(info)
         self.logger.info(info)
+
+    def display_exception(self, e:Exception):
+        error_msg = f"<!> ERROR: An exception occurred in {self.__class__.__name__} on figure: {figure_path}. Exception: {e}"
+        if self.print:
+            Printer(error_msg)
+
+        self.logger.exception(error_msg)
 
 
 class JournalScraper(ExsclaimTool):
@@ -112,9 +175,8 @@ class JournalScraper(ExsclaimTool):
         "wiley": journal.Wiley,
     }
 
-    def __init__(self, search_query):
-        self.logger = logging.getLogger(__name__ + ".JournalScraper")
-        self.initialize_query(search_query)
+    def __init__(self, search_query:dict):
+        super().__init__(search_query, __name__ + ".JournalScraper")
         self.new_articles_visited = set()
 
     def _load_model(self):
@@ -146,6 +208,9 @@ class JournalScraper(ExsclaimTool):
         with open(articles_file, "a") as f:
             for article in self.new_articles_visited:
                 f.write("%s\n" % article.split("/")[-1])
+
+    def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
+        return exsclaim_json
 
     def run(self, search_query, exsclaim_json={}):
         """Run the JournalScraper to find relevant article figures
@@ -194,8 +259,8 @@ class JournalScraper(ExsclaimTool):
             #        Printer(exception_string + "\n")
             #     self.logger.exception(exception_string)
 
-            # Save to file every N iterations (to accomodate restart scenarios)
-            if counter % 1000 == 0:
+            # Save to file every N iterations (to accommodate restart scenarios)
+            if counter % 1_000 == 0:
                 self._appendJSON(
                     self.results_directory / "exsclaim.json", exsclaim_json
                 )
@@ -221,62 +286,58 @@ class HTMLScraper(ExsclaimTool):
     """
 
     def __init__(self, search_query, driver=None): # provide the location with the folder with the html files
-        self.logger = logging.getLogger(__name__ + ".HTMLScraper")
-        self.initialize_query(search_query)
-        #self.new_articles_visited = set()
+        super().__init__(search_query, logger_name=__name__ + ".HTMLScraper")
+        # self.new_articles_visited = set()
         self.search_query = search_query
         self.open = search_query.get("open", False)
         self.order = search_query.get("order", "relevant")
-        self.logger = logging.getLogger(__name__)
+
         # Set up file structure
-        base_results_dir = paths.initialize_results_dir(
+        base_results_dir = initialize_results_dir(
             self.search_query.get("results_dirs", None)
         )
         self.results_directory = base_results_dir / self.search_query["name"]
         figures_directory = self.results_directory / "figures"
         os.makedirs(figures_directory, exist_ok=True)
 
-        # initiallize the selenium-stealth
+        # initialize the selenium-stealth
         try:
-          options = webdriver.ChromeOptions()
-          options.add_argument("--headless")
-          options.add_argument("--no-sandbox")
-          options.binary_location = "/gpfs/fs1/home/avriza/chrome/opt/google/chrome/google-chrome"
-          self.driver = webdriver.Chrome(service=Service('/gpfs/fs1/home/avriza/chromedriver'), options=options)
-          stealth(self.driver,
-                  languages=["en-US", "en"],
-                  vendor="Google Inc.",
-                  platform="Win32",
-                  webgl_vendor="Intel Inc.",
-                  renderer="Intel Iris OpenGL Engine",
-                  fix_hairline=True,
-                  )
+            options = webdriver.ChromeOptions()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.binary_location = "/gpfs/fs1/home/avriza/chrome/opt/google/chrome/google-chrome"
+            self.driver = webdriver.Chrome(service=Service('/gpfs/fs1/home/avriza/chromedriver'), options=options)
+            stealth(self.driver,
+                    languages=["en-US", "en"],
+                    vendor="Google Inc.",
+                    platform="Win32",
+                    webgl_vendor="Intel Inc.",
+                    renderer="Intel Iris OpenGL Engine",
+                    fix_hairline=True,
+                    )
         except:
-          self.driver= driver
+            self.driver= driver
 
     def extract_figures_from_html_rsc(self, soup):
         figure_list = soup.find_all("img")
         return figure_list
 
     def extract_figures_from_html(self, soup):
-      figure_list = soup.find_all("figure")
-      return figure_list
+        figure_list = soup.find_all("figure")
+        return figure_list
 
     def save_figures_rsc(self, filename):
-
         # Load the HTML file and create a BeautifulSoup object
         with open(filename, "r", encoding="utf-8") as file:
-            html_content = file.read()
+            soup = BeautifulSoup(file.read(), "html.parser")
 
-        soup = BeautifulSoup(html_content, "html.parser")
         url_tag = soup.find("link", rel="canonical")
 
         if url_tag is not None:
             image_url = url_tag.get("href")
             article_name = image_url.split("/")[-1].split("?")[0]
         else:
-          article_name = filename.split(".")[0]
-
+            article_name = filename.split(".")[0]
 
         figures = soup.find_all('div', class_='img-tbl')
         article_json = {}
@@ -284,22 +345,18 @@ class HTMLScraper(ExsclaimTool):
 
         for figure in figures:
             try:
-                img_url =  figure.find('a')['href']        
-            
+                img_url = figure.find('a')['href']
             except:
                 img_tags = figure.find('img')['data-original']
                 img_url = 'https://pubs.rsc.org/' + img_tags
 
-            figure_caption=  figure.find('figcaption').get_text(strip=True)
-
+            figure_caption = figure.find('figcaption').get_text(strip=True)
 
             if img_url is not None:
                 self.driver.get(img_url)
 
-            figure_name = article_name + "_fig" + str(figure_number) + ".png"
-            figure_path = (
-            pathlib.Path("output")  / "figures" / figure_name
-            )
+            figure_name = f"{article_name}_fig{figure_number}.png"
+            figure_path = Path("output") / "figures" / figure_name
 
             # initialize the figure's json
             figure_json = {
@@ -328,7 +385,7 @@ class HTMLScraper(ExsclaimTool):
             figure_number += 1  # increment figure number
             # Open a file with write binary mode, and write to it
             figures_directory = self.results_directory / "figures"
-            figure_path = os.path.join(figures_directory , figure_name)
+            figure_path = os.path.join(figures_directory, figure_name)
 
             with open(figure_path, 'wb') as out_file:
                 time.sleep(3)
@@ -351,7 +408,7 @@ class HTMLScraper(ExsclaimTool):
                 # Convert the image back to PIL format and save the result
                 img_pil = Image.fromarray(img)
                 img_pil.save(figure_path)
-                print('image saved as: ' , figure_path)
+                print('image saved as: ', figure_path)
         return article_json
 
 
@@ -446,7 +503,7 @@ class HTMLScraper(ExsclaimTool):
 
               figure_name = article_name + "_fig" + str(figure_number) + ".png"
               figure_path = (
-                pathlib.Path("output")  / "figures" / figure_name
+                Path("output")  / "figures" / figure_name
               )
               # print('init_figurepath',figure_path )
 
@@ -554,7 +611,7 @@ class HTMLScraper(ExsclaimTool):
 
                       figure_name = article_name + "_fig" + str(figure_number) + ".png"
                       figure_path = (
-                        pathlib.Path("output")  / "figures" / figure_name
+                        Path("output")  / "figures" / figure_name
                       )
 
                       # initialize the figure's json
@@ -648,7 +705,7 @@ class HTMLScraper(ExsclaimTool):
                       figure_name = article_name + "_fig" + str(figure_number) + ".jpg"
                       figure_name = article_name + "_fig" + str(figure_number) + ".jpg"
                       figure_path = (
-                        pathlib.Path("output")  / "figures" / figure_name
+                        Path("output")  / "figures" / figure_name
                       )
                       # print('init_figurepath',figure_path )
                       # initialize the figure's json
@@ -733,6 +790,9 @@ class HTMLScraper(ExsclaimTool):
             json.dump(exsclaim_json, f, indent=3)
         articles_file = self.results_directory / "_articles"
 
+    def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
+        ...
+
     def run(self, search_query, exsclaim_json={}):
         """Run the HTMLScraper to retrieve figures from user provided htmls
 
@@ -742,12 +802,8 @@ class HTMLScraper(ExsclaimTool):
         Returns:
             exsclaim_json (dict): Updated with results of search
         """
-        self.display_info("Running HTML Scraper\n")
-
         directory_path = search_query["html_folder"]
-        os.makedirs(self.results_directory, exist_ok=True)
-        t0 = time.time()
-        counter = 1
+
         articles = glob.glob(os.path.join(directory_path, '*.html'))
 
         html_directory = self.results_directory / "html"
@@ -813,6 +869,12 @@ class HTMLScraper(ExsclaimTool):
         self._appendJSON(self.results_directory / "exsclaim.json", exsclaim_json)
         return exsclaim_json
 
+        return self._run(search_query,
+                         exsclaim_json,
+                         "HTML Scraper",
+                         "_captions",
+                         "Parsing captions")
+
 
 class CaptionDistributor(ExsclaimTool):
     """
@@ -824,9 +886,8 @@ class CaptionDistributor(ExsclaimTool):
         Absolute path to caption nlp model
     """
 
-    def __init__(self, search_query={}):
-        super().__init__(search_query)
-        self.logger = logging.getLogger(__name__ + ".CaptionDistributor")
+    def __init__(self, search_query:dict=None):
+        super().__init__(search_query if search_query is not None else {}, __name__ + ".CaptionDistributor")
         self.model_path = ""
 
     def _load_model(self):
@@ -835,31 +896,32 @@ class CaptionDistributor(ExsclaimTool):
         return caption.load_models(self.model_path)
 
         
-    def _update_exsclaim(self,search_query,  exsclaim_dict, figure_name, delimiter, caption_dict):
+    def _update_exsclaim(self,search_query, exsclaim_dict, figure_name, delimiter, caption_dict):
         from exsclaim import caption
+
         llm = search_query["llm"]
         api = search_query["openai_API"]
         exsclaim_dict[figure_name]["caption_delimiter"] = delimiter
         html_filename = exsclaim_dict[figure_name]["article_name"]
         embeddings = OpenAIEmbeddings( openai_api_key=api)
-        loader = UnstructuredHTMLLoader(os.path.join( "output", search_query["name"], "html", f'{html_filename}.html'))
+        loader = UnstructuredHTMLLoader(os.path.join("output", search_query["name"], "html", f'{html_filename}.html'))
         documents = loader.load()
-        #loader = UnstructuredHTMLLoader(os.pathjoin("exsclaim", "output", exsclaim_dict["name"], "html", f'{html_filename}.html'))
+        # loader = UnstructuredHTMLLoader(os.path.join("exsclaim", "output", exsclaim_dict["name"], "html", f'{html_filename}.html'))
         for label in caption_dict.keys():
         
-            #figure_name_part = (exsclaim_dict[figure_name]["figure_name"].split('.')[0]).split('_')[-1]
-            #label_str = str(label)  # Ensure label is a string
-            #caption = str(caption_dict.get(label, ''))  # Safely get the caption as a string
-            #query = figure_name_part + label_str + " " + caption
+            # figure_name_part = (exsclaim_dict[figure_name]["figure_name"].split('.')[0]).split('_')[-1]
+            # label_str = str(label)  # Ensure label is a string
+            # caption = str(caption_dict.get(label, ''))  # Safely get the caption as a string
+            # query = figure_name_part + label_str + " " + caption
 
             query = (exsclaim_dict[figure_name]["figure_name"].split('.')[0]).split('_')[-1] + str(label) + " " + str(caption_dict.get(label, ''))# caption_dict[label]
-            #print(query)
+            # print(query)
             master_image = {
                 "label": label,
-                "description": caption_dict[label],#["description"],
-                "keywords": caption.safe_summarize_caption(query , api, llm).split(', ') ,
-                #"context": caption.get_context(query, documents,embeddings),
-                # "general": caption.get_keywords(caption.get_context(query, documents,embeddings), api, llm).split(', '),
+                "description": caption_dict[label],  # ["description"],
+                "keywords": caption.safe_summarize_caption(query, api, llm).split(', '),
+                # "context": caption.get_context(query, documents, embeddings),
+                # "general": caption.get_keywords(caption.get_context(query, documents, embeddings), api, llm).split(', '),
             }
             exsclaim_dict[figure_name]["unassigned"]["captions"].append(master_image)
         return exsclaim_dict
@@ -878,6 +940,26 @@ class CaptionDistributor(ExsclaimTool):
             for figure in captions_distributed:
                 f.write("%s\n" % figure.split("/")[-1])
 
+    def _run_loop_function(self, search_query, exsclaim_json:dict, figure:Path, new_separated:set):
+        caption_text = exsclaim_json[figure_name]["full_caption"]
+        # print('full caption',caption_text)
+        # delimiter = caption.find_subfigure_delimiter(model, caption_text)
+        delimiter = 0
+        llm = search_query["llm"]
+        # print('llm', llm)
+        api = search_query["openai_API"]
+        # print('api',api)
+        caption_dict = caption.safe_separate_captions(caption_text, api, llm="gpt-3.5-turbo")
+        # caption.associate_caption_text( # here add the gpt3 code separate_captions(caption_text) #
+        #  model, caption_text, search_query["query"]
+        # )
+        print(f"full caption dict: {caption_dict}")
+        exsclaim_json = self._update_exsclaim(search_query,
+                                              exsclaim_json, figure, delimiter, caption_dict
+                                              )
+        new_captions_distributed.add(figure_name)
+        return exsclaim_json
+
     def run(self, search_query, exsclaim_json):
         """Run the CaptionDistributor to distribute subfigure captions
 
@@ -887,76 +969,8 @@ class CaptionDistributor(ExsclaimTool):
         Returns:
             exsclaim_json (dict): Updated with results of search
         """
-        self.display_info("Running Caption Distributor\n")
-        os.makedirs(self.results_directory, exist_ok=True)
-        t0 = time.time()
-        #model = self._load_model()
-
-        # List captions that have already been distributed
-        captions_file = self.results_directory / "_captions"
-        if os.path.isfile(captions_file):
-            with open(captions_file, "r") as f:
-                contents = f.readlines()
-            captions_distributed = {f.strip() for f in contents}
-        else:
-            captions_distributed = set()
-        new_captions_distributed = set()
-
-        figures = [
-            exsclaim_json[figure]["figure_name"]
-            for figure in exsclaim_json
-            if exsclaim_json[figure]["figure_name"] not in captions_distributed
-        ]
-        counter = 1
-        for figure_name in figures:
-            self.display_info(
-                ">>> ({0} of {1}) ".format(counter, +len(figures))
-                + "Parsing captions from: "
-                + figure_name
-            )
-            try:
-                caption_text = exsclaim_json[figure_name]["full_caption"]
-                #print('full caption',caption_text)
-                #delimiter = caption.find_subfigure_delimiter(model, caption_text)
-                delimiter = 0
-                llm = search_query["llm"]
-                #print('llm', llm)
-                api = search_query["openai_API"]
-                #print('api',api)
-                caption_dict = caption.safe_separate_captions(caption_text, api, llm='gpt-3.5-turbo')# caption.associate_caption_text( # here add the gpt3 code separate_captions(caption_text) #
-                  #  model, caption_text, search_query["query"]
-                #)
-                print('full caption dict', caption_dict )
-                exsclaim_json = self._update_exsclaim(search_query,
-                    exsclaim_json, figure_name, delimiter, caption_dict
-                )
-                new_captions_distributed.add(figure_name)
-            except Exception:
-                pass
-                if self.print:
-                    Printer(
-                        (
-                            "<!> ERROR: An exception occurred in"
-                            " CaptionDistributor on figue: {}".format(figure_name)
-                        )
-                    )
-                self.logger.exception(
-                    (
-                        "<!> ERROR: An exception occurred in"
-                        " CaptionDistributor on figue: {}".format(figure_name)
-                    )
-                )
-            # Save to file every N iterations (to accomodate restart scenarios)
-            if counter % 100 == 0:
-                self._appendJSON(exsclaim_json, new_captions_distributed)
-                new_captions_distributed = set()
-            counter += 1
-
-        t1 = time.time()
-        self.display_info(
-            ">>> Time Elapsed: {0:.2f} sec ({1} captions)\n".format(
-                t1 - t0, int(counter - 1)
-            )
-        )
-        self._appendJSON(exsclaim_json, new_captions_distributed)
-        return exsclaim_json
+        return self._run(search_query,
+                         exsclaim_json,
+                         "Caption Separator",
+                         "_captions",
+                         "Parsing captions")

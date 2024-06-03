@@ -1,7 +1,11 @@
 import json
 import pandas as pd
 
-def read_jsons(filepath):
+
+__ALL__ = ["read_jsons"]
+
+
+def read_jsons(filepath) -> pd.DataFrame:
     # Open the file and read its contents
     with open(filepath, 'r') as f:
         data = f.read()
