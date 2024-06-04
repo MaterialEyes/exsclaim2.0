@@ -13,7 +13,7 @@ from pycocotools.cocoeval import COCOeval
 from .utils import all_gather
 
 
-__ALL__ = ["CocoEvaluator", "convert_to_xywh", "merge", "create_common_coco_eval", "createIndex", "loadRes", "evaluate"]
+__all__ = ["CocoEvaluator", "convert_to_xywh", "merge", "create_common_coco_eval", "createIndex", "loadRes", "evaluate"]
 
 
 class CocoEvaluator(object):

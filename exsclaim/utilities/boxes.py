@@ -9,7 +9,7 @@ boxes and their properties (like center point)
 """
 
 
-__ALL__ = ["convert_coords_to_labelbox", "convert_labelbox_to_coords", "find_box_center", "crop_from_geometry", "is_contained"]
+__all__ = ["convert_coords_to_labelbox", "convert_labelbox_to_coords", "find_box_center", "crop_from_geometry", "is_contained"]
 
 
 def convert_coords_to_labelbox(bbox_coordinates):

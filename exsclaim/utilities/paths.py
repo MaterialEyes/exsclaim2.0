@@ -2,7 +2,7 @@
 from pathlib import Path
 
 
-__ALL__ = ["initialize_results_dir"]
+__all__ = ["initialize_results_dir"]
 
 
 def initialize_results_dir(results_dir:str=None) -> Path:

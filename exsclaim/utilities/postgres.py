@@ -6,7 +6,7 @@ from psycopg import connect, sql
 from psycopg.connection import Connection
 
 
-__ALL__ = ["initialize_database", "modify_database_configuration", "Database"]
+__all__ = ["initialize_database", "modify_database_configuration", "Database"]
 
 
 def initialize_database(configuration_file):

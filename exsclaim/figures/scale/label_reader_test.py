@@ -9,6 +9,9 @@ from PIL import Image
 from torchvision import models
 
 
+__all__ = ["ScaleBarReaderTest"]
+
+
 class ScaleBarReaderTest:
 
     # Utility Functions ####

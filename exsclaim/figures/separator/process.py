@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 
-__ALL__ = ["label2yolobox", "yolobox2label", "nms", "postprocess", "preprocess_mask", "preprocess"]
+__all__ = ["label2yolobox", "yolobox2label", "nms", "postprocess", "preprocess_mask", "preprocess"]
 
 
 def label2yolobox(labels:np.ndarray, info_img:tuple[int, int, int, int, int, int], maxsize:int, lrflip:bool) -> np.ndarray:

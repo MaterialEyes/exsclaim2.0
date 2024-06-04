@@ -1,17 +1,13 @@
-version: '3.8'
-
 services:
     python:
         build: .
         ports:
-            - "8888:8888"
+            - "8888"
         networks:
             - backend
             - frontend
         volumes:
-            - type: bind
-              source: ./exsclaim
-              target: /usr/src/app/exsclaim
+            - /usr/src/app/exsclaim:/argonne/code/exsclaim2.0/exsclaim
 
     postgresql:
         image: postgres:latest
@@ -26,8 +22,6 @@ services:
             backend:
                 aliases:
                     - db
-    jupyter:
-        image: jupyter/datascience-notebook
 
 networks:
     backend:

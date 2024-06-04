@@ -5,7 +5,7 @@ Adapted from `this StackOverflow <https://stackoverflow.com/questions/38511444/>
 from requests import Session, Response
 
 
-__ALL__ = ["download_file_from_google_drive", "get_confirm_token", "save_response_content"]
+__all__ = ["download_file_from_google_drive", "get_confirm_token", "save_response_content"]
 
 
 def download_file_from_google_drive(file_id:str, destination:str):

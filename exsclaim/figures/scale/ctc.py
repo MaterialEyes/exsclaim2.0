@@ -6,7 +6,7 @@ from pathlib import Path
 from .lm import LanguageModel
 
 
-__ALL__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "get_legal_next_characters", "postprocess_ctc", "run_ctc"]
+__all__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "get_legal_next_characters", "postprocess_ctc", "run_ctc"]
 
 
 class BeamEntry:

@@ -2,7 +2,7 @@ import json
 import pandas as pd
 
 
-__ALL__ = ["read_jsons"]
+__all__ = ["read_jsons"]
 
 
 def read_jsons(filepath) -> pd.DataFrame:

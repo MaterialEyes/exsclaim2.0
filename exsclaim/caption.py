@@ -14,7 +14,7 @@ import openai
 import os
 
 
-__ALL__ = ["CustomEncoder", "get_context", "remove_control_characters", "create_openai_completion", "separate_captions",
+__all__ = ["CustomEncoder", "get_context", "remove_control_characters", "create_openai_completion", "separate_captions",
            "get_keywords", "safe_summarize_caption", "safe_separate_captions"]
 
 

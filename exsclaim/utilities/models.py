@@ -7,10 +7,10 @@ from torch import load
 from pathlib import Path
 
 
-__ALL__ = ["load_model_from_checkpoint", "models_to_googleids"]
+__all__ = ["load_model_from_checkpoint", "model_names_to_googleids"]
 
 
-# stores the google drive file IDs of default neural network checkpoints
+# stores the Google Drive file IDs of default neural network checkpoints
 # replace these if you wish to change a model
 model_names_to_googleids = {
     "classifier_model.pt": "16BxXXGJyHfMtzhDEufIwMkcDoBftZosh",

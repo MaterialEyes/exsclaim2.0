@@ -3,7 +3,7 @@ import os
 import sys
 
 
-__ALL__ = ["blockPrint", "enablePrint", "Printer"]
+__all__ = ["blockPrint", "enablePrint", "Printer"]
 
 
 # Disable

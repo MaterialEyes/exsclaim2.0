@@ -20,7 +20,7 @@ from ...utilities import boxes
 from ...utilities.models import load_model_from_checkpoint
 
 
-__ALL__ = ["create_scale_bar_objects", "detect_scale_objects", "determine_scale", "match_scale_bars", "super_resolution",
+__all__ = ["create_scale_bar_objects", "detect_scale_objects", "determine_scale", "match_scale_bars", "super_resolution",
            "read_scale_bar_label", "split_label", "test_label_reading"]
 
 

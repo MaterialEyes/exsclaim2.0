@@ -11,7 +11,7 @@ from torchvision import transforms
 
 from ...utilities import convert_labelbox_to_coords
 
-__ALL__ = ["ScaleLabelDataset", "ScaleBarDataset", "draw_text_on_image", "get_unit", "get_number", "no_pattern", "find_color"]
+__all__ = ["ScaleLabelDataset", "ScaleBarDataset", "draw_text_on_image", "get_unit", "get_number", "no_pattern", "find_color"]
 
 
 def draw_text_on_image(image:Image, text:str) -> Image:

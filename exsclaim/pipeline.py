@@ -16,7 +16,7 @@ from .tool import CaptionDistributor, JournalScraper, HTMLScraper
 from .utilities import boxes, paths
 
 
-__ALL__ = ["Pipeline"]
+__all__ = ["Pipeline"]
 
 
 class Pipeline:

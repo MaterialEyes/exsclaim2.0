@@ -4,7 +4,7 @@ import codecs
 from re import findall
 
 
-__ALL__ = ["LanguageModel"]
+__all__ = ["LanguageModel"]
 
 
 class LanguageModel:

@@ -10,7 +10,7 @@ from pycocotools import mask as coco_mask
 from pycocotools.coco import COCO
 
 
-__ALL__ = ["FilterAndRemapCocoCategories", "ConvertCocoPolysToMask", "CocoDetection", "convert_coco_poly_to_mask",
+__all__ = ["FilterAndRemapCocoCategories", "ConvertCocoPolysToMask", "CocoDetection", "convert_coco_poly_to_mask",
            "_coco_remove_images_without_annotations", "convert_to_coco_api", "get_coco_api_from_dataset", "get_coco", "get_coco_kp"]
 
 

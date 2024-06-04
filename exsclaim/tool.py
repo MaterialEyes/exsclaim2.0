@@ -7,50 +7,37 @@ package. All the model classes are independent of each
 other, but they expose the same interface, so they are
 interchangeable.
 """
-import json
-import logging
-import os
-import time
-from time import time_ns as timer
-from abc import ABC, abstractmethod
+
 from . import caption, journal
 from .utilities import initialize_results_dir, Printer
+
+from abc import ABC, abstractmethod
+from bs4 import BeautifulSoup
 from langchain.document_loaders import UnstructuredHTMLLoader
 from langchain.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
+from logging import getLogger
+from pathlib import Path
+from PIL import Image
+from playwright.sync_api import sync_playwright, Browser
+from time import time_ns as timer, time, sleep
+from typing import Callable, Any
+
+import json
+import os
 import glob
 import requests
 import shutil
-from pathlib import Path
 import shutil
 import cv2
 import numpy as np
-from PIL import Image
-from bs4 import BeautifulSoup
-from typing import Callable
 
 
-try:
-    from selenium_stealth import stealth
-    from selenium import webdriver
-    from selenium.common.exceptions import TimeoutException
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.support.ui import WebDriverWait
-    from webdriver_manager.chrome import ChromeDriverManager
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.chrome.service import Service
-    from selenium.webdriver.common.action_chains import ActionChains
-    from selenium.webdriver.common.keys import Keys
-except:
-    pass
-
-
-__ALL__ = ["ExsclaimTool", "JournalScraper", "HTMLScraper", "CaptionDistributor"]
+__all__ = ["ExsclaimTool", "ExsclaimBrowser", "JournalScraper", "HTMLScraper", "CaptionDistributor"]
 
 
 class ExsclaimTool(ABC):
     def __init__(self, search_query, logger_name=None):
-        self.logger = logging.getLogger(logger_name if logger_name is not None else __name__)
+        self.logger = getLogger(logger_name if logger_name is not None else __name__)
         self.initialize_query(search_query)
 
     def initialize_query(self, search_query):
@@ -159,6 +146,71 @@ class ExsclaimTool(ABC):
         self.logger.exception(error_msg)
 
 
+class ExsclaimBrowser(object):
+    def __init__(self, browser:Browser=None, set_extra_headers:bool=True):
+        # Initialize the playwright browser
+        if browser is None:
+            self.playwright = sync_playwright().start()
+            self.browser = self.playwright.chromium.launch(headless=True, chromium_sandbox=False)
+            browser = self.browser
+        self.page = browser.new_page()
+        if set_extra_headers:
+            page.set_extra_http_headers({
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Cache-Control": "max-age=0",
+                "Priority": "u=0, i",
+                "Sec-Ch-Ua": '"Brave";v="125", "Chromium";v="125", "Not.A / Brand";v="24"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": "Linux",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Sec-Gpc": "1",
+                "Upgrade-Insecure-Requests": "1",
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            })
+
+    def __del__(self):
+        self.close_browser()
+
+    def close_browser(self):
+        self.page.close()
+        if hasattr(self, "playwright"):
+            self.browser.close()
+            self.playwright.stop()
+
+    def temporary_browser(self, function:Callable[[Browser, Page, Any | None], Any], set_extra_headers=True, **kwargs):
+        browser = self.playwright.chromium.launch(headless=True, chromium_sandbox=False)
+
+        page = browser.new_page()
+        if set_extra_headers:
+            page.set_extra_http_headers({
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Cache-Control": "max-age=0",
+                "Priority": "u=0, i",
+                "Sec-Ch-Ua": '"Brave";v="125", "Chromium";v="125", "Not.A / Brand";v="24"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": "Linux",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Sec-Gpc": "1",
+                "Upgrade-Insecure-Requests": "1",
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            })
+
+        values = function(browser, page, **kwargs)
+        page.close()
+        browser.close()
+        return values
+
+
 class JournalScraper(ExsclaimTool):
     """
     JournalScraper object.
@@ -207,7 +259,7 @@ class JournalScraper(ExsclaimTool):
         articles_file = self.results_directory / "_articles"
         with open(articles_file, "a") as f:
             for article in self.new_articles_visited:
-                f.write("%s\n" % article.split("/")[-1])
+                f.write(f"{article.split('/')[-1]}\n")
 
     def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
         return exsclaim_json
@@ -233,7 +285,7 @@ class JournalScraper(ExsclaimTool):
         j_instance = journal_subclass(search_query)
 
         os.makedirs(self.results_directory, exist_ok=True)
-        t0 = time.time()
+        t0 = time()
         counter = 1
         articles = j_instance.get_article_extensions()
         # Extract figures, captions, and metadata from each article
@@ -266,7 +318,7 @@ class JournalScraper(ExsclaimTool):
                 )
             counter += 1
 
-        t1 = time.time()
+        t1 = time()
         self.display_info(
             ">>> Time Elapsed: {0:.2f} sec ({1} articles)\n".format(
                 t1 - t0, int(counter - 1)
@@ -276,7 +328,7 @@ class JournalScraper(ExsclaimTool):
         return exsclaim_json
 
 
-class HTMLScraper(ExsclaimTool):
+class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
     """
     HTMLScraper object.
     Extract scientific figures from user provided html articles
@@ -285,8 +337,9 @@ class HTMLScraper(ExsclaimTool):
     None
     """
 
-    def __init__(self, search_query, driver=None): # provide the location with the folder with the html files
+    def __init__(self, search_query, browser:Browser=None): # provide the location with the folder with the html files
         super().__init__(search_query, logger_name=__name__ + ".HTMLScraper")
+        ExsclaimBrowser.__init__(self, browser=browser)
         # self.new_articles_visited = set()
         self.search_query = search_query
         self.open = search_query.get("open", False)
@@ -299,28 +352,6 @@ class HTMLScraper(ExsclaimTool):
         self.results_directory = base_results_dir / self.search_query["name"]
         figures_directory = self.results_directory / "figures"
         os.makedirs(figures_directory, exist_ok=True)
-
-        # initialize the selenium-stealth
-        try:
-            options = webdriver.ChromeOptions()
-            options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.binary_location = "/gpfs/fs1/home/avriza/chrome/opt/google/chrome/google-chrome"
-            self.driver = webdriver.Chrome(service=Service('/gpfs/fs1/home/avriza/chromedriver'), options=options)
-            stealth(self.driver,
-                    languages=["en-US", "en"],
-                    vendor="Google Inc.",
-                    platform="Win32",
-                    webgl_vendor="Intel Inc.",
-                    renderer="Intel Iris OpenGL Engine",
-                    fix_hairline=True,
-                    )
-        except:
-            self.driver= driver
-
-    def extract_figures_from_html_rsc(self, soup):
-        figure_list = soup.find_all("img")
-        return figure_list
 
     def extract_figures_from_html(self, soup):
         figure_list = soup.find_all("figure")
@@ -348,12 +379,12 @@ class HTMLScraper(ExsclaimTool):
                 img_url = figure.find('a')['href']
             except:
                 img_tags = figure.find('img')['data-original']
-                img_url = 'https://pubs.rsc.org/' + img_tags
+                img_url = f"https://pubs.rsc.org/{img_tags}"
 
             figure_caption = figure.find('figcaption').get_text(strip=True)
 
             if img_url is not None:
-                self.driver.get(img_url)
+                self.page.goto(img_url)
 
             figure_name = f"{article_name}_fig{figure_number}.png"
             figure_path = Path("output") / "figures" / figure_name
@@ -383,34 +414,33 @@ class HTMLScraper(ExsclaimTool):
             # add all results
             article_json[figure_name] = figure_json
             figure_number += 1  # increment figure number
-            # Open a file with write binary mode, and write to it
+            # Open a file in write binary mode, and write to it
             figures_directory = self.results_directory / "figures"
             figure_path = os.path.join(figures_directory, figure_name)
 
-            with open(figure_path, 'wb') as out_file:
-                time.sleep(3)
-                self.driver.save_screenshot(figure_path)
+            sleep(3)
+            self.page.screenshot(path=figure_path)
 
-                # Load the image
-                img = cv2.imread(figure_path, cv2.IMREAD_UNCHANGED)
+            # Load the image
+            img = cv2.imread(figure_path, cv2.IMREAD_UNCHANGED)
 
-                # Convert the image to RGBA (just in case the image is in another format)
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
+            # Convert the image to RGBA (just in case the image is in another format)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
 
-                # Define a 2D filter that will turn black (also shades close to black) pixels to transparent
-                low = np.array([0, 0, 0, 0])
-                high = np.array([50, 50, 50, 255])
+            # Define a 2D filter that will turn black (also shades close to black) pixels to transparent
+            low = np.array([0, 0, 0, 0])
+            high = np.array([50, 50, 50, 255])
 
-                # Apply the mask (this will turn 'black' pixels to transparent)
-                mask = cv2.inRange(img, low, high)
-                img[mask > 0] = [0, 0, 0, 0]
+            # Apply the mask (this will turn 'black' pixels to transparent)
+            mask = cv2.inRange(img, low, high)
+            img[mask > 0] = [0, 0, 0, 0]
 
-                # Convert the image back to PIL format and save the result
-                img_pil = Image.fromarray(img)
-                img_pil.save(figure_path)
-                print('image saved as: ', figure_path)
+            # Convert the image back to PIL format and save the result
+            img_pil = Image.fromarray(img)
+            img_pil.save(figure_path)
+            print('image saved as: ', figure_path)
+
         return article_json
-
 
     def save_figures_wiley(self, filename):
         # Load the HTML file and create a BeautifulSoup object
@@ -433,137 +463,136 @@ class HTMLScraper(ExsclaimTool):
 
         for figure in figures:
 
-          img = figure.find('img')
-          if img:
-              img_tags = img['src']
-          else:
-              source = figure.find('source')
-              if source:
-                  img_tags = source['srcset']
-              else:
-                  img_tags = None
-
-          if img_tags is not None:
-            img_url = 'https://onlinelibrary.wiley.com' + img_tags
-            self.driver.get(img_url)
-
-            # Extract caption
-            figure_caption = ""
-            caption_tag = figure.find('figcaption')
-            if caption_tag:
-                # Remove unwanted child elements to avoid redundant text
-                for unwanted in caption_tag.find_all(class_="figure-extra"):
-                    unwanted.extract()
-
-                # Separate figure title and description
-                figure_title = caption_tag.find(class_="figure__title")
-                if figure_title:
-                    title_text = figure_title.get_text(strip=True) + ':'
-                    figure_title.extract()  # remove it from the caption
-                else:
-                    title_text = ''
-
-                caption = title_text + caption_tag.get_text(strip=True)
-
+            img = figure.find('img')
+            if img:
+                img_tags = img['src']
             else:
-                caption_tag = figure.find('p', class_='caption-style')
-                if caption_tag:
-                    caption = caption_tag.get_text(strip=True)
+                source = figure.find('source')
+                if source:
+                    img_tags = source['srcset']
                 else:
-                    caption = None
+                    img_tags = None
+
+            if img_tags is not None:
+                img_url = f"https://onlinelibrary.wiley.com/{img_tags}"
+                self.page.goto(img_url)
+
+                # Extract caption
+                figure_caption = ""
+                caption_tag = figure.find('figcaption')
+                if caption_tag:
+                    # Remove unwanted child elements to avoid redundant text
+                    for unwanted in caption_tag.find_all(class_="figure-extra"):
+                        unwanted.extract()
+
+                    # Separate figure title and description
+                    figure_title = caption_tag.find(class_="figure__title")
+                    if figure_title:
+                        title_text = figure_title.get_text(strip=True) + ':'
+                        figure_title.extract()  # remove it from the caption
+                    else:
+                        title_text = ''
+
+                    caption = title_text + caption_tag.get_text(strip=True)
+
+                else:
+                    caption_tag = figure.find('p', class_='caption-style')
+                    if caption_tag:
+                        caption = caption_tag.get_text(strip=True)
+                    else:
+                        caption = None
 
 
-            # figure_caption = ""
-            # caption_tag = figure.find('figcaption')
-            # if caption_tag:
-            #     # Remove unwanted child elements to avoid redundant text
-            #     for unwanted in caption_tag.find_all(class_="figure-extra"):
-            #         unwanted.extract()
+                # figure_caption = ""
+                # caption_tag = figure.find('figcaption')
+                # if caption_tag:
+                #     # Remove unwanted child elements to avoid redundant text
+                #     for unwanted in caption_tag.find_all(class_="figure-extra"):
+                #         unwanted.extract()
 
-            #     # Separate figure title and description
-            #     figure_title = caption_tag.find(class_="figure__title")
-            #     if figure_title:
-            #         title_text = figure_title.get_text(strip=True) + '. '
-            #         figure_title.extract()  # remove it from the caption
-            #     else:
-            #         title_text = ''
+                #     # Separate figure title and description
+                #     figure_title = caption_tag.find(class_="figure__title")
+                #     if figure_title:
+                #         title_text = figure_title.get_text(strip=True) + '. '
+                #         figure_title.extract()  # remove it from the caption
+                #     else:
+                #         title_text = ''
 
-            #     caption = title_text + caption_tag.get_text(strip=True)
+                #     caption = title_text + caption_tag.get_text(strip=True)
 
-            # else:
-            #     caption_tag = figure.find('p', class_='caption-style')
-            #     if caption_tag:
-            #         caption = caption_tag.get_text(strip=True)
-            #     else:
-            #         caption = None
+                # else:
+                #     caption_tag = figure.find('p', class_='caption-style')
+                #     if caption_tag:
+                #         caption = caption_tag.get_text(strip=True)
+                #     else:
+                #         caption = None
 
-            if caption_tag:
-              figure_caption += caption_tag.get_text()
+                if caption_tag:
+                    figure_caption += caption_tag.get_text()
 
 
-              figure_name = article_name + "_fig" + str(figure_number) + ".png"
-              figure_path = (
-                Path("output")  / "figures" / figure_name
-              )
-              # print('init_figurepath',figure_path )
+                    figure_name = article_name + "_fig" + str(figure_number) + ".png"
+                    figure_path = (
+                            Path("output")  / "figures" / figure_name
+                    )
+                    # print('init_figurepath',figure_path )
 
-              # initialize the figure's json
-              figure_json = {
-                  "title": soup.find("title").get_text(),
-                  "article_name": article_name,
-                  "image_url": img_url,
-                  "figure_name": figure_name,
-                  "full_caption": figure_caption,
-                  "figure_path": str(figure_path),
-                  "master_images": [],
-                  "article_url":[],
-                  "license": [],
-                  "open": [],
-                  "unassigned": {
-                      "master_images": [],
-                      "dependent_images": [],
-                      "inset_images": [],
-                      "subfigure_labels": [],
-                      "scale_bar_labels": [],
-                      "scale_bar_lines": [],
-                      "captions": [],
-                  },
-              }
-              # add all results
-              article_json[figure_name] = figure_json
-              figure_number += 1  # increment figure number
-              # Open a file with write binary mode, and write to it
-              figures_directory = self.results_directory / "figures"
-              figure_path = os.path.join(figures_directory , figure_name)
-              # print('figurepath',figure_path )
+                    # initialize the figure's json
+                    figure_json = {
+                        "title": soup.find("title").get_text(),
+                        "article_name": article_name,
+                        "image_url": img_url,
+                        "figure_name": figure_name,
+                        "full_caption": figure_caption,
+                        "figure_path": str(figure_path),
+                        "master_images": [],
+                        "article_url":[],
+                        "license": [],
+                        "open": [],
+                        "unassigned": {
+                            "master_images": [],
+                            "dependent_images": [],
+                            "inset_images": [],
+                            "subfigure_labels": [],
+                            "scale_bar_labels": [],
+                            "scale_bar_lines": [],
+                            "captions": [],
+                        },
+                    }
+                    # add all results
+                    article_json[figure_name] = figure_json
+                    figure_number += 1  # increment figure number
+                    # Open a file with write binary mode, and write to it
+                    figures_directory = self.results_directory / "figures"
+                    figure_path = os.path.join(figures_directory , figure_name)
+                    # print('figurepath',figure_path )
 
-              with open(figure_path, 'wb') as out_file:
-                time.sleep(3)
-                self.driver.save_screenshot(figure_path)
+                    with open(figure_path, 'wb') as out_file:
+                        sleep(3)
+                        self.page.screenshot(path=figure_path)
 
-                # Load the image
-                img = cv2.imread(figure_path, cv2.IMREAD_UNCHANGED)
+                        # Load the image
+                        img = cv2.imread(figure_path, cv2.IMREAD_UNCHANGED)
 
-                # Convert the image to RGBA (just in case the image is in another format)
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
+                        # Convert the image to RGBA (just in case the image is in another format)
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
 
-                # Define a 2D filter that will turn black (also shades close to black) pixels to transparent
-                low = np.array([0, 0, 0, 0])
-                high = np.array([50, 50, 50, 255])
+                        # Define a 2D filter that will turn black (also shades close to black) pixels to transparent
+                        low = np.array([0, 0, 0, 0])
+                        high = np.array([50, 50, 50, 255])
 
-                # Apply the mask (this will turn 'black' pixels to transparent)
-                mask = cv2.inRange(img, low, high)
-                img[mask > 0] = [0, 0, 0, 0]
+                        # Apply the mask (this will turn 'black' pixels to transparent)
+                        mask = cv2.inRange(img, low, high)
+                        img[mask > 0] = [0, 0, 0, 0]
 
-                # Convert the image back to PIL format and save the result
-                img_pil = Image.fromarray(img)
-                img_pil.save(figure_path)
-                print('image saved as: ' , figure_path)
+                        # Convert the image back to PIL format and save the result
+                        img_pil = Image.fromarray(img)
+                        img_pil.save(figure_path)
+                        print(f"image saved as: {figure_path}")
         return article_json
 
-
     def save_figures_acs(self, filename):
-    # Load the HTML file and create a BeautifulSoup object
+        # Load the HTML file and create a BeautifulSoup object
         with open(filename, "r", encoding="utf-8") as file:
             html_content = file.read()
 
@@ -592,60 +621,57 @@ class HTMLScraper(ExsclaimTool):
         figure_number = 1
 
         for figure in figures:
-              img_tags = figure.find_all("img")
-                #print(img_tags)
-              for img_tag in img_tags:
-                    img_url = img_tag.get("src")
-                    img_url = img_url.replace("medium", "large")
-                    img_url = img_url.replace("gif", "jpeg")
-                    img_url = "https://pubs.acs.org" + img_url
-                    captions = figure.find_all("p")
+            img_tags = figure.find_all("img")
+            for img_tag in img_tags:
+                img_url = img_tag.get("src")
+                img_url = img_url.replace("medium", "large").replace("gif", "jpeg")
+                img_url = f"https://pubs.acs.org{img_url}"
+                captions = figure.find_all("p")
 
-                    figure_caption = ""
-                    for caption in captions:
-                      if caption is not None:
+                figure_caption = ""
+                for caption in captions:
+                    if caption is not None:
                         figure_caption += caption.get_text()
-                    if img_url is not None:
-                      self.driver.get(img_url)
-                      #response = requests.get(img_url, stream=True)
 
-                      figure_name = article_name + "_fig" + str(figure_number) + ".png"
-                      figure_path = (
-                        Path("output")  / "figures" / figure_name
-                      )
+                if img_url is not None:
+                    self.page.goto(img_url)
+                    # response = requests.get(img_url, stream=True)
 
-                      # initialize the figure's json
-                      figure_json = {
-                          "title": soup.find("title").get_text(),
-                          "article_name": article_name,
-                          "image_url": image_url,
-                          "figure_name": figure_name,
-                          "full_caption": figure_caption,
-                          "figure_path": str(figure_path),
-                          "master_images": [],
-                          "article_url":[],
-                          "license": [],
-                          "open": [],
-                          "unassigned": {
-                              "master_images": [],
-                              "dependent_images": [],
-                              "inset_images": [],
-                              "subfigure_labels": [],
-                              "scale_bar_labels": [],
-                              "scale_bar_lines": [],
-                              "captions": [],
-                          },
-                      }
-                      # add all results
-                      article_json[figure_name] = figure_json
-                      figure_number += 1  # increment figure number
-                      # Open a file with write binary mode, and write to it
-                      figures_directory = self.results_directory / "figures"
-                      figure_path = os.path.join(figures_directory , figure_name)
+                    figure_name = f"{article_name}_fig{figure_number}.png"
+                    figure_path = Path("output") / "figures" / figure_name
 
-                      with open(figure_path, 'wb') as out_file:
-                        time.sleep(3)
-                        self.driver.save_screenshot(figure_path)
+                    # initialize the figure's json
+                    figure_json = {
+                        "title": soup.find("title").get_text(),
+                        "article_name": article_name,
+                        "image_url": image_url,
+                        "figure_name": figure_name,
+                        "full_caption": figure_caption,
+                        "figure_path": str(figure_path),
+                        "master_images": [],
+                        "article_url": [],
+                        "license": [],
+                        "open": [],
+                        "unassigned": {
+                            "master_images": [],
+                            "dependent_images": [],
+                            "inset_images": [],
+                            "subfigure_labels": [],
+                            "scale_bar_labels": [],
+                            "scale_bar_lines": [],
+                            "captions": [],
+                        },
+                    }
+                    # add all results
+                    article_json[figure_name] = figure_json
+                    figure_number += 1  # increment figure number
+                    # Open a file with write binary mode, and write to it
+                    figures_directory = self.results_directory / "figures"
+                    figure_path = os.path.join(figures_directory, figure_name)
+
+                    with open(figure_path, 'wb') as out_file:
+                        sleep(3)
+                        self.page.screenshot(path=figure_path)
 
                         # Load the image
                         img = cv2.imread(figure_path, cv2.IMREAD_UNCHANGED)
@@ -664,9 +690,8 @@ class HTMLScraper(ExsclaimTool):
                         # Convert the image back to PIL format and save the result
                         img_pil = Image.fromarray(img)
                         img_pil.save(figure_path)
-                        print('image saved as: ' , figure_path)
+                        print('image saved as: ', figure_path)
         return article_json  # return outside of the for loop to make sure all figures are included
-
 
     def save_figures_nature(self, filename):
         # Load the HTML file and create a BeautifulSoup object
@@ -741,7 +766,6 @@ class HTMLScraper(ExsclaimTool):
                         shutil.copyfileobj(response.raw, out_file)
         return article_json
 
-
     def _load_model(self):
         pass
 
@@ -764,7 +788,6 @@ class HTMLScraper(ExsclaimTool):
             if category:
                 break
         return category
-
 
     def _update_exsclaim(self, exsclaim_dict, article_dict):
         """Update the exsclaim_dict with article_dict contents
@@ -860,7 +883,7 @@ class HTMLScraper(ExsclaimTool):
                 )
             counter += 1
 
-        t1 = time.time()
+        t1 = time()
         self.display_info(
             ">>> Time Elapsed: {0:.2f} sec ({1} articles)\n".format(
                 t1 - t0, int(counter - 1)
@@ -895,7 +918,6 @@ class CaptionDistributor(ExsclaimTool):
             self.model_path = os.path.dirname(__file__) + "/captions/models/"
         return caption.load_models(self.model_path)
 
-        
     def _update_exsclaim(self,search_query, exsclaim_dict, figure_name, delimiter, caption_dict):
         from exsclaim import caption
 
