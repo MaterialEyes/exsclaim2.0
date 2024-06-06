@@ -5,7 +5,7 @@ import random
 import unittest
 
 import torch
-import torchvision.transforms as T
+from torchvision.transforms import ToTensor
 from PIL import Image
 
 from .. import figure
@@ -29,7 +29,7 @@ class TestScaleDetection(unittest.TestCase):
     def test_scale_object_detection_accuracy(self):
         """Tests the accuracy and validity of scale bar object detection"""
         test_image_directory = self.current_directory / "data"
-        dataset = ScaleBarDataset(test_image_directory, T.ToTensor(), True, 5)
+        dataset = ScaleBarDataset(test_image_directory, ToTensor(), True, 5)
         dataloader = torch.utils.data.DataLoader(
             dataset, batch_size=32, collate_fn=collate_fn, num_workers=0, shuffle=False
         )
@@ -82,7 +82,7 @@ class TestScaleDetection(unittest.TestCase):
             if result == label:
                 low_correct += 1
 
-            # if the confidence is above the  higher threshold
+            # if the confidence is above the higher threshold
             if confidence >= high_confidence_threshold:
                 high_total += 1
                 if result == label:

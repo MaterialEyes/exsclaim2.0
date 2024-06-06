@@ -332,8 +332,7 @@ class Pipeline:
                 try:
                     plt.imsave(str(directory) + master_name, master_patch)  
                 except Exception as err:
-                    self.logger.exception(("Error in saving cropped master"
-                        " image of figure: {}".format(figure_root_name)))
+                    self.logger.exception((f"Error in saving cropped master image of figure: {figure_root_name}. {err}"))
                 # Repeat for dependents of the master image to file
                 for dependent_id, dependent_image in enumerate(master_image.get("dependent_images", [])):
                     dependent_root_name = "/".join([directory, "dependent"])
@@ -449,7 +448,7 @@ class Pipeline:
                     bounding_box = [int(coord) for coord in coords]
                     draw_full_figure.rectangle(bounding_box, width=2, outline="green")
             label_geometry = subfigure_json["subfigure_label"]["geometry"]
-            if label_geometry != []:
+            if label_geometry:
                 coords = boxes.convert_labelbox_to_coords(label_geometry)
                 bounding_box = [int(coord) for coord in coords]
                 draw_full_figure.rectangle(bounding_box, width=1, outline="green")
@@ -519,7 +518,7 @@ class Pipeline:
                     scale_objects.append(bounding_box)
             # Collect subfigure labels
             label_geometry = subfigure_json["subfigure_label"]["geometry"]
-            if label_geometry != []:
+            if label_geometry:
                 coords = boxes.convert_labelbox_to_coords(label_geometry)
                 bounding_box = [int(coord) for coord in coords]
                 subfigure_labels.append(bounding_box)

@@ -56,6 +56,8 @@ class ScaleBarReaderTest:
             model = models.resnet50(pretrained=pretrained)
         elif depth == 152:
             model = models.resnet152(pretrained=pretrained)
+        else:
+            raise ValueError(f"Depth must be 18, 50, or 152; not {depth}.")
 
         device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -94,9 +96,9 @@ class ScaleBarReaderTest:
 
     def set_up_model(self, checkpoint_path):
         """set FigureSeparator values"""
-        print("starting {}".format(checkpoint_path))
+        print(f"starting {checkpoint_path}")
         # Break up checkpoint path
-        pretrained = True if checkpoint_path.split("/")[-2] == "pretrained" else False
+        pretrained = checkpoint_path.split("/")[-2] == "pretrained"
         model_name = checkpoint_path.split("/")[-1].split(".")[0]
         model_type, epoch = model_name.split("-")
         chunks = model_type.split("_")

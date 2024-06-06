@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$PROJECT_DIR$/../exsclaim-ui/.idea/exsclaim-ui.iml" filepath="$PROJECT_DIR$/../exsclaim-ui/.idea/exsclaim-ui.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/exsclaim2.0.iml" filepath="$PROJECT_DIR$/.idea/exsclaim2.0.iml" />
     </modules>
   </component>

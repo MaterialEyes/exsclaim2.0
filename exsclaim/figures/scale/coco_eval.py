@@ -321,7 +321,7 @@ def loadRes(self, resFile:str):
     elif "segmentation" in anns[0]:
         res.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
         for id, ann in enumerate(anns):
-            # now only support compressed RLE format as segmentation results
+            # now only support compressed RLE formats as segmentation results
             ann["area"] = maskUtils.area(ann["segmentation"])
             if "bbox" not in ann:
                 ann["bbox"] = maskUtils.toBbox(ann["segmentation"])

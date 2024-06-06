@@ -109,7 +109,7 @@ def separate_captions(caption, api, llm):
             os.mkdir("./tokenizer/")
             tokenizer.save_pretrained("./tokenizer/")
 
-        model = AutoModelForCausalLM.from_pretrained("eachadea/vicuna-13b-1.1")#, device_map="auto") #, load_in_8bit=True)
+        model = AutoModelForCausalLM.from_pretrained("eachadea/vicuna-13b-1.1")  # , device_map="auto") #, load_in_8bit=True)
         pipe = pipeline(
             "text-generation",
             model=model,

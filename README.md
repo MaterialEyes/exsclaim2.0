@@ -26,7 +26,7 @@ We provide several tutorials demonstrating how to use EXSCLAIM2.0:
 EXSCLAIM works with Python 3.6+. We recommend using a conda or python environment to install dependencies. To use the pipeline, you need a Query on which to run the pipeline. The query can be a JSON or Python dictionary (depending on how you are accessing the pipeline) and must have the parameters(/keys/attributes) defined in the [Query JSON schema](https://github.com/MaterialEyes/exsclaim/wiki/JSON-Schema#query-json-) and examples can be found [in the query directory](https://github.com/MaterialEyes/exsclaim/tree/master/query).
 
 ### Installation with Git
-To install directly from github, run the following commands (it is recommended to run in a conda or python virtual environment):
+To install directly from GitHub, run the following commands (it is recommended to run in a conda or python virtual environment):
 ```
 git clone https://github.com/MaterialEyes/exsclaim.git
 cd exsclaim
@@ -35,7 +35,7 @@ python load_models.py
 ```
 
 #### Scrapping data from dynamic journal webpages
-If scrapping data from Journals that use javascript (e.g. RSC, ACS) you need to setup chrome-driver and chrome and add their path to the `exsclaim/journal.py` file.
+If scrapping data from Journals that use javascript (e.g. RSC, ACS) you need to set up chrome-driver and chrome and add their path to the `exsclaim/journal.py` file.
 ```
 e.g. for a linux terminal you need the following:
 wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb

@@ -8,9 +8,9 @@ import cv2
 import numpy as np
 import torch
 import torchvision
-import torchvision.transforms as T
 from PIL import Image
 from torchvision import transforms
+from torchvision.transforms import ToTensor
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 from .ctc import ctcBeamSearch, postprocess_ctc
@@ -138,16 +138,17 @@ def determine_scale(
     """
     if figure_json is None:
         figure_json = {}
+
     convert_to_nm = {
         "a": 0.1,
         "nm": 1.0,
-        "um": 1000.0,
-        "mm": 1000000.0,
-        "cm": 10000000.0,
-        "m": 1000000000.0,
+        "um": 1_000.0,
+        "mm": 1_000_000.0,
+        "cm": 10_000_000.0,
+        "m": 1_000_000_000.0,
     }
     image = Image.open(figure_path).convert("RGB")
-    tensor_image = T.ToTensor()(image)
+    tensor_image = ToTensor()(image)
     # Detect scale bar objects
     scale_bar_info = detect_scale_objects(tensor_image, detection_checkpoint)
     label_names = ["background", "scale bar", "scale label"]

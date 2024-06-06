@@ -10,13 +10,13 @@ import warnings
 import cv2
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torchvision.transforms as T
 import yaml
 from PIL import Image
 from scipy.special import softmax
 from skimage import io
 from torch.autograd import Variable
+from torch.nn.functional import softmax
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
@@ -294,7 +294,7 @@ class FigureSeparator(ExsclaimTool):
             # Run model on figure
             label_prediction = self.text_recognition_model(img_patch.to(self.device))
             label_confidence = np.amax(
-                F.softmax(label_prediction, dim=1).data.cpu().numpy()
+                softmax(label_prediction, dim=1).data.cpu().numpy()
             )
             label_value = chr(
                 label_prediction.argmax(dim=1).data.cpu().numpy()[0] + ord("a")

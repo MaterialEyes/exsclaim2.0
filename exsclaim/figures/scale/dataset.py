@@ -281,12 +281,13 @@ class ScaleBarDataset:
             # suppose all instances are not crowd
             iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
-            target = {}
-            target["boxes"] = boxes
-            target["labels"] = labels
-            target["image_id"] = image_id
-            target["area"] = area
-            target["iscrowd"] = iscrowd
+            target = {
+                "boxes": boxes,
+                "labels": labels,
+                "image_id": image_id,
+                "area": area,
+                "iscrowd": iscrowd
+            }
 
             if self.transforms is not None:
                 new_image = self.transforms(image)

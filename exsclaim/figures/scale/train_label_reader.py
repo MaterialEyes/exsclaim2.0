@@ -318,7 +318,7 @@ def path_to_word(path, idx_to_class):
     for i in range(len(word)):
         if not is_number(word[: i + 1]):
             break
-    return str(float(word[:i])) + " " + word[i:].lower()
+    return f"{word[:i]:.f} {word[i:].lower()}"
 
 
 def postprocess_ctc(results):
