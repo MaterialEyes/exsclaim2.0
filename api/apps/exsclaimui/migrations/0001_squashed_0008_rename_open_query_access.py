@@ -7,7 +7,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
 
-    replaces = [('exsclaim', '0001_initial'), ('exsclaim', '0002_query'), ('exsclaim', '0003_alter_query_id'), ('exsclaim', '0004_remove_query_query_query_synonyms_query_term_and_more'), ('exsclaim', '0005_alter_query_id'), ('exsclaim', '0006_remove_query_logging_remove_query_mongo_connection_and_more'), ('exsclaim', '0007_query_llm_query_model_key'), ('exsclaim', '0008_rename_open_query_access')]
+    replaces = [('exsclaimui', '0001_initial'), ('exsclaimui', '0002_query'), ('exsclaimui', '0003_alter_query_id'), ('exsclaimui', '0004_remove_query_query_query_synonyms_query_term_and_more'), ('exsclaimui', '0005_alter_query_id'), ('exsclaimui', '0006_remove_query_logging_remove_query_mongo_connection_and_more'), ('exsclaimui', '0007_query_llm_query_model_key'), ('exsclaimui', '0008_rename_open_query_access')]
 
     initial = True
 
@@ -35,7 +35,7 @@ class Migration(migrations.Migration):
                 ('caption_delimiter', models.CharField(blank=True, max_length=12, null=True)),
                 ('url', models.URLField()),
                 ('path', models.FilePathField(path='/code')),
-                ('article', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='exsclaim.article')),
+                ('article', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='exsclaimui.article')),
             ],
         ),
         migrations.CreateModel(
@@ -67,7 +67,7 @@ class Migration(migrations.Migration):
                 ('caption', models.TextField(blank=True, null=True)),
                 ('keywords', django.contrib.postgres.fields.ArrayField(base_field=models.CharField(max_length=20), blank=True, null=True, size=None)),
                 ('general', django.contrib.postgres.fields.ArrayField(base_field=models.CharField(max_length=20), blank=True, null=True, size=None)),
-                ('figure', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='exsclaim.figure')),
+                ('figure', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='exsclaimui.figure')),
             ],
         ),
         migrations.CreateModel(
@@ -81,7 +81,7 @@ class Migration(migrations.Migration):
                 ('y2', models.IntegerField(null=True)),
                 ('label_confidence', models.FloatField(blank=True, null=True)),
                 ('box_confidence', models.FloatField(blank=True, null=True)),
-                ('subfigure', models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, to='exsclaim.subfigure')),
+                ('subfigure', models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, to='exsclaimui.subfigure')),
             ],
         ),
         migrations.CreateModel(
@@ -96,13 +96,13 @@ class Migration(migrations.Migration):
                 ('label_confidence', models.FloatField(blank=True, null=True)),
                 ('box_confidence', models.FloatField(blank=True, null=True)),
                 ('nm', models.FloatField(blank=True, null=True)),
-                ('scale_bar', models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, to='exsclaim.scalebar')),
+                ('scale_bar', models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, to='exsclaimui.scalebar')),
             ],
         ),
         migrations.AddField(
             model_name='scalebar',
             name='subfigure',
-            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, to='exsclaim.subfigure'),
+            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, to='exsclaimui.subfigure'),
         ),
         migrations.CreateModel(
             name='Query',

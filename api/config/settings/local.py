@@ -1,6 +1,4 @@
-import os
-from .base import BaseConfig
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from .base import BaseConfig, BASE_DIR
 
 
 class Local(BaseConfig):

@@ -1,9 +1,9 @@
-import os
-from os.path import join
+from os import getenv
+from os.path import join, dirname, abspath, normpath
 from distutils.util import strtobool
 import dj_database_url
 from configurations import Configuration
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = dirname(dirname(abspath(__file__)))
 
 
 class BaseConfig(Configuration):
@@ -16,15 +16,13 @@ class BaseConfig(Configuration):
         'django.contrib.messages',
         'django.contrib.staticfiles',
 
-
         # Third party apps
         'rest_framework',            # utilities for rest apis
         'rest_framework.authtoken',  # token authentication
         'django_filters',            # for filtering rest endpoints
 
         # Your apps
-        'apps.exsclaim'
-
+        'apps.exsclaimui'
     )
 
     CORS_ORIGIN_ALLOW_ALL = True
@@ -44,7 +42,7 @@ class BaseConfig(Configuration):
 
     ALLOWED_HOSTS = ["*"]
     ROOT_URLCONF = 'config.urls'
-    SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+    SECRET_KEY = getenv('DJANGO_SECRET_KEY')
     WSGI_APPLICATION = 'config.wsgi.application'
 
     # Email
@@ -58,7 +56,7 @@ class BaseConfig(Configuration):
     DATABASES = {
         'default': dj_database_url.config(
             default='postgres://postgres:@postgres:5432/postgres',
-            conn_max_age=int(os.getenv('POSTGRES_CONN_MAX_AGE', 600))
+            conn_max_age=int(getenv('POSTGRES_CONN_MAX_AGE', 600))
         )
     }
 
@@ -75,7 +73,7 @@ class BaseConfig(Configuration):
 
     # Static files (CSS, JavaScript, Images)
     # https://docs.djangoproject.com/en/2.0/howto/static-files/
-    STATIC_ROOT = os.path.normpath(join(os.path.dirname(BASE_DIR), 'static'))
+    STATIC_ROOT = normpath(join(dirname(BASE_DIR), 'static'))
     STATICFILES_DIRS = []
     STATIC_URL = '/static/'
     STATICFILES_FINDERS = (
@@ -84,7 +82,7 @@ class BaseConfig(Configuration):
     )
 
     # Media files
-    MEDIA_ROOT = join(os.path.dirname(BASE_DIR), 'media')
+    MEDIA_ROOT = join(dirname(BASE_DIR), 'media')
     MEDIA_URL = '/media/'
 
     TEMPLATES = [
@@ -105,7 +103,7 @@ class BaseConfig(Configuration):
 
     # Set DEBUG to False as a default for safety
     # https://docs.djangoproject.com/en/dev/ref/settings/#debug
-    DEBUG = strtobool(os.getenv('DJANGO_DEBUG', 'no'))
+    DEBUG = strtobool(getenv('DJANGO_DEBUG', 'no'))
 
     # Password Validation
     # https://docs.djangoproject.com/en/2.0/topics/auth/passwords/#module-django.contrib.auth.password_validation
@@ -186,7 +184,7 @@ class BaseConfig(Configuration):
     # Django Rest Framework
     REST_FRAMEWORK = {
         'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-        'PAGE_SIZE': int(os.getenv('DJANGO_PAGINATION_LIMIT', 10)),
+        'PAGE_SIZE': int(getenv('DJANGO_PAGINATION_LIMIT', 10)),
         'DATETIME_FORMAT': '%Y-%m-%dT%H:%M:%S%z',
         'DEFAULT_RENDERER_CLASSES': (
             'rest_framework.renderers.JSONRenderer',

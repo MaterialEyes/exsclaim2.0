@@ -7,5 +7,5 @@ elif [[ $ENV == 'prod' ]];
 then
     pip install -r requirements/production.txt
 else
-    echo ENV should be dev or prod, was $ENV
+    echo ENV should be dev or prod, was "$ENV"
 fi

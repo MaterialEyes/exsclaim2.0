@@ -1,12 +1,14 @@
 from django.db import models
 from django.contrib.postgres.fields import ArrayField
-import pathlib
+from pathlib import Path
+
 
 def get_figures_path():
-    current_dir = pathlib.Path(__file__).resolve(strict=True).parent
+    current_dir = Path(__file__).resolve(strict=True).parent
     figures = current_dir.parent.parent
     return str(figures)
-    
+
+
 class Article(models.Model):
     doi = models.CharField(primary_key=True, max_length=32, unique=True, default="unknown")
     title = models.TextField()
@@ -15,6 +17,7 @@ class Article(models.Model):
     open = models.BooleanField(null=True, blank=True)
     authors = models.CharField(max_length=250, null=True)
     abstract = models.TextField(null=True, blank=True)
+
 
 class Figure(models.Model):
     # Figure ID "<doi>-fig<figure number>"
@@ -27,6 +30,7 @@ class Figure(models.Model):
         'Article',
         on_delete=models.CASCADE
     )
+
 
 class Subfigure(models.Model):
     # Subfigure ID is article "<doi>-fig<figure number>-<subfigure label>"
@@ -94,6 +98,7 @@ class ScaleBar(models.Model):
         null=True
     )
 
+
 class ScaleBarLabel(models.Model):
     text = models.CharField(max_length=15)
     x1 = models.IntegerField(null=True)
@@ -105,6 +110,7 @@ class ScaleBarLabel(models.Model):
     nm = models.FloatField(null=True, blank=True)
     scale_bar = models.ForeignKey('ScaleBar', on_delete=models.CASCADE, null=True)
 
+
 class SubfigureLabel(models.Model):
     text = models.CharField(max_length=15)
     x1 = models.IntegerField(null=True)
@@ -115,14 +121,15 @@ class SubfigureLabel(models.Model):
     box_confidence = models.FloatField(null=True, blank=True)
     subfigure = models.ForeignKey('Subfigure', on_delete=models.CASCADE, null=True)  
 
+
 class Query(models.Model):
     id = models.AutoField(primary_key=True) # auto-create id for query
     name = models.TextField(null=True)
-    NATURE = "nature"
-    RCS = "rcs"
+    NATURE = "Nature"
+    RCS = "RCS"
     JOURNAL_CHOICES = [
-        (NATURE, "nature"),
-        (RCS, "rcs")
+        (NATURE, "Nature"),
+        (RCS, "RCS")
     ]
     journal_family = models.CharField(
         max_length=10,
