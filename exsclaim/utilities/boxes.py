@@ -7,6 +7,7 @@ as [{"x": x1, "y": y1}, ...] or 'labelbox'
 In addition, we often want to check the relation of two bounding
 boxes and their properties (like center point)
 """
+from numpy import ndarray
 
 
 __all__ = ["convert_coords_to_labelbox", "convert_labelbox_to_coords", "find_box_center", "crop_from_geometry", "is_contained"]
@@ -39,7 +40,7 @@ def find_box_center(geometry):
     return (x2 + x1) / 2.0, (y2 + y1) / 2.0
 
 
-def crop_from_geometry(geometry:list[dict], image:"np.ndarray"):
+def crop_from_geometry(geometry:list[dict], image:ndarray) -> ndarray:
     """Returns an image cropped to include coordinates in geometry
 
     Args:

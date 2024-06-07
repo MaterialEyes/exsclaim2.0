@@ -1,7 +1,6 @@
 """Code for loading models from checkpoints saved in GoogleDrive
 
 Model names are mapped to googleids in model_names_to_google_ids."""
-import os
 from .download import download_file_from_google_drive
 from torch import load
 from pathlib import Path
@@ -28,8 +27,8 @@ def load_model_from_checkpoint(model, model_name, cuda, device):
     model.to(device)
 
     # download the model if isn't already
-    if not os.path.isfile(checkpoint):
-        os.makedirs(checkpoints_path, exist_ok=True)
+    if not checkpoint.isfile():
+        checkpoints_path.mkdir(exist_ok=True)
         file_id = model_names_to_googleids[model_name]
         download_file_from_google_drive(file_id, checkpoint)
 
