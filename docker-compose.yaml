@@ -1,10 +1,10 @@
 version: "3"
 services:
     postgres:
-        image: postgres:11.6
+        image: postgres:latest
         environment:
             - POSTGRES_USER=postgres
-#            - POSTGRES_PASSWORD=exsclaimtest!9700
+            - POSTGRES_PASSWORD=exsclaimtest!9700
             - POSTGRES_DB=exsclaim
 
     api:
@@ -15,8 +15,9 @@ services:
             context: ./api
             args:
                 ENV: dev
-                EXSCLAIM_GITHUB: katerinavr/exsclaim
-                # EXSCLAIM_GIT_REVISION: main
+                EXSCLAIM_GITHUB: lwashington3/exsclaim2.0
+#                EXSCLAIM_GITHUB: katerinavr/exsclaim
+#                EXSCLAIM_GIT_REVISION: javascript_fixes
             target: base
         command: >
             bash -c "python wait_for_postgres.py &&

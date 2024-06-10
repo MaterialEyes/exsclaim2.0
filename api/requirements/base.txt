@@ -1,21 +1,21 @@
 # Core
-pytz==2021.3
-Django==4.0
-django-configurations==2.3.1
-gunicorn==20.1.0
-newrelic==7.2.4.171
+pytz==2024.1
+Django==5.0.6
+django-configurations==2.5.1
+gunicorn==22.0.0
+newrelic==9.10.0
 
 # For the persistence stores
 # psycopg2-binary==2.9.2
 psycopg==3.1.19
-dj-database-url==0.5.0
+dj-database-url==2.2.0
 
 # Model Tools
-django-model-utils==4.2.0
+django-model-utils==4.5.1
 django_unique_upload==0.2.1
 
 # Rest apis
-djangorestframework==3.13.0
-Markdown==3.3.6
-django-filter==21.1
-django-cors-headers==3.11.0
+djangorestframework==3.15.1
+Markdown==3.6
+django-filter==24.2
+django-cors-headers==4.3.1
