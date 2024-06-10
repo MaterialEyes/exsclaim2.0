@@ -1113,9 +1113,9 @@ class RSC(JournalFamilyDynamic):
             # search_url
             # search_url = self.turn_page(search_url, page_number + 1)
             # try:
-            element = self.driver.find_element(By.CSS_SELECTOR, ".paging__btn.paging__btn--next")
+            element = self.page.locator(".paging__btn.paging__btn--next")
             sleep(10)
-            self.driver.execute_script("arguments[0].click();", element)
+            element.first.click(force=True)
             sleep(10)
             soup = BeautifulSoup(self.page.locator("html").inner_html(), 'html.parser')
         return article_paths
