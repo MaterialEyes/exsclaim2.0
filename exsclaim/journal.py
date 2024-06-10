@@ -2,8 +2,8 @@ import cv2
 import numpy as np
 import requests
 
+from .browser import ExsclaimBrowser
 from .utilities import paths
-from .tool import ExsclaimBrowser
 
 from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup, Tag
@@ -22,7 +22,7 @@ from time import sleep
 from urllib.request import urlretrieve
 
 
-__all__ = ["JournalFamily", "JournalFamilyDynamic", "ACS", "Nature", "RSC", "Wiley"]
+__all__ = ["JournalFamily", "JournalFamilyDynamic", "ACS", "Nature", "RSC", "Wiley", "journals"]
 
 
 class JournalFamily(ABC, ExsclaimBrowser):
@@ -1353,3 +1353,11 @@ class Wiley(JournalFamily):
 
     def get_figure_url(self, figure_subtree):
         return self.prepend + figure_subtree.find("a", href=True)["href"]
+
+
+journals = {
+    "acs": ACS,
+    "nature": Nature,
+    "rsc": RSC,
+    "wiley": Wiley,
+}

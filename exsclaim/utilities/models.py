@@ -27,7 +27,7 @@ def load_model_from_checkpoint(model, model_name, cuda, device):
     model.to(device)
 
     # download the model if isn't already
-    if not checkpoint.isfile():
+    if not checkpoint.is_file():
         checkpoints_path.mkdir(exist_ok=True)
         file_id = model_names_to_googleids[model_name]
         download_file_from_google_drive(file_id, checkpoint)

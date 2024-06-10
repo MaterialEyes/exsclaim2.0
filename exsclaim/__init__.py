@@ -1,3 +1,4 @@
+from .browser import *
 from .caption import *
 from .figure import *
 from .journal import *

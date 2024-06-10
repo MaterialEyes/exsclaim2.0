@@ -48,7 +48,7 @@ def get_model(train_status):
 
     # load an object detection model pre-trained on COCO
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(
-        pretrained=faster, pretrained_backbone=resnet
+        weights=faster, pretrained_backbone=resnet
     )
     # get the number of input features for the classifier
     in_features = model.roi_heads.box_predictor.cls_score.in_features

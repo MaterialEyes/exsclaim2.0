@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 from pathlib import Path
 from os import system
 
@@ -22,7 +22,7 @@ setup(
 	long_description=long_description,
 	long_description_content_type="text/markdown",
 	url="https://github.com/MaterialEyes/exsclaim",
-	packages=setuptools.find_packages(),
+	packages=find_packages(),
 	install_requires=install_requires,
 	package_data={
 		'exsclaim': ['figures/config/yolov3_default_master.cfg',
@@ -68,22 +68,3 @@ setup(
 		'Tracker': 'https://github.com/MaterialEyes/exsclaim/issues',
 	},
 )
-
-
-def download_file_from_google_drive(_id:str, destination:str | Path):
-	system(f"gdown https://docs.google.com/uc?id={_id} -O {destination}")
-
-
-def download_models():
-	from site import getsitepackages
-
-	models_path = Path(getsitepackages()[0]) / "exsclaim" / "figures" / "checkpoints"
-	models_path.mkdir(exist_ok=True)
-	for _id, destination in (
-			('1ZodeH37Nd4ZbA0_1G_MkLKuuiyk7VUXR', 'classifier_model.pt'),
-			('1Hh7IPTEc-oTWDGAxI9o0lKrv9MBgP4rm', 'object_detection_model.pt'),
-			('1rZaxCPEWKGwvwYYa8jLINpUt20h0jo8y', 'text_recognition_model.pt'),
-			('1B4_rMbP3a1XguHHX4EnJ6tSlyCCRIiy4', 'scale_bar_detection_model.pt'),
-			('1oGjPG698LdSGvv3FhrLYh_1FhcmYYKpu', 'scale_label_recognition_model.pt'),
-	):
-		download_file_from_google_drive(_id, models_path / destination)

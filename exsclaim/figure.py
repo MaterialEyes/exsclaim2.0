@@ -92,7 +92,7 @@ class FigureSeparator(ExsclaimTool):
 
         # Load scale bar detection model
         # load an object detection model pre-trained on COCO
-        scale_bar_detection_model = fasterrcnn_resnet50_fpn(pretrained=True)
+        scale_bar_detection_model = fasterrcnn_resnet50_fpn(weights=True)
 
         input_features = scale_bar_detection_model.roi_heads.box_predictor.cls_score.in_features
 

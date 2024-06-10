@@ -8,7 +8,9 @@ other, but they expose the same interface, so they are
 interchangeable.
 """
 
-from . import caption, journal
+from .browser import ExsclaimBrowser
+from .caption import safe_summarize_caption, get_context, get_keywords, safe_separate_captions
+from .journal import journals
 from .utilities import initialize_results_dir, Printer
 
 from abc import ABC, abstractmethod
@@ -18,9 +20,8 @@ from langchain.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 from logging import getLogger
 from pathlib import Path
 from PIL import Image
-from playwright.sync_api import sync_playwright, Browser
+from playwright.sync_api import Browser
 from time import time_ns as timer, time, sleep
-from typing import Callable, Any
 
 import json
 import os
@@ -32,7 +33,7 @@ import cv2
 import numpy as np
 
 
-__all__ = ["ExsclaimTool", "ExsclaimBrowser", "JournalScraper", "HTMLScraper", "CaptionDistributor"]
+__all__ = ["ExsclaimTool", "JournalScraper", "HTMLScraper", "CaptionDistributor"]
 
 
 class ExsclaimTool(ABC):
@@ -146,71 +147,6 @@ class ExsclaimTool(ABC):
 		self.logger.exception(error_msg)
 
 
-class ExsclaimBrowser(object):
-	def __init__(self, browser:Browser=None, set_extra_headers:bool=True):
-		# Initialize the playwright browser
-		if browser is None:
-			self.playwright = sync_playwright().start()
-			self.browser = self.playwright.chromium.launch(headless=True, chromium_sandbox=False)
-			browser = self.browser
-		self.page = browser.new_page()
-		if set_extra_headers:
-			page.set_extra_http_headers({
-				"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-				"Accept-Encoding": "gzip, deflate, br, zstd",
-				"Accept-Language": "en-US,en;q=0.5",
-				"Cache-Control": "max-age=0",
-				"Priority": "u=0, i",
-				"Sec-Ch-Ua": '"Brave";v="125", "Chromium";v="125", "Not.A / Brand";v="24"',
-				"Sec-Ch-Ua-Mobile": "?0",
-				"Sec-Ch-Ua-Platform": "Linux",
-				"Sec-Fetch-Dest": "document",
-				"Sec-Fetch-Mode": "navigate",
-				"Sec-Fetch-Site": "none",
-				"Sec-Fetch-User": "?1",
-				"Sec-Gpc": "1",
-				"Upgrade-Insecure-Requests": "1",
-				"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-			})
-
-	def __del__(self):
-		self.close_browser()
-
-	def close_browser(self):
-		self.page.close()
-		if hasattr(self, "playwright"):
-			self.browser.close()
-			self.playwright.stop()
-
-	def temporary_browser(self, function:Callable[[Browser, Page, Any | None], Any], set_extra_headers=True, **kwargs):
-		browser = self.playwright.chromium.launch(headless=True, chromium_sandbox=False)
-
-		page = browser.new_page()
-		if set_extra_headers:
-			page.set_extra_http_headers({
-				"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-				"Accept-Encoding": "gzip, deflate, br, zstd",
-				"Accept-Language": "en-US,en;q=0.5",
-				"Cache-Control": "max-age=0",
-				"Priority": "u=0, i",
-				"Sec-Ch-Ua": '"Brave";v="125", "Chromium";v="125", "Not.A / Brand";v="24"',
-				"Sec-Ch-Ua-Mobile": "?0",
-				"Sec-Ch-Ua-Platform": "Linux",
-				"Sec-Fetch-Dest": "document",
-				"Sec-Fetch-Mode": "navigate",
-				"Sec-Fetch-Site": "none",
-				"Sec-Fetch-User": "?1",
-				"Sec-Gpc": "1",
-				"Upgrade-Insecure-Requests": "1",
-				"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-			})
-
-		values = function(browser, page, **kwargs)
-		page.close()
-		browser.close()
-		return values
-
-
 class JournalScraper(ExsclaimTool):
 	"""
 	JournalScraper object.
@@ -219,14 +155,6 @@ class JournalScraper(ExsclaimTool):
 	Parameters:
 	None
 	"""
-
-	journals = {
-		"acs": journal.ACS,
-		"nature": journal.Nature,
-		"rsc": journal.RSC,
-		"wiley": journal.Wiley,
-	}
-
 	def __init__(self, search_query:dict):
 		super().__init__(search_query, __name__ + ".JournalScraper")
 		self.new_articles_visited = set()
@@ -277,11 +205,9 @@ class JournalScraper(ExsclaimTool):
 		# Checks that user inputted journal family has been defined and
 		# grabs instantiates an instance of the journal family object
 		journal_family_name = search_query["journal_family"]
-		if journal_family_name not in self.journals:
-			raise NameError(
-				"journal family {0} is not defined".format(journal_family_name)
-			)
-		journal_subclass = self.journals[journal_family_name]
+		if journal_family_name not in journals:
+			raise NameError(f"Journal family {journal_family_name} is not defined.")
+		journal_subclass = journals[journal_family_name]
 		j_instance = journal_subclass(search_query)
 
 		self.results_directory.mkdir(exist_ok=True)
@@ -319,11 +245,7 @@ class JournalScraper(ExsclaimTool):
 			counter += 1
 
 		t1 = time()
-		self.display_info(
-			">>> Time Elapsed: {0:.2f} sec ({1} articles)\n".format(
-				t1 - t0, int(counter - 1)
-			)
-		)
+		self.display_info(f">>> Time Elapsed: {t1-t0:.2f} sec ({counter-1:,} articles)\n")
 		self._appendJSON(self.results_directory / "exsclaim.json", exsclaim_json)
 		return exsclaim_json
 
@@ -910,9 +832,9 @@ class CaptionDistributor(ExsclaimTool):
 	def _load_model(self):
 		if "" in self.model_path:
 			self.model_path = os.path.dirname(__file__) + "/captions/models/"
-		return caption.load_models(self.model_path)
+		# return caption.load_models(self.model_path) # TODO: Find out where load_models comes from
 
-	def _update_exsclaim(self,search_query, exsclaim_dict, figure_name, delimiter, caption_dict):
+	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter, caption_dict):
 		from exsclaim import caption
 
 		llm = search_query["llm"]
@@ -935,9 +857,9 @@ class CaptionDistributor(ExsclaimTool):
 			master_image = {
 				"label": label,
 				"description": caption_dict[label],  # ["description"],
-				"keywords": caption.safe_summarize_caption(query, api, llm).split(', '),
-				# "context": caption.get_context(query, documents, embeddings),
-				# "general": caption.get_keywords(caption.get_context(query, documents, embeddings), api, llm).split(', '),
+				"keywords": safe_summarize_caption(query, api, llm).split(', '),
+				# "context": get_context(query, documents, embeddings),
+				# "general": get_keywords(get_context(query, documents, embeddings), api, llm).split(', '),
 			}
 			exsclaim_dict[figure_name]["unassigned"]["captions"].append(master_image)
 		return exsclaim_dict
@@ -959,13 +881,12 @@ class CaptionDistributor(ExsclaimTool):
 	def _run_loop_function(self, search_query, exsclaim_json:dict, figure:Path, new_separated:set):
 		caption_text = exsclaim_json[figure_name]["full_caption"]
 		# print('full caption',caption_text)
-		# delimiter = caption.find_subfigure_delimiter(model, caption_text)
 		delimiter = 0
 		llm = search_query["llm"]
 		# print('llm', llm)
 		api = search_query["openai_API"]
 		# print('api',api)
-		caption_dict = caption.safe_separate_captions(caption_text, api, llm="gpt-3.5-turbo")
+		caption_dict = safe_separate_captions(caption_text, api, llm="gpt-3.5-turbo")
 		# caption.associate_caption_text( # here add the gpt3 code separate_captions(caption_text) #
 		#  model, caption_text, search_query["query"]
 		# )

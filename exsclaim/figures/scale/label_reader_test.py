@@ -1,6 +1,6 @@
 import json
-import os
-import pathlib
+from os import listdir
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -51,18 +51,16 @@ class ScaleBarReaderTest:
 
         # load an object detection model pre-trained on COCO
         if depth == 18:
-            model = models.resnet18(pretrained=pretrained)
+            model = models.resnet18(weights=pretrained)
         elif depth == 50:
-            model = models.resnet50(pretrained=pretrained)
+            model = models.resnet50(weights=pretrained)
         elif depth == 152:
-            model = models.resnet152(pretrained=pretrained)
+            model = models.resnet152(weights=pretrained)
         else:
             raise ValueError(f"Depth must be 18, 50, or 152; not {depth}.")
 
-        device = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        )
         cuda = torch.cuda.is_available()  # and (gpu_id >= 0)
+        device = torch.device("cuda" if cuda else "cpu")
 
         if depth == 18:
             model.fc = nn.Sequential(
@@ -73,7 +71,7 @@ class ScaleBarReaderTest:
             )
         else:
             model.fc = nn.Sequential(
-                nn.Linear(2048, 512),
+                nn.Linear(2_048, 512),
                 nn.ReLU(),
                 nn.Dropout(0.2),
                 nn.Linear(512, classes),
@@ -410,7 +408,7 @@ class ScaleBarReaderTest:
     def test_single_model(self, checkpoint_path):
         """Tests the accuracy and validity of reading scale bar labels"""
         self.set_up_model(checkpoint_path)
-        scale_label_data = pathlib.Path(__file__).resolve(strict=True)
+        scale_label_data = Path(__file__).resolve(strict=True)
         scale_label_data = (
             scale_label_data.parent.parent.parent
             / "tests"
@@ -425,7 +423,7 @@ class ScaleBarReaderTest:
         actual_idxs = []
         confidences = []
         skipped = 0
-        for label_dir in os.listdir(scale_label_data):
+        for label_dir in listdir(scale_label_data):
             label = str(label_dir)
             actual_text = self.get_actual_text(label)
             if actual_text in self.class_to_idx:
@@ -433,24 +431,22 @@ class ScaleBarReaderTest:
             else:
                 skipped += 1
                 actual_idx = -1
-            for image_file in os.listdir(scale_label_data / label):
-                scale_label_image = Image.open(
-                    scale_label_data / label / image_file
-                ).convert("RGB")
-                predicted_idx, predicted_text, confidence = self.run_model(
-                    scale_label_image
-                )
+            for image_file in listdir(scale_label_data / label):
+                scale_label_image = Image.open(scale_label_data / label / image_file).convert("RGB")
+                predicted_idx, predicted_text, confidence = self.run_model(scale_label_image)
+
                 predicted_idxs.append(predicted_idx)
                 predicted_classes.append(predicted_text)
                 actual_classes.append(actual_text)
                 actual_idxs.append(actual_idx)
                 confidences.append(float(confidence))
+
                 if predicted_idx == actual_idx:
                     correct += 1
                 else:
                     incorrect += 1
 
-        accuracy = correct / float(correct + incorrect + 0.0000000000000001)
+        accuracy = correct / int(correct + incorrect)
         return {
             "predicted_class": predicted_classes,
             "predicted_idx": predicted_idxs,
@@ -463,7 +459,7 @@ class ScaleBarReaderTest:
     def test_many_models(self, checkpoint_dir):
         """tests accuracy of different scale label reading methods"""
         results_dict = {}
-        for filename in os.listdir(checkpoint_dir):
+        for filename in listdir(checkpoint_dir):
             model_name, filetype = str(filename).split(".")
             if model_name not in {
                 "some_18-120",
@@ -482,6 +478,6 @@ class ScaleBarReaderTest:
 
 
 if __name__ == "__main__":
-    checkpoint_dir = pathlib.Path(__file__).parent / "checkpoints" / "pretrained"
+    checkpoint_dir = Path(__file__).parent / "checkpoints" / "pretrained"
     test = ScaleBarReaderTest()
     test.test_many_models(checkpoint_dir)
