@@ -37,7 +37,7 @@ def convert_labelbox_to_coords(geometry):
 def find_box_center(geometry):
     """Returns the center (x, y) coords of the box"""
     x1, y1, x2, y2 = convert_labelbox_to_coords(geometry)
-    return (x2 + x1) / 2.0, (y2 + y1) / 2.0
+    return (x1 + x2) / 2.0, (y1 + y2) / 2.0
 
 
 def crop_from_geometry(geometry:list[dict], image:ndarray) -> ndarray:
@@ -45,7 +45,7 @@ def crop_from_geometry(geometry:list[dict], image:ndarray) -> ndarray:
 
     Args:
         geometry (list of dicts): Geometry JSON from exsclaim JSON.
-            4 dicts, each have x and y coords for corners of bounding
+            4 dicts, each having x and y coords for corners of bounding
             box. [Top left, bottom left, top right, bottom right]
         image (np.array): Numpy array representing an image to be cropped
     Returns:

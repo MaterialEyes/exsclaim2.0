@@ -131,6 +131,8 @@ class Pipeline:
                 be included in tools list. Overridden by a tools argument
             figure_separator (boolean): true if FigureSeparator should
                 be included in tools list. Overridden by a tools argument
+            html_scraper (boolean): true if FigureSeparator should
+                be included in tools list. Overridden by a tools argument
         Returns:
             exsclaim_dict (dict): an exsclaim json
         Modifies:
@@ -208,7 +210,12 @@ class Pipeline:
                 self.to_csv()
 
             if SaveMethods.MONGO in save_methods:
-                import pymongo
+                try:
+                    import pymongo
+                except ImportError | ModuleNotFoundError:
+                    from os import system
+                    system("pip install pymongo==4.7.3")
+                    import pymongo
 
                 db_client = pymongo.MongoClient(self.query_dict["mongo_connection"])
                 db = db_client["materialeyes"]

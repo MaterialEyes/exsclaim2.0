@@ -1,5 +1,6 @@
 from setuptools import setup
 from pathlib import Path
+from os import system
 
 # build with python setup.py bdist_wheel
 # upload to testpypi w/ python3 -m twine upload --repository testpypi dist/*
@@ -14,7 +15,7 @@ with open(here / "requirements.txt", "r") as f:
 
 setup(
 	name="exsclaim",
-	version="2.0.1",
+	version="2.0.2b0",
 	author=('Eric Schwenker','Trevor Spreadbury','Weixin Jiang','Maria Chan'),
 	author_email="developer@materialeyes.org",
 	description="EXSCLAIM! is a library for the automatic EXtraction, Separation, and Caption-based natural Language Annotation of IMages from scientific figures.",
@@ -60,10 +61,29 @@ setup(
 			'exsclaim=exsclaim.command_line:main',
 		],
 	},
-	python_requires='>=3.6',
+	python_requires='>=3.10',
 	project_urls={
 		'Documentation': 'https://github.com/MaterialEyes/exsclaim/wiki',
 		'Source': 'https://github.com/MaterialEyes/exsclaim',
 		'Tracker': 'https://github.com/MaterialEyes/exsclaim/issues',
 	},
 )
+
+
+def download_file_from_google_drive(_id:str, destination:str | Path):
+	system(f"gdown https://docs.google.com/uc?id={_id} -O {destination}")
+
+
+def download_models():
+	from site import getsitepackages
+
+	models_path = Path(getsitepackages()[0]) / "exsclaim" / "figures" / "checkpoints"
+	models_path.mkdir(exist_ok=True)
+	for _id, destination in (
+			('1ZodeH37Nd4ZbA0_1G_MkLKuuiyk7VUXR', 'classifier_model.pt'),
+			('1Hh7IPTEc-oTWDGAxI9o0lKrv9MBgP4rm', 'object_detection_model.pt'),
+			('1rZaxCPEWKGwvwYYa8jLINpUt20h0jo8y', 'text_recognition_model.pt'),
+			('1B4_rMbP3a1XguHHX4EnJ6tSlyCCRIiy4', 'scale_bar_detection_model.pt'),
+			('1oGjPG698LdSGvv3FhrLYh_1FhcmYYKpu', 'scale_label_recognition_model.pt'),
+	):
+		download_file_from_google_drive(_id, models_path / destination)
