@@ -18,6 +18,7 @@ from playwright.sync_api import sync_playwright, Page, Browser, Locator
 from PIL import Image
 from shutil import copyfileobj
 from random import randint
+from re import compile, search
 from time import sleep
 from urllib.request import urlretrieve
 
@@ -149,6 +150,10 @@ class JournalFamily(ABC, ExsclaimBrowser):
         """Number of / separated segments to articles path"""
         return self._articles_path_length
 
+    @property
+    def prepend(self) -> str:
+        return self_prepend
+
     def __init__(self, search_query: dict, **kwargs):
         """creates an instance of a journal family search using a query
         Args:
@@ -179,18 +184,17 @@ class JournalFamily(ABC, ExsclaimBrowser):
 
     # Helper Methods for retrieving relevant article URLS
 
-    @abstractmethod
-    def get_page_info(self, soup: BeautifulSoup) -> tuple:
+    # @abstractmethod
+    def get_page_info(self, page: Page) -> tuple[int, int, int]:
         """Retrieve details on total results from search query
         Args:
-            soup: a search results page
+            page: a search results page
         Returns:
             (index origin, total page count in search, total results from search)
         """
-        pass
 
-    @abstractmethod
-    def turn_page(self, url: str, page_number: int) -> BeautifulSoup:
+    # @abstractmethod
+    def turn_page(self, url: str, page_number: int) -> str:
         """Return page_number page of search results
         Args:
             url: the url to a search results page
@@ -199,29 +203,28 @@ class JournalFamily(ABC, ExsclaimBrowser):
             soup of next page
         """
         new_url = f"{url}&{self.page_param}{page_number}"
-        return self.get_soup_from_request(new_url)
+        return new_url
 
-    @abstractmethod
-    def get_additional_url_arguments(self, soup: BeautifulSoup) -> tuple:
-        """Get lists of additional search url parameters
-        Some JournalFamilies limit the number of articles returned
-        by a single search. In order to retrieve articles beyond this,
-        we create additional search queries filtering for non-overlapping
-        sets, and execute them individually.
+    # @abstractmethod
+    def get_additional_url_arguments(self, page: Page) -> tuple[list[str], set[str], list[str]]:
+        """Get lists of additional search url parameters.
+        Some JournalFamilies limit the number of articles returned by a single search.
+        In order to retrieve articles beyond this, we create additional search
+        non-overlapping sets, and execute them individually.
         Args:
-            soup: initial search result for search term
+            page: initial search result for search term
         Returns:
             (years, journal_codes, orderings): where:
                 years is a list of strings of desired date ranges
-                journal_codes is a list of strings of desired journal codes
+                journal_codes is a set of strings of desired journal codes
                 orderings is a list of strings of desired results ordering
             Each of these should be in order of precedence.
         """
-        pass
+        return [""], {""}, [""]
 
     # Helper Methods for retrieving figures from articles
 
-    def get_license(self, soup: BeautifulSoup) -> tuple:
+    def get_license(self, soup: BeautifulSoup) -> tuple[bool, str]:
         """Checks the article license and whether it is open access
         Args:
             soup: representation of page html
@@ -231,7 +234,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         """
         return (False, "unknown")
 
-    @abstractmethod
+    # @abstractmethod
     def is_link_to_open_article(self, tag: Tag) -> bool:
         """Checks if link is to an open access article
         Args:
@@ -240,9 +243,9 @@ class JournalFamily(ABC, ExsclaimBrowser):
         Returns:
             True if the article is confirmed open_access
         """
-        return False
+        return self.open
 
-    @abstractmethod
+    # @abstractmethod
     def get_figure_subtrees(self, soup: BeautifulSoup) -> list:
         """Retrieves list of bs4 parse subtrees containing figure elements
         Args:
@@ -255,7 +258,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         ]
         return figure_list
 
-    def get_figure_list(self, url):
+    def get_figure_list(self, url:str) -> list[BeautifulSoup]:
         """
         Returns list of figures in the given url
         Args:
@@ -279,7 +282,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
             page.goto(url)
             return [a for a in page.locator("figure").all() if self.extra_key in str(a)]
 
-        return self.temporary_browser(get_figure_list_from_playwright)
+        return self.temporary_browser(get_figure_list_from_playwright) # div.c-article-section__figure-description
 
     def get_soup_from_request(self, url: str) -> BeautifulSoup:
         """Get a BeautifulSoup parse tree (lxml parser) from a url request
@@ -301,7 +304,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         soup = BeautifulSoup(r.text, "lxml")
         return soup
 
-    @abstractmethod
+    # @abstractmethod
     def find_captions(self, figure_subtree: BeautifulSoup) -> ResultSet:
         """
         Returns all captions associated with a given figure
@@ -326,7 +329,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
             copyfileobj(response.raw, out_file)
         del response
 
-    @abstractmethod
+    # @abstractmethod
     def get_figure_url(self, figure_subtree: BeautifulSoup) -> str:
         """Returns url of figure from figure's html subtree
         Args:
@@ -600,6 +603,7 @@ class JournalFamilyDynamic(JournalFamily):
 # ##################################################################
 
 
+# FIXME: ACS Can tell that Playwright is a bot and is giving 403 Unauthorized
 class ACS(JournalFamilyDynamic):
     def __init__(self, search_query: dict, **kwargs):
         super().__init__(search_query, **kwargs)
@@ -628,44 +632,18 @@ class ACS(JournalFamilyDynamic):
         self._articles_path_length = 3
         self._max_query_results = 1_000
 
-    def get_page_info(self, url, page:Page=None):
-        def get_page_info_from_playwright(browser:Browser, page:Page, **kwargs) -> tuple[int, list]:
-            # options.add_argument("start-maximized")
-            # options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            # options.add_experimental_option('useAutomationExtension', False)
-            # options.add_argument("--disable-dev-shm-usage") #overcome limited resource problems
-            # options.binary_location = "/gpfs/fs1/home/avriza/chrome/opt/google/chrome/google-chrome"
-            # driver = webdriver.Chrome(service=Service('/gpfs/fs1/home/avriza/chromedriver'), options=options)
-            # #driver = webdriver.Chrome( options=options)
-            # stealth(driver,
-            #       languages=["en-US", "en"],
-            #       vendor="Google Inc.",
-            #       platform="Win32",
-            #       webgl_vendor="Intel Inc.",
-            #       renderer="Intel Iris OpenGL Engine",
-            #       fix_hairline=True,
-            #       )
-            page.goto(url)
-            wait_time = float(randint(0, 50))
-            page.wait_for_timeout(wait_time / 10.0)
+    def get_page_info(self, page:Page):
+        total_results = int(page.locator("span.result__count").inner_text())
+        total_results = min(total_results, 2020)
 
-            total_results = int(page.locator(".result__count").inner_text())
-            total_results = min(total_results, 2020)
-
-            page_counter = page.locator(".pagination")
-            page_counter_list = [page_number.text.strip() for page_number in page_counter.locator("li").all_inner_texts()]
-            return total_results, page_counter_list
-
-        if page is None:
-            total_results, page_counter_list = self.temporary_browser(get_page_info_from_playwright)
-        else:
-            total_results, page_counter_list = get_page_info_from_playwright(None, page)
+        page_counter = page.locator(".pagination")
+        page_counter_list = [page_number.text.strip() for page_number in page_counter.locator("li").all_inner_texts()]
 
         current_page = int(page_counter_list[0])
         total_pages = total_results // 20
         return current_page, total_pages, total_results
 
-    def get_articles_from_search_url(self, url):
+    def get_articles_from_search_url(self, url:str):
         """Generates a list of articles from a single search term"""
         max_scraped = self.search_query["maximum_scraped"]
         self.logger.info(f"GET request: {url}")
@@ -673,27 +651,9 @@ class ACS(JournalFamilyDynamic):
         def get_articles_from_playwright(browser:Browser, page:Page, **kwargs):
             article_paths = set()
             url = kwargs["url"]
-
-            # options.add_argument("--disable-dev-shm-usage")
-            # options.binary_location = "/gpfs/fs1/home/avriza/chrome/opt/google/chrome/google-chrome"
-            # driver = webdriver.Chrome(service=Service('/gpfs/fs1/home/avriza/chromedriver'), options=options)
-            #
-            # stealth(driver,
-            #       languages=["en-US", "en"],
-            #       vendor="Google Inc.",
-            #       platform="Win32",
-            #       webgl_vendor="Intel Inc.",
-            #       renderer="Intel Iris OpenGL Engine",
-            #       fix_hairline=True,
-            #       )
-
             page.goto(url)
 
-            wait_time = randint(0, 50)
-            page.wait_for_timeout(wait_time / 10.0)
-            page2 = browser.new_page()
-            start_page, stop_page, total_articles = self.get_page_info(url, page2)
-            page2.close()
+            start_page, stop_page, total_articles = self.get_page_info(page)
 
             # raise NameError("journal family {0} is not defined")
             for page_number in range(start_page, stop_page + 1):
@@ -868,9 +828,9 @@ class ACS(JournalFamilyDynamic):
 
         return self.temporary_browser(get_article_figures_from_playwright)
 
-    def get_additional_url_arguments(self, soup):
-        # rsc allows unlimited results, so no need for additional args
-        return [""], [""], [""]
+    def get_additional_url_arguments(self, page:Page):
+        # rsc allows unlimited results, so no need for additional args # TODO: Check if ACS has unlimited results
+        return super().get_additional_url_arguments(page)
 
     def get_license(self, soup):
         if isinstance(soup, BeautifulSoup):
@@ -888,9 +848,8 @@ class ACS(JournalFamilyDynamic):
         return (False, "unknown")
 
     def is_link_to_open_article(self, tag):
-        # ACS allows filtering for search. Therefore, if self.open is
-        # true, all results will be open.
-        return self.open
+        # ACS allows filtering for search. Therefore, if self.open is True, all results will be open.
+        return super().is_link_to_open_article(tag)
 
     def turn_page(self, url, pg_num):
         return f"{url.split('&startPage=')[0]}&startPage={pg_num}&pageSize=20"
@@ -913,7 +872,7 @@ class Nature(JournalFamily):
         # order options
         self._order_values = {"relevant": "relevance", "old": "date_asc", "recent": "date_desc"}
         # codes for journals most relevant to materials science
-        self._materials_journals = [
+        self._materials_journals = {
             "",
             "nature",
             "nmat",
@@ -927,7 +886,7 @@ class Nature(JournalFamily):
             "npjmatdeg",
             "npjquantmats",
             "commsmat",
-        ]
+        }
 
         self._join = "\"%20\""  # " "
         self._articles_path = "/articles/"
@@ -936,81 +895,84 @@ class Nature(JournalFamily):
         self._extra_key = " "
         self._max_query_results = 1_000
 
-    def get_page_info(self, soup):
-        def parse_page(page):
-            # Fetches the page number given the string 'page #' (e.g. page 1) otherwise
-            # returns None
-            info = page.strip().split()
-            if len(info) != 2 or info[0] != 'page':
-                raise ValueError(f"Info {info} should be of the format 'page i'")
+    def get_page_info(self, page:Page):
+        page_re = compile(r"page\n(\d+)")
 
-            return int(info[1])
+        def page_regex(locator:Locator) -> int:
+            if locator.count() == 0:
+                raise ValueError("Could not find page numbers.")
 
-        active_link = soup.find(class_='c-pagination__link c-pagination__link--active')
+            match = page_re.search(locator.inner_text())
+            if match is None:
+                raise ValueError("Could not extract page numbers.")
 
-        try:
-            current_page = parse_page(active_link.text)
-            pages = soup.find_all(class_='c-pagination__item')
-            total_pages = parse_page(pages[-2].text)
-        except:
-            current_page, total_pages = 1, 1
+            return int(match.group(1))
 
-        if soup.find(attrs={"data-test": "results-data"}) is None:
+        pages = page.locator("li.c-pagination__item")
+        if pages.count() == 0:
+            raise ValueError("Could not find page information.")
+
+        total_pages = page.locator("a.c-pagination__link")
+        total_pages = page_regex(total_pages.nth(total_pages.count() - 2))
+
+        current_page = page_regex(page.locator(".c-pagination__link.c-pagination__link--active"))
+
+        total_results = page.locator("span[data-test=results-data]")
+        if total_results.count() == 0:
             raise ValueError("No articles were found, try to modify the search criteria")
 
-        try:
-            total_results = int(soup.find(attrs={'data-test': 'results-data'}).text.split()[-2])
-            return current_page, total_pages, total_results
-        except:
-            pass
+        match = search(r"Showing (\d+)–(\d+) of\s*(\d+) results", total_results.inner_text())
+        if match is None:
+            raise ValueError("Cannot extract the number of results from the Nature article.")
+        total_results = int(match.group(3))
 
-    def get_additional_url_arguments(self, soup):
+        return current_page, total_pages, total_results
+
+    def get_additional_url_arguments(self, page:Page):
         current_year = datetime.now().year
         earliest_year = 1845
         non_exhaustive_years = 25
-        # If the search is exhaustive, search all 161 nature journals,
-        # for all years since 1845, in relevance, oldest, and youngest order.
+        # If the search is exhaustive, search all 161 nature journals, for all years since 1845, in relevance, oldest, and youngest order.
         if self.order == "exhaustive":
-            search_url = "https://www.nature.com/search/advanced"
-            advanced_search = self.get_soup_from_request(search_url)
-            journal_tags = advanced_search.find_all(name="journal[]")
-            journal_codes = [tag.value for tag in journal_tags]
-            years = [
-                str(year) + "-" + str(year)
-                for year in range(current_year, earliest_year, -1)
-            ]
-            orderings = list(self.order_values.values())
-        # If the search is not exhaustive, search the most relevant materials
-        # journals, for the past 25 years, in self.order order.
+            page.goto("https://www.nature.com/search/advanced")
+            journal_tags = page.locator("li[data-action='filter-remove-btn']")
+
+            journal_codes = {tag.inner_text.strip() for tag in journal_tags.all()}
+            years = [f"{year}-{year}" for year in range(current_year, earliest_year, -1)]
+            orderings = set(self.order_values.values())
+        # If the search is not exhaustive, search the most relevant materials journals, for the past 25 years, in self.order order.
         else:
-            journal_codes = self.materials_journals
+            journal_codes = self._materials_journals
             years = [f"{year}-{year}" for year in range(current_year - non_exhaustive_years, current_year)]
             orderings = [self.order_values[self.order]]
-        years = [""] + years
+        years = [""].extend(years)
         # author =
         return years, journal_codes, orderings
 
-    def get_license(self, soup):
-        data_layer = soup.find(attrs={"data-test": "dataLayer"})
-        data_layer_string = str(data_layer.string)
+    def get_license(self, page:Page) -> tuple[bool, str]:
+        data_layer_string = page.locator("script[data-test='dataLayer']").inner_text()
+
         data_layer_json = (
             "{" + data_layer_string.split("[{", 1)[1].split("}];", 1)[0] + "}"
         )
         parsed = loads(data_layer_json)
         # try to get whether the journal is open
         try:
-            is_open = parsed["content"]["attributes"]["copyright"]["open"]
+            _copyright = parsed["content"]["attributes"]["copyright"]
         except KeyError:
-            is_open = False
+            return False, "unknown"
+
+        is_open = _copyright.get("open", False)
 
         # try to get the license
         try:
-            _license = parsed["content"]["attributes"]["copyright"]["legacy"]["webtrendsLicenceType"]
+            _license = _copyright["legacy"]["webtrendsLicenceType"]
         except KeyError:
             _license = "unknown"
         return is_open, _license
 
     def is_link_to_open_article(self, tag):
+        # TODO: Update Nature.is_link_to_open_article
         current_tag = tag
         while current_tag.parent:
             if current_tag.name == "li" and "app-article-list-row__item" in current_tag["class"]:
@@ -1057,126 +1019,67 @@ class RSC(JournalFamilyDynamic):
         }
         self._articles_path = "/doi/"
 
-    def get_page_info(self, url):
-        self.page.goto(url)
-        sleep(2)
-        soup = BeautifulSoup(self.page.locator("html").inner_html(), 'html.parser')
-        possible_entries = [a.strip("\n") for a in soup.find(class_="fixpadv--l pos--left pagination-summary").text.strip().split(" ") if a.strip("\n").isdigit()]
-        # print(possible_entries)
-        # print(possible_entries[1])
-        # self.driver.close()
-        # possible_entries = [a.strip("\n") for a in soup.text.split(" - Showing page 1 of")[0].split("Back to tab navigation")[-1].split(" ") if a.strip("\n").isdigit()]
-        # possible_entries = [a.strip("\n") for a in soup.find(class_="fixpadv--l pos--left pagination-summary").text.strip().split(" ") if a.strip("\n").isdigit()]
-        # print(soup.find_all(class_="fixpadv--l pos--left pagination-summary")) #soup.find("pagination-summary") )
-        # if len(possible_entries) == 1:
-        #     totalResults = possible_entries[0]
-        # else:
-        #     totalResults = 1
-        totalPages = possible_entries[-1]
-        totalResults = possible_entries[0]
-        page = possible_entries[1]
-        # print(page, totalPages, totalResults)
-        # page = 1
-        # totalPages = 1
-        return int(page), int(totalPages), int(totalResults)
+    def get_page_info(self, page):
+        info = page.locator("div.fixpadv--l.pos--left.pagination-summary").first
+        match = search(r"(\d+) results - Showing page (\d+) of (\d+)", info.inner_text())
+        return int(match.group(2)), int(match.group(3)), int(match.group(1))
 
     def get_articles_from_search_url(self, search_url: str) -> set:
         """Generates a list of articles from a single search term"""
-        max_scraped = self.search_query["maximum_scraped"]
-        # self.logger.info("GET request: {}".format(search_url))
-        self.page.goto(search_url)
+        def get_articles_from_playwright(browser:Browser, page:Page, **kwargs):
+            max_scraped = self.search_query["maximum_scraped"]
+            # self.logger.info("GET request: {}".format(search_url))
+            page.goto(search_url)
 
-        wait_time = float(randint(0, 50))
-        sleep(wait_time / float(10))
-        # self.driver.close()
-        start_page, stop_page, total_articles = self.get_page_info(search_url)
-        # print('search url', search_url)
-        article_paths = set()
-        soup = BeautifulSoup(self.page.locator("html").inner_html(), 'html.parser')
+            wait_time = float(randint(0, 50))
+            sleep(wait_time / float(10))
+            start_page, stop_page, total_articles = self.get_page_info(page)
 
-        for page_number in range(start_page, stop_page + 1):
-            # print(soup.find_all("a", href=True))
-            for tag in soup.find_all("a", href=True):
-                url = tag.attrs['href']
-                url = url.split('?page=search')[0]
-                if url.split("/")[-1] in self.articles_visited or (
-                    self.open and not self.is_link_to_open_article(tag)
-                ):
-                    # It is an article but we are not interested
-                    continue
-                # self.logger.debug("Candidate Article: PASS")
-                if url.startswith('/doi/full/') or url.startswith('/en/content/articlehtml/'):
-                    article_paths.add(url)
-                if len(article_paths) >= max_scraped:
-                    return article_paths
-            # Get next page at end of loop since page 1 is obtained from
-            # search_url
-            # search_url = self.turn_page(search_url, page_number + 1)
-            # try:
-            element = self.page.locator(".paging__btn.paging__btn--next")
-            sleep(10)
-            element.first.click(force=True)
-            sleep(10)
-            soup = BeautifulSoup(self.page.locator("html").inner_html(), 'html.parser')
-        return article_paths
+            # print('search url', search_url)
+            article_paths = set()
 
-    # def get_articles_from_search_url(self, search_url: str) -> list:
-    #     """Generates a list of articles from a single search term"""
-    #     max_scraped = self.search_query["maximum_scraped"]
-    #     self.logger.info("GET request: {}".format(search_url))
-    #     soup = self.get_soup_from_request(search_url)
-    #     start_page, stop_page, total_articles = self.get_page_info(soup)
-    #     article_paths = set()
-    #     for page_number in range(start_page, stop_page + 1):
-    #         for tag in soup.find_all("a", href=True):
-    #             url = tag.attrs["href"]
-    #             self.logger.debug("Candidate Article: {}".format(url))
-    #             if (
-    #                 self.articles_path not in url
-    #                 or url.count("/") != self.articles_path_length
-    #             ):
-    #                 # The url does not point to an article
-    #                 continue
-    #             if url.split("/")[-1] in self.articles_visited or (
-    #                 self.open and not self.is_link_to_open_article(tag)
-    #             ):
-    #                 # It is an article but we are not interested
-    #                 continue
-    #             self.logger.debug("Candidate Article: PASS")
-    #             article_paths.add(url)
-    #             if len(article_paths) >= max_scraped:
-    #                 return article_paths
+            for page_number in range(start_page, stop_page + 1):
+                # print(soup.find_all("a", href=True))
+                for tag in page.locator("a[href]").all():
+                    url = tag.get_attribute("href").split('?page=search')[0]
+                    if url.split("/")[-1] in self.articles_visited:
+                        # It is an article but we are not interested
+                        continue
+                    # self.logger.debug("Candidate Article: PASS")
 
-    #         # Get next page at end of loop since page 1 is obtained from
-    #         element = self.driver.find_element(By.CSS_SELECTOR, ".paging__btn.paging__btn--next")
-    #         sleep(10)
-    #         self.driver.execute_script("arguments[0].click();", element)
-    #         sleep(10)
-    #         soup = BeautifulSoup(self.page.locator("html").inner_html(), 'html.parser')
-    #     return article_paths
+                    if url.startswith('/doi/full/') or url.startswith('/en/content/articlehtml/'):
+                        article_paths.add(url)
+
+                    if len(article_paths) >= max_scraped:
+                        return article_paths
+
+                # Get next page at end of loop since page 1 is obtained from search_url
+                # search_url = self.turn_page(search_url, page_number + 1)
+                # try:
+                page.locator(".paging__btn.paging__btn--next").first.click(force=True)
+            return article_paths
+        return self.temporary_browser(get_articles_from_playwright)
 
     def turn_page(self, url, pg_size):
         return f"{url.split('1&tab=all')[0]}{pg_size}&tab=all&fcategory=all&filter=all&Article%20Access=Open+Access"
 
-    def get_figure_list(self, url):
-        soup = self.get_soup_from_request(url)
-        figure_list = soup.find_all("div", class_="image_table")
-        return figure_list
+    def get_figure_list(self, url:str):
+        def get_figure_list_from_playwright(browser:Browser, page:Page, **kwargs):
+            page.goto(url)
+            return [BeautifulSoup(fig.inner_html(), "html.parser") for fig in page.locator("figure.img-tbl__image").all()]
 
-    def find_captions(self, figure):
-        return figure.find_all("span", class_="graphic_title")
+        return self.temporary_browser(get_figure_list_from_playwright)
+
+    def find_captions(self, figure:BeautifulSoup):
+        return figure.find_all("figcaption")
 
     def save_figure(self, figure_name, image_url):
-        figures_directory = self.results_directory / "figures"
-        out_file = figures_directory / figure_name
+        out_file = self.results_directory / "figures" / figure_name
         urlretrieve(image_url, out_file)
 
-    def get_additional_url_arguments(self, soup):
+    def get_additional_url_arguments(self, page):
         # rsc allows unlimited results, so no need for additional args
-        return [""], [""], [""]
-
-    def is_link_to_open_article(self, tag):
-        return self.open
+        return super().get_additional_url_arguments(page)
 
     def get_figure_subtrees(self, soup):
         figure_subtrees = soup.find_all("div", "image_table")
@@ -1193,19 +1096,20 @@ class RSC(JournalFamilyDynamic):
         Returns:
             A dict of figure_jsons from an article
         """
-        self.page.goto(url)
-        wait_time = float(randint(0, 50))
-        sleep(wait_time / float(10))
-        soup = BeautifulSoup(self.page.locator("html").inner_html(), 'html.parser')
-        is_open, _license = self.get_license(soup)
+        def get_article_figures_from_playwright(browser:Browser, page:Page, **kwargs) -> tuple[bool, str, str]:
+            page.goto(url)
+            is_open, _license = self.get_license(soup)
 
-        html_directory = self.results_directory / "html"
-        html_directory.mkdir(exist_ok=True)
+            html_directory = self.results_directory / "html"
+            html_directory.mkdir(exist_ok=True)
 
-        with open(html_directory / (url.split("/")[-1]+'.html'), "w", encoding='utf-8') as file:
-            file.write(str(soup))
+            with open(html_directory / (url.split("/")[-1]+'.html'), "w", encoding='utf-8') as file:
+                file.write(page.locator("html").inner_html())
+            title = page.locator("title").inner_text().strip()
+            return is_open, _license, title
 
-        figure_list = self.get_figure_list(url)
+        is_open, _license, title = self.temporary_browser(get_article_figures_from_playwright)
+        figure_list:list[BeautifulSoup] = self.get_figure_list(url)
         article_json = {}
 
         # for figure in soup.find_all('figure'):
@@ -1218,34 +1122,31 @@ class RSC(JournalFamilyDynamic):
 
             # initialize the figure's json
             article_name = url.split("/")[-1]
-            figure_json = {"title": soup.find('title').get_text(),
+            figure_json = {"title": title,
                            "article_url": url,
                            "article_name": article_name,
-                           "caption_delimiter": ""} # Allocate entry for caption delimiter
-
-            # get figure caption
-            figure_caption = ""
-            for caption in captions:
-                figure_caption += caption.get_text()
-            figure_json["full_caption"] = figure_caption
+                           "caption_delimiter": "", # Allocate entry for caption delimiter
+                           # get figure caption
+                           "full_caption": "".join(map(lambda caption: caption.get_text(), captions)),
+                           "license": _license,
+                           "open": is_open
+                           }
 
             try:
                 image_url = figure.find('a')['href']
             except:
                 img_tags = figure.find('img')['data-original']
-                image_url = 'https://pubs.rsc.org/' + img_tags
+                image_url = self.prepend + img_tags
 
             if ":" not in image_url:
-                image_url = "https://pubs.rsc.org/" + image_url
+                image_url = self.prepend + image_url
 
             figure_name = f"{article_name}_fig{figures.jpg}"  # " +  image_url.split('.')[-1]
-            print('fig_name',figure_name)
-            print('im_url',image_url)
+            print(f"{figure_name=}")
+            print(f"{image_url=}")
             # save image info
             figure_json |= {"figure_name": figure_name,
-                            "image_url": image_url,
-                            "license": _license,
-                            "open": is_open}
+                            "image_url": image_url}
 
             # save figure as image
             self.save_figure(figure_name, image_url)
@@ -1333,7 +1234,7 @@ class Wiley(JournalFamily):
 
     def is_link_to_open_article(self, tag):
         """Wiley allows filtering for search. Therefore, if self.open is True, all results will be open."""
-        return self.open
+        return super().is_link_to_open_article(tag)
 
     def find_captions(self, figure):
         return figure.find_all("span", class_="graphic_title")
@@ -1343,9 +1244,9 @@ class Wiley(JournalFamily):
         out_file = figures_directory / figure_name
         urlretrieve(image_url, out_file)
 
-    def get_additional_url_arguments(self, soup):
-        # rsc allows unlimited results, so no need for additional args
-        return [""], [""], [""]
+    def get_additional_url_arguments(self, page):
+        # rsc allows unlimited results, so no need for additional args # TODO: Check if Wiley has unlimited results
+        return super().get_additional_url_arguments(page)
 
     def get_figure_subtrees(self, soup):
         figure_subtrees = soup.find_all("div", "image_table")

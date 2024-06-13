@@ -1,30 +1,28 @@
-from glob import glob
-import json
-import logging
-from os.path import join
-from pathlib import Path
-import pathlib
-from time import time_ns as timer
-import warnings
+# FIXME: These classes aren't in this repo but exist in https://github.com/MaterialEyes/exsclaim
+from .figures import CRNN, resnet152, YOLOv3, YOLOv3img, ctc, non_max_suppression_malisiewicz, process, create_scale_bar_objects
+from .tool import ExsclaimTool
+from .utilities import boxes, Printer, load_model_from_checkpoint
 
 import cv2
+import json
+import logging
 import numpy as np
 import torch
-import torchvision.transforms as T
+import warnings
 import yaml
+
+from glob import glob
+from os.path import join
+from pathlib import Path
 from PIL import Image
 from scipy.special import softmax
 from skimage import io
+from time import time_ns as timer
 from torch.autograd import Variable
 from torch.nn.functional import softmax
+from torchvision import transforms
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-
-# FIXME: These classes aren't in this repo but exist in https://github.com/MaterialEyes/exsclaim
-from .figures import CRNN, resnet152, YOLOv3, YOLOv3img, ctc, non_max_suppression_malisiewicz, process, create_scale_bar_objects
-
-from .tool import ExsclaimTool
-from .utilities import boxes, Printer, load_model_from_checkpoint
 
 
 __all__ = ["FigureSeparator"]
@@ -69,7 +67,7 @@ class FigureSeparator(ExsclaimTool):
             self.logger.info("using cuda")
             # torch.cuda.set_device(device=args.gpu_id)
 
-        self.device = torch.device("cuda") if self.cuda else torch.device("cpu")
+        self.device = torch.device("cuda" if self.cuda else "cpu")
 
         # Load object detection model
         self.object_detection_model = load_model_from_checkpoint(
@@ -499,12 +497,12 @@ class FigureSeparator(ExsclaimTool):
         Returns:
             label_text (string): The text of the scale bar label
         """
-        resize_transform = T.Compose(
+        resize_transform = transforms.Compose(
             [
-                T.Resize((128, 512)),
-                T.Lambda(lambda image: image.convert("RGB")),
-                T.ToTensor(),
-                T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                transforms.Resize((128, 512)),
+                transforms.Lambda(lambda image: image.convert("RGB")),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
         classes = "0123456789mMcCuUnN .A"
@@ -618,7 +616,7 @@ class FigureSeparator(ExsclaimTool):
         unassigned_scale_labels = unassigned.get("scale_bar_labels", [])
         master_images = figure_json.get("master_images", [])
         image = Image.open(figure_path).convert("RGB")
-        tensor_image = T.ToTensor()(image)
+        tensor_image = transforms.ToTensor()(image)
         # Detect scale bar objects
         scale_bar_info = self.detect_scale_objects(tensor_image)
         label_names = ["background", "scale bar", "scale label"]

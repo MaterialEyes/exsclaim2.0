@@ -47,20 +47,19 @@ class ExsclaimTool(ABC):
 		Args:
 			search_query (a dict or path to dict): The Query JSON
 		"""
-		try:
-			with open(search_query) as f:
-				# Load query file to dict
-				self.search_query = json.load(f)
-		except Exception as e:
-			self.logger.debug("Search Query path {} not found. Using it as" " dictionary instead")
-			self.logger.exception(e)
+		if isinstance(search_query, dict):
 			self.search_query = search_query
+		else:
+			try:
+				with open(search_query) as f:
+					# Load query file to dict
+					self.search_query = json.load(f)
+			except Exception as e:
+				self.logger.debug(f"Search Query must be a pathlib.Path or dictionary, not {search_query.__class__.__name__}.")
+				self.logger.exception(e)
 
 		# Set up file structure
-		base_results_dir = initialize_results_dir(
-			self.search_query.get("results_dirs", None)
-		)
-		self.results_directory = base_results_dir / self.search_query["name"]
+		self.results_directory = initialize_results_dir(self.search_query.get("results_dirs", None)) / self.search_query["name"]
 		# set up logging / printing
 		self.print = "print" in self.search_query.get("logging", [])
 
