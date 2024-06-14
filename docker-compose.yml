@@ -2,7 +2,7 @@ services:
     python:
         build: .
         ports:
-            - "8888"
+            - "8888:8888"
         networks:
             - backend
             - frontend

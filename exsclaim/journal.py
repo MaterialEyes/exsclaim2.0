@@ -224,7 +224,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
 
     # Helper Methods for retrieving figures from articles
 
-    def get_license(self, soup: BeautifulSoup) -> tuple[bool, str]:
+    def get_license(self, soup: Page) -> tuple[bool, str]:
         """Checks the article license and whether it is open access
         Args:
             soup: representation of page html
@@ -347,102 +347,101 @@ class JournalFamily(ABC, ExsclaimBrowser):
         Returns:
             A list of urls (as strings)
         """
-        search_query = self.search_query
-        # creates a list of search terms
-        search_list = [
-            [search_query["query"][key]["term"]]
-            + search_query["query"][key].get("synonyms", [])
-            for key in search_query["query"]
-        ]
-        # print('search list',search_list)
-        search_product = list(product(*search_list))
-        # print('search_product',search_product)
+        def get_search_query_urls_from_playwright(browser:Browser, page:Page, **kwargs):
+            search_query = self.search_query
+            # creates a list of search terms
+            search_list = [
+                [search_query["query"][key]["term"]]
+                + search_query["query"][key].get("synonyms", [])
+                for key in search_query["query"]
+            ]
+            # print('search list',search_list)
+            search_product = list(product(*search_list))
+            # print('search_product',search_product)
 
-        search_urls = []
-        for term in search_product:
-            url_parameters = "&".join(
-                [self.term_param + self.join.join(term), self.max_page_size]
-            )
-            search_url = self.domain + self.search_path + self.pub_type + url_parameters
-            if self.open:
-                search_url += "&" + self.open_param + "&"
+            search_urls = []
+            for term in search_product:
+                url_parameters = "&".join(
+                    [self.term_param + self.join.join(term), self.max_page_size]
+                )
+                search_url = self.domain + self.search_path + self.pub_type + url_parameters
+                if self.open:
+                    search_url += "&" + self.open_param + "&"
 
-            # print('search_url', search_url)
-            self.page.goto(search_url)
-            wait_time = float(randint(0, 50))
-            sleep(wait_time / 10)
-            soup = BeautifulSoup(self.page.locator("html").inner_html, 'html.parser')
+                # print('search_url', search_url)
 
-            years, journal_codes, orderings = self.get_additional_url_arguments(soup)
-            search_url_args = []
+                page.goto(search_url)
+                wait_time = float(randint(0, 50))
+                sleep(wait_time / 10)
 
-            for year_value in years:
-                year_param = self.date_range_param + year_value
-                for journal_value in journal_codes:
-                    for order_value in orderings:
-                        args = "&".join(
-                            [
-                                year_param,
-                                self.journal_param + journal_value,
-                                self.order_param + order_value,
-                                ]
-                        )
-                        search_url_args.append(args)
-            search_term_urls = [search_url + url_args for url_args in search_url_args]
-            search_urls += search_term_urls
-            # search_urls += 'https://www.nature.com/search?q=electrochromic%20polymer&date_range=&journal=&order=relevance&author=reynolds'
-        # print('search url', search_urls)
-        return search_urls
+                years, journal_codes, orderings = self.get_additional_url_arguments(page)
+                search_url_args = []
+
+                for year_value in years:
+                    year_param = self.date_range_param + year_value
+                    for journal_value in journal_codes:
+                        for order_value in orderings:
+                            args = "&".join(
+                                [
+                                    year_param,
+                                    self.journal_param + journal_value,
+                                    self.order_param + order_value,
+                                    ]
+                            )
+                            search_url_args.append(args)
+                search_term_urls = [search_url + url_args for url_args in search_url_args]
+                search_urls += search_term_urls
+                # search_urls += 'https://www.nature.com/search?q=electrochromic%20polymer&date_range=&journal=&order=relevance&author=reynolds'
+            # print('search url', search_urls)
+            return search_urls
+        return self.temporary_browser(get_search_query_urls_from_playwright)
 
     def get_articles_from_search_url(self, search_url: str) -> set:
         """Generates a list of articles from a single search term"""
         max_scraped = self.search_query["maximum_scraped"]
         self.logger.info(f"GET request: {search_url}")
-        self.page.goto(search_url)
 
-        wait_time = randint(0, 50)
-        sleep(wait_time / 10.0)
+        def get_articles_search_url_from_playwright(browser:Browser, page:Page, **kwargs):
+            search_url = kwargs["search_url"]
+            page.goto(search_url)
+            wait_time = randint(0, 50)
+            sleep(wait_time / 10.0)
 
-        start_page, stop_page, total_articles = self.get_page_info(search_url)
+            start_page, stop_page, total_articles = self.get_page_info(page)
 
-        article_paths = set()
-        soup = BeautifulSoup(self.page.locator("html").inner_html(), 'html.parser')
-        # raise NameError("journal family {0} is not defined")
-        for page_number in range(start_page, stop_page + 1): # TODO: Convert all of the soups to Playwright locators
+            article_paths = set()
+            # raise NameError("journal family {0} is not defined")
+            for page_number in range(start_page, stop_page + 1): # TODO: Convert all of the soups to Playwright locators
 
-            # print(soup.find_all("a", href=True))
-            for tag in soup.find_all("a", href=True):
-                url = tag.attrs['href']
-                url = url.split('?page=search')[0]
-                # print(url)
+                # print(soup.find_all("a", href=True))
+                for tag in page.locator("a[href]").all():
+                    url = tag.get_attribute("href").split('?page=search')[0]
 
-                # url = tag.attrs["href"]
-                # print(url)
-                # self.logger.debug("Candidate Article: {}".format(url))
-                # if (
-                #    self.articles_path not in url
-                #    or url.count("/") != self.articles_path_length
-                # ):
-                #    # The url does not point to an article
-                #    continue
-                if url.split("/")[-1] in self.articles_visited or (
-                        self.open and not self.is_link_to_open_article(tag)
-                ):
-                    # It is an article but we are not interested
-                    continue
-                # self.logger.debug("Candidate Article: PASS")
-                if url.startswith('/doi/full/'):
-                    article_paths.add(url)
-                if url.startswith('/en/content/articlehtml/'):
-                    article_paths.add(url)
-                if len(article_paths) >= max_scraped:
-                    return article_paths
-            # Get next page at end of loop since page 1 is obtained from
-            # search_url
-            search_url = self.turn_page(search_url, page_number + 1)
-            # print('new search url', search_url)
-        # print(article_paths)
-        return article_paths
+                    # self.logger.debug("Candidate Article: {}".format(url))
+                    # if (
+                    #    self.articles_path not in url
+                    #    or url.count("/") != self.articles_path_length
+                    # ):
+                    #    # The url does not point to an article
+                    #    continue
+                    if url.split("/")[-1] in self.articles_visited or (
+                            self.open and not self.is_link_to_open_article(tag)
+                    ):
+                        # It is an article but we are not interested
+                        continue
+                    # self.logger.debug("Candidate Article: PASS")
+                    if url.startswith('/doi/full/') or url.startswith('/en/content/articlehtml/'):
+                        article_paths.add(url)
+                    if len(article_paths) >= max_scraped:
+                        return article_paths
+                # Get next page at end of loop since page 1 is obtained from
+                # search_url
+                search_url = self.turn_page(search_url, page_number + 1)
+                # print('new search url', search_url)
+            # print(article_paths)
+            return article_paths
+
+        return self.temporary_browser(get_articles_search_url_from_playwright, search_url=search_url)
 
     def get_article_extensions(self) -> list:
         """Retrieves a list of article url paths from a search query"""
@@ -493,17 +492,18 @@ class JournalFamily(ABC, ExsclaimBrowser):
         Returns:
             A dict of figure_jsons from an article
         """
-        self.page.goto(url)
-        wait_time = float(randint(0, 50))
-        sleep(wait_time / float(10))
+        def get_article_figures_from_playwright(browser:Browser, page:Page, **kwargs):
+            page.goto(url)
+            wait_time = float(randint(0, 50))
+            sleep(wait_time / float(10))
 
-        is_open, _license = self.get_license(self.page)
+            is_open, _license = self.get_license(page)
 
-        # Uncomment to save html
-        html_directory = self.results_directory / "html"
-        html_directory.mkdir(exist_ok=True)
-        with open(html_directory / (url.split("/")[-1] + ".html"), "w", encoding="utf-8") as file:
-            file.write(page.inner_html())
+            # Uncomment to save html
+            html_directory = self.results_directory / "html"
+            html_directory.mkdir(exist_ok=True)
+            with open(html_directory / (url.split("/")[-1] + ".html"), "w", encoding="utf-8") as file:
+                file.write(page.locator("html").inner_html())
 
         figure_subtrees = self.get_figure_list(url)
 
@@ -531,7 +531,8 @@ class JournalFamily(ABC, ExsclaimBrowser):
             }
 
             figure_json, image_url = self.get_figures(figure_number, figure_subtree, figure_json, url)
-            figure_name = self._get_figure_name(figure_json["article_name"], figure_subtree)
+            # figure_name = self._get_figure_name(figure_json["article_name"], figure_subtree)
+            figure_name = self._get_figure_name(figure_json["article_name"], figure_number)
 
             figure_path = Path(self.search_query["name"]) / "figures" / figure_name
             figure_json |= {
@@ -945,7 +946,7 @@ class Nature(JournalFamily):
             journal_codes = self._materials_journals
             years = [f"{year}-{year}" for year in range(current_year - non_exhaustive_years, current_year)]
             orderings = [self.order_values[self.order]]
-        years = [""].extend(years)
+        years = [""] + years
         # author =
         return years, journal_codes, orderings
 
@@ -962,6 +963,9 @@ class Nature(JournalFamily):
         except KeyError:
             return False, "unknown"
 
+        if _copyright is None:
+            return False, "unknown"
+
         is_open = _copyright.get("open", False)
 
         # try to get the license
@@ -971,20 +975,15 @@ class Nature(JournalFamily):
             _license = "unknown"
         return is_open, _license
 
-    def is_link_to_open_article(self, tag):
-        # TODO: Update Nature.is_link_to_open_article
-        current_tag = tag
-        while current_tag.parent:
-            if current_tag.name == "li" and "app-article-list-row__item" in current_tag["class"]:
-                break
-            current_tag = current_tag.parent
+    def is_link_to_open_article(self, locator:Locator) -> bool:
+        locator.click(force=True)
 
-        candidates = current_tag.find_all("span", class_="u-color-open-access")
-        for candidate in candidates:
-            if candidate.text.startswith("Open"):
-                return True
+        url = locator.page.url
+        if not url.startswith(self.domain):
+            print(f"The link led to a website outside of {self.domain}, so there is no way to know if it is open access or not: {url}.")
+            return False
 
-        return False
+        return self.get_license(locator.page)[0]
 
 
 class RSC(JournalFamilyDynamic):

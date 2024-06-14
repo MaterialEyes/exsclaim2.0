@@ -15,6 +15,7 @@ from .utilities import initialize_results_dir, Printer
 
 from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup
+from glob import glob
 from langchain.document_loaders import UnstructuredHTMLLoader
 from langchain.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 from logging import getLogger
@@ -25,7 +26,6 @@ from time import time_ns as timer, time, sleep
 
 import json
 import os
-import glob
 import requests
 import shutil
 import shutil
@@ -207,14 +207,14 @@ class JournalScraper(ExsclaimTool):
 		if journal_family_name not in journals:
 			raise NameError(f"Journal family {journal_family_name} is not defined.")
 		journal_subclass = journals[journal_family_name]
-		j_instance = journal_subclass(search_query)
+		journal = journal_subclass(search_query)
 
 		self.results_directory.mkdir(exist_ok=True)
 		t0 = time()
-		counter = 1
-		articles = j_instance.get_article_extensions()
+
+		articles = journal.get_article_extensions()
 		# Extract figures, captions, and metadata from each article
-		for article in articles:
+		for counter, article in enumerate(articles, start=1):
 			self.display_info(
 				">>> ({0} of {1}) Extracting figures from: ".format(
 					counter, len(articles)
@@ -222,26 +222,17 @@ class JournalScraper(ExsclaimTool):
 				+ article.split("/")[-1]
 			)
 			try:
-				request = j_instance.domain + article
-				article_dict = j_instance.get_article_figures(request)
+				request = journal.domain + article
+				article_dict = journal.get_article_figures(request)
 				exsclaim_json = self._update_exsclaim(exsclaim_json, article_dict)
 				self.new_articles_visited.add(article)
 			except Exception:
 				pass
-			#	 exception_string = (
-			#		"<!> ERROR: An exception occurred in"
-			#		" JournalScraper on article: {}".format(article)
-			#	 )
-			#	 if self.print:
-			#		Printer(exception_string + "\n")
-			#	 self.logger.exception(exception_string)
-
-			# Save to file every N iterations (to accommodate restart scenarios)
+						# Save to file every N iterations (to accommodate restart scenarios)
 			if counter % 1_000 == 0:
 				self._appendJSON(
 					self.results_directory / "exsclaim.json", exsclaim_json
 				)
-			counter += 1
 
 		t1 = time()
 		self.display_info(f">>> Time Elapsed: {t1-t0:.2f} sec ({counter-1:,} articles)\n")
@@ -750,7 +741,7 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 			exsclaim_json = {}
 		directory_path = search_query["html_folder"]
 
-		articles = glob.glob(os.path.join(directory_path, '*.html'))
+		articles = glob(os.path.join(directory_path, '*.html'))
 
 		html_directory = self.results_directory / "html"
 		html_directory.mkdir(exist_ok=True)
@@ -791,7 +782,6 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 
 			if journal_name == 'rsc':
 				article_dict = self.save_figures_rsc(article)
-
 
 			exsclaim_json = self._update_exsclaim(exsclaim_json, article_dict)
 

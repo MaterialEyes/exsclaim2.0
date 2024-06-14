@@ -31,13 +31,13 @@ class ExsclaimBrowser(object):
 			self.browser.close()
 			self.playwright.stop()
 
-	def temporary_browser(self, function:Callable[[Browser, Page, Any | None], Any], set_extra_headers=True, **kwargs):
+	def temporary_browser(self, function:Callable[[Browser, Page, Any], Any], set_extra_headers=True, **kwargs):
 		with sync_playwright() as playwright:
 			browser = playwright.chromium.launch(headless=True, chromium_sandbox=False)
 
 			page = browser.new_page()
 			if set_extra_headers:
-				self.set_extra_http_headers(page)
+				self.set_extra_page_headers(page)
 
 			values = function(browser, page, **kwargs)
 			page.close()

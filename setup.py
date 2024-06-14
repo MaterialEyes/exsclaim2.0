@@ -16,7 +16,7 @@ with open(here / "requirements.txt", "r") as f:
 setup(
 	name="exsclaim",
 	version="2.0.2b0",
-	author=('Eric Schwenker','Trevor Spreadbury','Weixin Jiang','Maria Chan'),
+	author="Eric Schwenker, Trevor Spreadbury, Weixin Jiang, Maria Chan",
 	author_email="developer@materialeyes.org",
 	description="EXSCLAIM! is a library for the automatic EXtraction, Separation, and Caption-based natural Language Annotation of IMages from scientific figures.",
 	long_description=long_description,
