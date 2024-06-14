@@ -2,6 +2,9 @@ import numpy as np
 from torch import nn
 
 
+__all__ = ["CRNN", "max_pooling_output_dim"]
+
+
 class CRNN(nn.Module):
     def __init__(
         self,

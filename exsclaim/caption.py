@@ -2,11 +2,11 @@
 import json
 from functools import wraps
 from langchain.chains import LLMChain
-from langchain.chat_models import ChatOpenAI
-from langchain.llms import HuggingFacePipeline
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import Chroma
+from langchain_community.chat_models import ChatOpenAI
+from langchain_community.llms import HuggingFacePipeline
+from langchain_community.vectorstores import Chroma
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from re import sub
 from time import sleep

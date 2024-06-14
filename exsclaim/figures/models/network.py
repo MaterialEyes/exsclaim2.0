@@ -3,6 +3,13 @@ import torch.nn as nn
 from torch.utils.model_zoo import load_url as load_state_dict_from_url
 
 
+__all__ = [
+    "get_model_urls", "conv3x3", "conv1x1", "BasicBlock", "Bottleneck", "ResNet", "_resnet",
+    "resnet18", "resnet34", "resnet50", "resnet101", "resnet152", "resnext50_32x4d", "resnext101_32x8d",
+    "wide_resnet50_2", "wide_resnet101_2",
+]
+
+
 def get_model_urls():
     model_urls = {
         "resnet18": "https://download.pytorch.org/models/resnet18-5c106cde.pth",
