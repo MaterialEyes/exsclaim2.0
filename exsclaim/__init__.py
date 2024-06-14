@@ -4,7 +4,6 @@ from .figure import *
 from .journal import *
 from .pipeline import *
 from .tool import *
-from .visualize_dataset import *
 
 from .figures import *
 from .tests import *

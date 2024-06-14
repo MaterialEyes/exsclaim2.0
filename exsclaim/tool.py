@@ -16,8 +16,8 @@ from .utilities import initialize_results_dir, Printer
 from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup
 from glob import glob
-from langchain.document_loaders import UnstructuredHTMLLoader
-from langchain.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
+from langchain_community.document_loaders import UnstructuredHTMLLoader
+from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 from logging import getLogger
 from pathlib import Path
 from PIL import Image
