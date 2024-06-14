@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 exsclaim/figures/checkpoints/
+output/
 # C extensions
 *.so
 
