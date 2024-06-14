@@ -18,9 +18,6 @@
 
     "llm": "gpt-3.5-turbo",
 
-    "openai_API": YOUR_API_KEY,
-
-
     "open": false,
 
     "save_format": ["boxes", "save_subfigures", "csv"],

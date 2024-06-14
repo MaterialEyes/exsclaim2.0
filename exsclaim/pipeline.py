@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 from exsclaim.utilities.logging import Printer
 
 from .figure import FigureSeparator
-from .tool import CaptionDistributor, JournalScraper, HTMLScraper
+from .tool import CaptionDistributor, JournalScraper
 from .utilities import boxes, paths
 
 
