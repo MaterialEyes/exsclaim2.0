@@ -5,6 +5,15 @@ from os import system
 # build with python setup.py bdist_wheel
 # upload to testpypi w/ python3 -m twine upload --repository testpypi dist/*
 
+
+def install_playwright_dependencies():
+	from sys import platform
+	if "linux" in platform:
+		system("apt update && apt install ffmpeg libsm6 libxext6 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libatspi2.0-0 libxcomposite1 libxdamage1 -y")
+
+	system("playwright install-deps && playwright install chromium")
+
+
 here = Path(__file__).parent.resolve()
 
 with open(here / "README.md", "r") as fh:
@@ -68,3 +77,6 @@ setup(
 		'Tracker': 'https://github.com/MaterialEyes/exsclaim/issues',
 	},
 )
+
+
+install_playwright_dependencies()
