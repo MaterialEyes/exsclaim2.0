@@ -1,8 +1,11 @@
 """Handles location of output files"""
-import pathlib
+from pathlib import Path
 
 
-def initialize_results_dir(results_dir=None):
+__all__ = ["initialize_results_dir"]
+
+
+def initialize_results_dir(results_dir:str=None) -> Path:
     """Determine where to save results for a pipeline run
 
     The output directory will be resolved in this order:
@@ -21,12 +24,13 @@ def initialize_results_dir(results_dir=None):
     Modifies:
         Creates results_dir if it doesn't exist.
     """
-    current_file = pathlib.Path(__file__).resolve(strict=True)
+    current_file = Path(__file__).resolve(strict=True)
     base_dir = current_file.parent.parent.parent
 
     if results_dir:
-        results_dir = pathlib.Path(results_dir).resolve()
+        results_dir = Path(results_dir).resolve()
     else:
         results_dir = base_dir / "output"
+
     results_dir.mkdir(parents=True, exist_ok=True)
     return results_dir

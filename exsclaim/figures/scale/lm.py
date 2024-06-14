@@ -1,12 +1,14 @@
 from __future__ import division, print_function
 
 import codecs
-import re
+from re import findall
+
+
+__all__ = ["LanguageModel"]
 
 
 class LanguageModel:
-    "simple language model: word list for token passing, char bigrams for beam search"
-
+    """Simple language model: word list for token passing, char bigrams for beam search."""
     def __init__(self, fn, classes):
         "read text from file to generate language model"
         self.initWordList(fn)
@@ -16,7 +18,7 @@ class LanguageModel:
         "internal init of word list"
         with open(fn, "r") as f:
             txt = f.read().lower()
-        words = re.findall(r"\w+", txt)
+        words = findall(r"\w+", txt)
         self.words = list(filter(lambda x: x.isalpha(), words))
 
     def initCharBigrams(self, fn, classes):
@@ -40,7 +42,7 @@ class LanguageModel:
             self.bigram[first][second] += 1
 
     def getCharBigram(self, first, second):
-        "probability of seeing character 'first' next to 'second'"
+        """Probability of seeing character 'first' next to 'second'."""
         first = first if first else " "  # map start to word beginning
         second = second if second else " "  # map end to word end
 
@@ -51,5 +53,5 @@ class LanguageModel:
         return self.bigram[first][second] / numBigrams
 
     def getWordList(self):
-        "get list of unique words"
+        """Gets the list of unique words."""
         return self.words

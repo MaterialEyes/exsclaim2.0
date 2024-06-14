@@ -6,12 +6,14 @@ from collections import defaultdict
 
 import numpy as np
 import pycocotools.mask as mask_util
-import torch
-import torch._six
+from torch import stack
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
-from . import utils
+from .utils import all_gather
+
+
+__all__ = ["CocoEvaluator", "convert_to_xywh", "merge", "create_common_coco_eval", "createIndex", "loadRes", "evaluate"]
 
 
 class CocoEvaluator(object):
@@ -195,12 +197,12 @@ class CocoEvaluator(object):
 
 def convert_to_xywh(boxes):
     xmin, ymin, xmax, ymax = boxes.unbind(1)
-    return torch.stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
+    return stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
 
 
 def merge(img_ids, eval_imgs):
-    all_img_ids = utils.all_gather(img_ids)
-    all_eval_imgs = utils.all_gather(eval_imgs)
+    all_img_ids = all_gather(img_ids)
+    all_eval_imgs = all_gather(eval_imgs)
 
     merged_img_ids = []
     for p in all_img_ids:
@@ -274,24 +276,25 @@ def createIndex(self):
 maskUtils = mask_util
 
 
-def loadRes(self, resFile):
+def loadRes(self, resFile:str):
     """
     Load result file and return a result api object.
-    :param   resFile (str)     : file name of result file
-    :return: res (obj)         : result api object
+    :param   self       :
+    :param   resFile    : file name of result file
+    :return: res (obj)  : result api object
     """
     res = COCO()
     res.dataset["images"] = [img for img in self.dataset["images"]]
 
     # print('Loading and preparing results...')
     # tic = time.time()
-    if isinstance(resFile, torch._six.string_classes):
+    if isinstance(resFile, str): # FIXME torch._six.string_classes was removed, figure out what its proper successor is
         anns = json.load(open(resFile))
-    elif type(resFile) == np.ndarray:
+    elif isinstance(resFile, np.ndarray):
         anns = self.loadNumpyAnnotations(resFile)
     else:
         anns = resFile
-    assert type(anns) == list, "results in not an array of objects"
+    assert isinstance(anns, list), "results in not an array of objects"
     annsImgIds = [ann["image_id"] for ann in anns]
     assert set(annsImgIds) == (
         set(annsImgIds) & set(self.getImgIds())
@@ -318,7 +321,7 @@ def loadRes(self, resFile):
     elif "segmentation" in anns[0]:
         res.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
         for id, ann in enumerate(anns):
-            # now only support compressed RLE format as segmentation results
+            # now only support compressed RLE formats as segmentation results
             ann["area"] = maskUtils.area(ann["segmentation"])
             if "bbox" not in ann:
                 ann["bbox"] = maskUtils.toBbox(ann["segmentation"])

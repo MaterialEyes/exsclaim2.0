@@ -4,7 +4,7 @@ import pathlib
 import unittest
 
 import numpy as np
-import torchvision.transforms as T
+from torchvision.transforms import ToTensor
 from PIL import Image
 
 from exsclaim import figure
@@ -31,7 +31,7 @@ class TestScaleDetection(unittest.TestCase):
             with self.subTest(test_name=image_name):
                 image_path = test_image_directory / image_name
                 image = Image.open(image_path).convert("RGB")
-                image = T.ToTensor()(image)
+                image = ToTensor()(image)
                 predicted_scale_bar_info = self.figure_separator.detect_scale_objects(
                     image
                 )

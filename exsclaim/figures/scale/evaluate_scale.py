@@ -8,21 +8,20 @@ import cv2
 import numpy as np
 import torch
 import torchvision
-import torchvision.transforms as T
 from PIL import Image
 from torchvision import transforms
+from torchvision.transforms import ToTensor
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
-import exsclaim.utilities.boxes as boxes
-from exsclaim.figures.models.crnn import CRNN
-from exsclaim.figures.scale.ctc import ctcBeamSearch
-from exsclaim.figures.scale.lm import LanguageModel
-from exsclaim.figures.scale.process import non_max_suppression_malisiewicz
-from exsclaim.utilities.models import load_model_from_checkpoint
+from .ctc import ctcBeamSearch, postprocess_ctc
+from .lm import LanguageModel
+from .process import non_max_suppression_malisiewicz
+from ...utilities import boxes
+from ...utilities.models import load_model_from_checkpoint
 
 
-def convert_to_rgb(image):
-    return image.convert("RGB")
+__all__ = ["create_scale_bar_objects", "detect_scale_objects", "determine_scale", "match_scale_bars", "super_resolution",
+           "read_scale_bar_label", "split_label", "test_label_reading"]
 
 
 def create_scale_bar_objects(scale_bar_lines, scale_bar_labels):
@@ -33,7 +32,7 @@ def create_scale_bar_objects(scale_bar_lines, scale_bar_labels):
             representing predicted scale bars with 'geometry', 'length',
             and 'confidence' attributes.
         scale_bar_labels (list of dicts): A list of dictionaries
-            representing predicted scale bar labesl with 'geometry',
+            representing predicted scale bar labels with 'geometry',
             'text', 'confidence', 'box_confidence', 'nm' attributes.
     Returns:
         scale_bar_jsons (list of Scale Bar JSONS): Scale Bar JSONS that
@@ -84,7 +83,7 @@ def detect_scale_objects(image, scale_bar_detection_checkpoint):
     Returns:
         scale_bar_info (list): A list of lists with the following
             pattern: [[x1,y1,x2,y2, confidence, label],...] where
-            label is 1 for scale bars and 2 for scale bar labelss
+            label is 1 for scale bars and 2 for scale bar labels
     """
     scale_bar_detection_model = torchvision.models.detection.fasterrcnn_resnet50_fpn(
         pretrained=True
@@ -124,33 +123,6 @@ def detect_scale_objects(image, scale_bar_detection_checkpoint):
     return scale_bar_info
 
 
-def postprocess_ctc(results):
-    classes = "0123456789mMcCuUnN .A"
-    idx_to_class = classes + "-"
-    for result, confidence in results:
-        confidence = float(confidence)
-        word = ""
-        for step in result:
-            word += idx_to_class[step]
-        word = word.strip()
-        word = "".join(word.split("-"))
-        print(word)
-        try:
-            number, unit = word.split()
-            number = float(number)
-            if unit.lower() == "n":
-                unit = "nm"
-            elif unit.lower() == "c":
-                unit = "cm"
-            elif unit.lower() == "u":
-                unit = "um"
-            if unit.lower() in ["nm", "mm", "cm", "um", "a"]:
-                return number, unit, confidence
-        except Exception:
-            continue
-    return -1, "m", 0
-
-
 def determine_scale(
     figure_path, detection_checkpoint, recognition_checkpoint, figure_json=None
 ):
@@ -166,16 +138,17 @@ def determine_scale(
     """
     if figure_json is None:
         figure_json = {}
+
     convert_to_nm = {
         "a": 0.1,
         "nm": 1.0,
-        "um": 1000.0,
-        "mm": 1000000.0,
-        "cm": 10000000.0,
-        "m": 1000000000.0,
+        "um": 1_000.0,
+        "mm": 1_000_000.0,
+        "cm": 10_000_000.0,
+        "m": 1_000_000_000.0,
     }
     image = Image.open(figure_path).convert("RGB")
-    tensor_image = T.ToTensor()(image)
+    tensor_image = ToTensor()(image)
     # Detect scale bar objects
     scale_bar_info = detect_scale_objects(tensor_image, detection_checkpoint)
     label_names = ["background", "scale bar", "scale label"]
@@ -294,7 +267,7 @@ def read_scale_bar_label(scale_bar_model, scale_bar_label_image):
     resize_transform = transforms.Compose(
         [
             transforms.Resize((128, 512)),
-            transforms.Lambda(convert_to_rgb),
+            transforms.Lambda(lambda image: image.convert("RGB")),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
