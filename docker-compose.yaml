@@ -36,8 +36,6 @@ services:
         image: exsclaim/ui/dashboard
         ports:
             - "3000:3000"
-        command:
-            - "sh ./install_and_run.sh"
         volumes:
             - "./dashboard:/app"
         depends_on:
