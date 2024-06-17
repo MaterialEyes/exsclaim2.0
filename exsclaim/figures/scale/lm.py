@@ -10,19 +10,19 @@ __all__ = ["LanguageModel"]
 class LanguageModel:
     """Simple language model: word list for token passing, char bigrams for beam search."""
     def __init__(self, fn, classes):
-        "read text from file to generate language model"
+        """Read text from file to generate language model"""
         self.initWordList(fn)
         self.initCharBigrams(fn, classes)
 
     def initWordList(self, fn):
-        "internal init of word list"
+        """internal init of word list"""
         with open(fn, "r") as f:
             txt = f.read().lower()
         words = findall(r"\w+", txt)
         self.words = list(filter(lambda x: x.isalpha(), words))
 
     def initCharBigrams(self, fn, classes):
-        "internal init of character bigrams"
+        """internal init of character bigrams"""
 
         # init bigrams with 0 values
         self.bigram = {c: {d: 0 for d in classes} for c in classes}

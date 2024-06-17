@@ -30,7 +30,7 @@ setup(
 	description="EXSCLAIM! is a library for the automatic EXtraction, Separation, and Caption-based natural Language Annotation of IMages from scientific figures.",
 	long_description=long_description,
 	long_description_content_type="text/markdown",
-	url="https://github.com/MaterialEyes/exsclaim",
+	url="https://github.com/MaterialEyes/exsclaim2.0",
 	packages=find_packages(),
 	install_requires=install_requires,
 	package_data={

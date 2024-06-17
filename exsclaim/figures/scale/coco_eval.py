@@ -174,8 +174,7 @@ class CocoEvaluator(object):
             if len(prediction) == 0:
                 continue
 
-            boxes = prediction["boxes"]
-            boxes = convert_to_xywh(boxes).tolist()
+            boxes = convert_to_xywh(prediction["boxes"]).tolist()
             scores = prediction["scores"].tolist()
             labels = prediction["labels"].tolist()
             keypoints = prediction["keypoints"]
@@ -306,36 +305,36 @@ def loadRes(self, resFile:str):
         res.dataset["images"] = [
             img for img in res.dataset["images"] if img["id"] in imgIds
         ]
-        for id, ann in enumerate(anns):
-            ann["id"] = id + 1
+        for _id, ann in enumerate(anns):
+            ann["id"] = _id + 1
     elif "bbox" in anns[0] and not anns[0]["bbox"] == []:
         res.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
-        for id, ann in enumerate(anns):
+        for _id, ann in enumerate(anns):
             bb = ann["bbox"]
             x1, x2, y1, y2 = [bb[0], bb[0] + bb[2], bb[1], bb[1] + bb[3]]
             if "segmentation" not in ann:
                 ann["segmentation"] = [[x1, y1, x1, y2, x2, y2, x2, y1]]
             ann["area"] = bb[2] * bb[3]
-            ann["id"] = id + 1
+            ann["id"] = _id + 1
             ann["iscrowd"] = 0
     elif "segmentation" in anns[0]:
         res.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
-        for id, ann in enumerate(anns):
+        for _id, ann in enumerate(anns):
             # now only support compressed RLE formats as segmentation results
             ann["area"] = maskUtils.area(ann["segmentation"])
             if "bbox" not in ann:
                 ann["bbox"] = maskUtils.toBbox(ann["segmentation"])
-            ann["id"] = id + 1
+            ann["id"] = _id + 1
             ann["iscrowd"] = 0
     elif "keypoints" in anns[0]:
         res.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
-        for id, ann in enumerate(anns):
+        for _id, ann in enumerate(anns):
             s = ann["keypoints"]
             x = s[0::3]
             y = s[1::3]
             x1, x2, y1, y2 = np.min(x), np.max(x), np.min(y), np.max(y)
             ann["area"] = (x2 - x1) * (y2 - y1)
-            ann["id"] = id + 1
+            ann["id"] = _id + 1
             ann["bbox"] = [x1, y1, x2 - x1, y2 - y1]
     # print('DONE (t={:0.2f}s)'.format(time.time()- tic))
 

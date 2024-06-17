@@ -7,9 +7,9 @@ import cv2
 import numpy as np
 import torch
 import torchvision
-import torchvision.transforms as T
 from PIL import Image, ImageDraw
 from torch import optim
+from torchvision import transforms
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 from . import utils
@@ -31,11 +31,11 @@ def random_gaussian_blur(image):
 
 
 def get_transform(train):
-    transforms = []
+    _transforms = []
     if train:
-        transforms.append(T.Lambda(random_gaussian_blur))
-    transforms.append(T.ToTensor())
-    return T.Compose(transforms)
+        _transforms.append(transforms.Lambda(random_gaussian_blur))
+    _transforms.append(transforms.ToTensor())
+    return transforms.Compose(_transforms)
 
 
 def get_model(train_status):

@@ -262,7 +262,7 @@ def read_scale_bar_label(scale_bar_model, scale_bar_label_image):
         scale_label_recognition_model, "scale_label_recognition_model.pt", cuda
     )
     # preprocess
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if cuda else "cpu")
     # scale_bar_label_image = super_resolution(scale_bar_label_image)
     resize_transform = transforms.Compose(
         [

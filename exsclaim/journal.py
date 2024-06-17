@@ -350,11 +350,15 @@ class JournalFamily(ABC, ExsclaimBrowser):
         def get_search_query_urls_from_playwright(browser:Browser, page:Page, **kwargs):
             search_query = self.search_query
             # creates a list of search terms
-            search_list = [
-                [search_query["query"][key]["term"]]
-                + search_query["query"][key].get("synonyms", [])
-                for key in search_query["query"]
-            ]
+            try:
+                search_list = [
+                    [search_query["query"][key]["term"]]
+                    + search_query["query"][key].get("synonyms", [])
+                    for key in search_query["query"]
+                ]
+            except TypeError as e:
+                print(f"{search_query=}")
+                raise e
             # print('search list',search_list)
             search_product = list(product(*search_list))
             # print('search_product',search_product)
@@ -407,9 +411,16 @@ class JournalFamily(ABC, ExsclaimBrowser):
             wait_time = randint(0, 50)
             sleep(wait_time / 10.0)
 
-            start_page, stop_page, total_articles = self.get_page_info(page)
-
             article_paths = set()
+
+            try:
+                start_page, stop_page, total_articles = self.get_page_info(page)
+            except ValueError as e:
+                if page.locator("h1[data-test='no-results']").count() == 1:
+                    # No results were found
+                    return article_paths
+                raise e
+
             # raise NameError("journal family {0} is not defined")
             for page_number in range(start_page, stop_page + 1): # TODO: Convert all of the soups to Playwright locators
 
@@ -449,6 +460,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         search_query_urls = self.get_search_query_urls()
         article_paths = set()
         for search_url in search_query_urls:
+            print(search_url)
             new_article_paths = self.get_articles_from_search_url(search_url)
             article_paths.update(new_article_paths)
             if len(article_paths) >= self.search_query["maximum_scraped"]:
@@ -909,15 +921,6 @@ class Nature(JournalFamily):
 
             return int(match.group(1))
 
-        pages = page.locator("li.c-pagination__item")
-        if pages.count() == 0:
-            raise ValueError("Could not find page information.")
-
-        total_pages = page.locator("a.c-pagination__link")
-        total_pages = page_regex(total_pages.nth(total_pages.count() - 2))
-
-        current_page = page_regex(page.locator(".c-pagination__link.c-pagination__link--active"))
-
         total_results = page.locator("span[data-test=results-data]")
         if total_results.count() == 0:
             raise ValueError("No articles were found, try to modify the search criteria")
@@ -926,6 +929,19 @@ class Nature(JournalFamily):
         if match is None:
             raise ValueError("Cannot extract the number of results from the Nature article.")
         total_results = int(match.group(3))
+
+        pages = page.locator("li.c-pagination__item")
+        if pages.count() == 0:
+            if not total_results:
+                with open("/opt/project/error.html", 'w') as f:
+                    f.write(page.locator("html").inner_html())
+                raise ValueError("Could not find page information.")
+            total_pages, current_page = 1, 1
+        else:
+            total_pages = page.locator("a.c-pagination__link")
+            total_pages = page_regex(total_pages.nth(total_pages.count() - 2))
+
+            current_page = page_regex(page.locator(".c-pagination__link.c-pagination__link--active"))
 
         return current_page, total_pages, total_results
 

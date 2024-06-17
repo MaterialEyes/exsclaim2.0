@@ -1,12 +1,11 @@
 import json
 from os import listdir
 from pathlib import Path
-
-import torch
-import torch.nn as nn
-import torchvision.transforms as T
 from PIL import Image
-from torchvision import models
+import torch
+from torch import nn
+from torchvision import transforms
+from torchvision import models, transforms
 
 
 __all__ = ["ScaleBarReaderTest"]
@@ -105,7 +104,7 @@ class ScaleBarReaderTest:
 
         # Code to set up scale label reading model(s)
         # id_to_class dictionaries for model outputs
-        all = {
+        _all = {
             0: "0.1 A",
             1: "0.1 nm",
             2: "0.1 um",
@@ -363,7 +362,7 @@ class ScaleBarReaderTest:
         }
         unit_data = {0: "A", 1: "mm", 2: "nm", 3: "um"}
         dataset_to_dict = {
-            "all": all,
+            "all": _all,
             "some": some,
             "scale_all": scale_all,
             "scale_some": scale_some,
@@ -386,11 +385,11 @@ class ScaleBarReaderTest:
         self.get_actual_text = get_actual_text_funcs[dataset_name]
 
     def run_model(self, cropped_image):
-        label_reader_transforms = T.Compose(
+        label_reader_transforms = transforms.Compose(
             [
-                T.Resize((224, 224)),
-                T.ToTensor(),
-                T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ]
         )
         cropped_image = label_reader_transforms(cropped_image)

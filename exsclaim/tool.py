@@ -109,7 +109,7 @@ class ExsclaimTool(ABC):
 			try:
 				exsclaim_dict = self._loop_func(search_query, exsclaim_dict, _path, new_separated)
 			except Exception as e:
-				self.display_exception(e)
+				self.display_exception(e, _path)
 
 			# Save to file every N iterations (to accommodate restart scenarios)
 			if counter % N == 0:
@@ -138,7 +138,7 @@ class ExsclaimTool(ABC):
 			Printer(info)
 		self.logger.info(info)
 
-	def display_exception(self, e:Exception):
+	def display_exception(self, e:Exception, figure_path):
 		error_msg = f"<!> ERROR: An exception occurred in {self.__class__.__name__} on figure: {figure_path}. Exception: {e}"
 		if self.print:
 			Printer(error_msg)
@@ -213,14 +213,10 @@ class JournalScraper(ExsclaimTool):
 		t0 = time()
 
 		articles = journal.get_article_extensions()
+		print(f"{articles=}")
 		# Extract figures, captions, and metadata from each article
 		for counter, article in enumerate(articles, start=1):
-			self.display_info(
-				">>> ({0} of {1}) Extracting figures from: ".format(
-					counter, len(articles)
-				)
-				+ article.split("/")[-1]
-			)
+			self.display_info(f">>> ({counter:,} of {len(articles)}) Extracting figures from: " + article.split("/")[-1])
 			try:
 				request = journal.domain + article
 				article_dict = journal.get_article_figures(request)
@@ -872,7 +868,7 @@ class CaptionDistributor(ExsclaimTool):
 		# print('full caption',caption_text)
 		delimiter = 0
 		llm = search_query["llm"]
-		# print('llm', llm)
+		# print(f"{llm=}")
 		api = search_query["openai_API"]
 		# print('api',api)
 		caption_dict = safe_separate_captions(caption_text, api, llm="gpt-3.5-turbo")
