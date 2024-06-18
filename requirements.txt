@@ -22,7 +22,7 @@ contourpy==1.2.1
 cycler==0.12.1
 cymem==2.0.8
 dataclasses-json==0.6.7
-datasets==1.18.3
+datasets==2.20.0
 decorator==5.1.1
 deepdiff==6.7.1
 Deprecated==1.2.14
@@ -37,7 +37,7 @@ filetype==1.2.0
 flatbuffers==23.5.26
 fonttools==4.53.0
 frozenlist==1.4.1
-fsspec==2024.6.0
+fsspec==2024.5.0
 gdown==5.2.0
 # google-auth==2.24.0
 # googleapis-common-protos==1.61.0
@@ -47,7 +47,7 @@ grpcio==1.59.3
 h11==0.14.0
 hnswlib==0.8.0
 httptools==0.6.1
-huggingface-hub==0.23.3
+huggingface-hub==0.23.4
 humanfriendly==10.0
 idna==3.7
 imageio==2.34.1

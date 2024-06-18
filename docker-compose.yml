@@ -6,6 +6,8 @@ services:
             - frontend
         volumes:
             - /usr/src/app/exsclaim:/argonne/code/exsclaim2.0/exsclaim
+            - /usr/src/app/query:/argonne/code/exsclaim2.0/query
+#            - /usr/src/app/notebooks:/argonne/code/exsclaim2.0/notebooks
 
     postgresql:
         image: postgres:latest
