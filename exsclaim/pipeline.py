@@ -89,12 +89,14 @@ class Pipeline:
 
         # Set up logging
         self.print = False
+        logging.basicConfig(level=logging.INFO, style="{")
         for log_output in self.query_dict.get("logging", []):
             if log_output.lower() == "print":
                 self.print = True
+                self.logger.addHandler(logging.StreamHandler())
             else:
                 log_output = self.results_directory / log_output
-                logging.basicConfig(filename=log_output, filemode="w+", level=logging.INFO, style="{")
+                self.logger.addHandler(logging.FileHandler(filename=log_output, mode="w+"))
 
         # Check for an existing exsclaim json
         try:

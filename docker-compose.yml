@@ -8,9 +8,34 @@ services:
             - backend
             - frontend
         volumes:
-            - /usr/src/app/exsclaim:/argonne/code/exsclaim2.0/exsclaim
-            - /usr/src/app/query:/argonne/code/exsclaim2.0/query
-#            - /usr/src/app/notebooks:/argonne/code/exsclaim2.0/notebooks
+            - type: bind
+              source: ./exsclaim
+              target: /usr/src/app/exsclaim
+            - type: bind
+              source: ./query
+              target: /usr/src/app/query
+            - type: bind
+              source: ./notebooks
+              target: /usr/src/app/notebooks
+        ports:
+            - "8888:8888"
+
+    # The service that is used to create a Python Interpreter in JetBrain's PyCharm Professional IDE
+    pycharm:
+        build: .
+        env_file: .env
+        environment:
+            - HF_TOKEN=${HF_TOKEN}
+        networks:
+            - backend
+            - frontend
+        volumes:
+            - type: bind
+              source: ./exsclaim
+              target: /usr/src/code/exsclaim
+            - type: bind
+              source: ./query
+              target: /usr/src/app/query
 
     postgresql:
         image: postgres:latest
@@ -29,3 +54,22 @@ services:
 networks:
     backend:
     frontend:
+
+volumes:
+    exsclaim_module:
+        driver: local
+        driver_opts:
+            type: bind
+            device: /usr/src/app/exsclaim
+
+    notebooks:
+        driver: local
+        driver_opts:
+            type: bind
+            device: /usr/src/app/notebooks
+
+    query:
+        driver: local
+        driver_opts:
+            type: bind
+            device: /usr/src/app/query

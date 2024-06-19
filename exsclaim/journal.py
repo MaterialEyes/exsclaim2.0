@@ -341,7 +341,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         image_url = image_tag.get("src")
         return self.prepend + image_url
 
-    def get_search_query_urls(self) -> list:
+    def get_search_query_urls(self) -> list[str]:
         """Create list of search query urls based on input query json
 
         Returns:
@@ -397,7 +397,8 @@ class JournalFamily(ABC, ExsclaimBrowser):
                 search_urls += search_term_urls
                 # search_urls += 'https://www.nature.com/search?q=electrochromic%20polymer&date_range=&journal=&order=relevance&author=reynolds'
             # print('search url', search_urls)
-            return search_urls
+            # TODO: URL Encode the search query urls
+            return list(map(lambda url: url.replace(" ", "%20"), search_urls))
         return self.temporary_browser(get_search_query_urls_from_playwright)
 
     def get_articles_from_search_url(self, search_url: str) -> set:
