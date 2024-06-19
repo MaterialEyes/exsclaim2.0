@@ -1,6 +1,9 @@
 services:
     python:
         build: .
+        env_file: .env
+        environment:
+            - HF_TOKEN=${HF_TOKEN}
         networks:
             - backend
             - frontend
