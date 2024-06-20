@@ -27,16 +27,13 @@ EXSCLAIM works with Python 3.6+. We recommend using a conda or python environmen
 
 ### Installation with Git
 To install directly from GitHub, run the following commands (it is recommended to run in a conda or python virtual environment):
-```
-git clone https://github.com/MaterialEyes/exsclaim.git
-cd exsclaim
-pip setup.py install
-python load_models.py
+```shell
+pip install git+https://github.com/MaterialEyes/exsclaim2.0.git
 ```
 
 #### Scrapping data from dynamic journal webpages
 If scrapping data from Journals that use javascript (e.g. RSC, ACS) you need to set up chrome-driver and chrome and add their path to the `exsclaim/journal.py` file.
-```
+```shell
 e.g. for a linux terminal you need the following:
 wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
 wget https://chromedriver.storage.googleapis.com/90.0.4430.24/chromedriver_linux64.zip
@@ -44,6 +41,19 @@ wget https://chromedriver.storage.googleapis.com/90.0.4430.24/chromedriver_linux
 
 If you run into errors, please check [Troubleshooting](https://github.com/MaterialEyes/exsclaim/wiki/Troubleshooting). If they persist, please open an issue.
 
+### Using Exsclaim 2.0
+```python
+from exsclaim import Pipeline
+search_query = {
+		...
+}
+results = Pipeline(search_query_json)
+```
+where `search_query` is either a dictionary representing a valid JSON object, or a Pathlike string pointing towards a valid JSON file,
+or 
+```shell
+python -m exsclaim {path to json file holding search query}
+```
 
 ## Acknowledgements <a name="credits"></a>
 This material is based upon work supported by Laboratory Directed Research and Development (LDRD) funding from Argonne National Laboratory, provided by the Director, Office of Science, of the U.S. Department of Energy under Contract No. DE-AC02-06CH11357

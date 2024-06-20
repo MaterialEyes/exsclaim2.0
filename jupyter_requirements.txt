@@ -2,5 +2,5 @@ IPython==8.21.0
 jupyter==1.0.0
 jupyter_contrib_nbextensions==0.7.0
 jupyter_nbextensions_configurator==0.6.3
-traitlets==5.9.0
+traitlets==5.14.0
 notebook==6.4.12

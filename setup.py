@@ -67,7 +67,7 @@ setup(
 	],
 	entry_points={
 		'console_scripts': [
-			'exsclaim=exsclaim.command_line:main',
+			'exsclaim=exsclaim.command_line.__main__:main',
 		],
 	},
 	python_requires='>=3.10',

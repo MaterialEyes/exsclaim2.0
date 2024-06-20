@@ -11,14 +11,14 @@ interchangeable.
 from .browser import ExsclaimBrowser
 from .caption import safe_summarize_caption, get_context, get_keywords, safe_separate_captions
 from .journal import journals
-from .utilities import initialize_results_dir, Printer
+from .utilities import initialize_results_dir, PrinterFormatter
 
 from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup
 from glob import glob
 from langchain_community.document_loaders import UnstructuredHTMLLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
-from logging import getLogger
+from logging import getLogger, StreamHandler
 from pathlib import Path
 from PIL import Image
 from playwright.sync_api import Browser
@@ -60,8 +60,12 @@ class ExsclaimTool(ABC):
 
 		# Set up file structure
 		self.results_directory = initialize_results_dir(self.search_query.get("results_dirs", None)) / self.search_query["name"]
+
 		# set up logging / printing
-		self.print = "print" in self.search_query.get("logging", [])
+		if "print" in self.search_query.get("logging", []):
+			handler = StreamHandler()
+			handler.setFormatter(PrinterFormatter())
+			self.logger.addHandler(handler)
 
 	@abstractmethod
 	def _load_model(self):
@@ -134,15 +138,10 @@ class ExsclaimTool(ABC):
 		Args:
 			info (str): A string to display (either to stdout, a log file)
 		"""
-		if self.print:
-			Printer(info)
 		self.logger.info(info)
 
 	def display_exception(self, e:Exception, figure_path):
 		error_msg = f"<!> ERROR: An exception occurred in {self.__class__.__name__} on figure: {figure_path}. Exception: {e}"
-		if self.print:
-			Printer(error_msg)
-
 		self.logger.exception(error_msg)
 
 

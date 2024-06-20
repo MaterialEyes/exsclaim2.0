@@ -461,7 +461,6 @@ class JournalFamily(ABC, ExsclaimBrowser):
         search_query_urls = self.get_search_query_urls()
         article_paths = set()
         for search_url in search_query_urls:
-            print(search_url)
             new_article_paths = self.get_articles_from_search_url(search_url)
             article_paths.update(new_article_paths)
             if len(article_paths) >= self.search_query["maximum_scraped"]:

@@ -1,6 +1,6 @@
 from .figure import FigureSeparator
 from .tool import ExsclaimTool, CaptionDistributor, JournalScraper, HTMLScraper
-from .utilities import paths, Printer, convert_labelbox_to_coords, crop_from_geometry
+from .utilities import paths, PrinterFormatter, ExsclaimFormatter, convert_labelbox_to_coords, crop_from_geometry
 
 import logging
 import numpy as np
@@ -88,15 +88,16 @@ class Pipeline:
         self.results_directory.mkdir(exist_ok=True)
 
         # Set up logging
-        self.print = False
         logging.basicConfig(level=logging.INFO, style="{")
         for log_output in self.query_dict.get("logging", []):
             if log_output.lower() == "print":
-                self.print = True
-                self.logger.addHandler(logging.StreamHandler())
+                handler = logging.StreamHandler()
+                handler.setFormatter(PrinterFormatter())
             else:
                 log_output = self.results_directory / log_output
-                self.logger.addHandler(logging.FileHandler(filename=log_output, mode="w+"))
+                handler = logging.FileHandler(filename=log_output, mode="w+")
+                handler.setFormatter(ExsclaimFormatter())
+            self.logger.addHandler(handler)
 
         # Check for an existing exsclaim json
         try:
@@ -115,8 +116,6 @@ class Pipeline:
         Args:
             info (str): A string to display (either to stdout, a log file)
         """
-        if self.print:
-            Printer(info)
         self.logger.info(info)
 
     def run(self, tools:list[ExsclaimTool]=None, figure_separator=True, caption_distributor=True, journal_scraper=True, html_scraper=True):
@@ -168,7 +167,7 @@ class Pipeline:
         @@@@@@@@@@@@@@@@@@@@   ,%@@&/   (@@@@@@@@@@@@@@@@@@@
         @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
         """
-        self.display_info(exsclaim_art)
+        self.display_info(exsclaim_art) # FIXME: Printing the art twice for some reason
         # set default values
         if tools is None:
             tools = []

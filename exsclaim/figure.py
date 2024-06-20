@@ -1,7 +1,7 @@
 # FIXME: These classes aren't in this repo but exist in https://github.com/MaterialEyes/exsclaim
 from .figures import CRNN, resnet152, YOLOv3, YOLOv3img, ctc, non_max_suppression_malisiewicz, process, create_scale_bar_objects
 from .tool import ExsclaimTool
-from .utilities import boxes, Printer, load_model_from_checkpoint
+from .utilities import boxes, load_model_from_checkpoint
 
 import cv2
 import json
