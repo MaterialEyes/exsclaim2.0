@@ -1,8 +1,7 @@
-"""Module for handling bounding box coordinates
+"""Module for handling bounding box coordinates.
 
-Throughout the models and data formats used in exsclaim, bounding
-boxes are sometimes stored as x1,y1,x2,y2 or 'coords' and sometimes
-as [{"x": x1, "y": y1}, ...] or 'labelbox'
+Throughout the models and data formats used in exsclaim, bounding boxes are sometimes stored as x1,y1,x2,y2
+or 'coords' and sometimes as [{"x": x1, "y": y1}, ...] or 'labelbox'
 
 In addition, we often want to check the relation of two bounding
 boxes and their properties (like center point)
@@ -49,7 +48,7 @@ def crop_from_geometry(geometry:list[dict], image:ndarray) -> ndarray:
             box. [Top left, bottom left, top right, bottom right]
         image (np.array): Numpy array representing an image to be cropped
     Returns:
-        Cropped image according to geometry given as numpy array
+        Cropped image according to geometry given as a numpy array
     """
     x1, y1 = geometry[0]["x"], geometry[0]["y"]
     x2, y2 = geometry[3]["x"], geometry[3]["y"]

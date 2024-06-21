@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import torch
 import torchvision
+from os import path, PathLike, listdir
 from PIL import Image
 from torchvision import transforms
 from torchvision.transforms import ToTensor
@@ -233,7 +234,7 @@ def match_scale_bars(correct, predicted):
 def super_resolution(image):
     current_file = pathlib.Path(__file__).resolve(strict=True)
     model = "LapSRN_x8.pb"
-    modelName = model.split(os.path.sep)[-1].split("_")[0].lower()
+    modelName = model.split(path.sep)[-1].split("_")[0].lower()
     modelScale = model.split("_x")[-1]
     modelScale = int(modelScale[: modelScale.find(".")])
 
@@ -317,11 +318,11 @@ def split_label(text):
     return 0, None
 
 
-def test_label_reading(model_name, epoch=None):
+def test_label_reading(model_name:PathLike[str], epoch=None):
     """Run test training set on the specified model and checkpoint
 
     Args:
-        model_name (str): Name of model
+        model_name (str or pathlib.Path): Name of model
         epoch (int): Epoch number or None to use highest epoch checkpoint
     """
     # load test images and test image labels
@@ -334,16 +335,16 @@ def test_label_reading(model_name, epoch=None):
     # load scale bar model
     checkpoint_directory = exsclaim_root / "training" / "checkpoints"
     if epoch is None:
-        epoch = sorted(
-            [
-                int(file.split("-")[-1].split(".")[0])
-                for file in os.listdir(checkpoint_directory)
-                if file.split("-")[0] == model_name
-            ]
-        )[-1]
-    scale_bar_label_checkpoint = checkpoint_directory / (
-        model_name + "-" + str(epoch) + ".pt"
-    )
+        # epoch = sorted(
+        #     [
+        #         int(file.split("-")[-1].split(".")[0])
+        #         for file in listdir(checkpoint_directory)
+        #         if file.split("-")[0] == model_name
+        #     ]
+        # )[-1]
+        epoch = sorted(map(lambda file: int(file.split("-")[-1].split(".")[0]), filter(lambda file: file.split('-')[0], listdir(checkpoint_directory))))[-1]
+
+    scale_bar_label_checkpoint = checkpoint_directory / f"{model_name}-{epoch}.pt"
     try:
         all_configurations_path = exsclaim_root / "training" / "scale_label_reader.json"
         with open(all_configurations_path, "r") as f:
@@ -436,7 +437,7 @@ def test_label_reading(model_name, epoch=None):
         # if k > 50:
         #     break
     # print(incorrect / len(cunits))
-    with open(str(model_name) + "-" + str(epoch) + "nosrn_newlm.json", "w+") as f:
+    with open(f"{model_name}-{epoch}nosrn_newlm.json", "w+") as f:
         results = {
             "correct_nms": correct_nms,
             "predicted_nms": predicted_nms,

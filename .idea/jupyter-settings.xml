@@ -8,7 +8,7 @@
             <JupyterConnectionParameters>
               <option name="argv" value="notebook --no-browser --allow-root --port=8888 --ip=0.0.0.0" />
               <option name="managed" value="true" />
-              <option name="sdkName" value="Remote Python 3.11.9 Docker Compose (python)" />
+              <option name="sdkName" value="" />
             </JupyterConnectionParameters>
           </value>
         </entry>

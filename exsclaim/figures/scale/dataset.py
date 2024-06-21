@@ -192,11 +192,11 @@ class ScaleLabelDataset:
 
     def __getitem__(self, idx):
         # constants
-        SYNTH_BACKGOUND = 2  # out of 10
+        SYNTH_BACKGROUND = 2  # out of 10
         # select background image
         # generate a random number create synthetic image
         random_number = randint(0, 9)
-        if random_number < SYNTH_BACKGOUND:
+        if random_number < SYNTH_BACKGROUND:
             # generate an image with solid background
             color = (
                 randint(0, 255),
@@ -210,6 +210,7 @@ class ScaleLabelDataset:
             background_image_path = self.background_images / background_image_name
             background_image = Image.open(background_image_path).convert("RGB")
 
+        text = ""
         if self.text == "random_separate":
             # select text to write on background
             length = randint(1, 5)

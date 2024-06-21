@@ -164,16 +164,15 @@ class CRNN(nn.Module):
         self.rnn = rnn
         self.cnn = cnn
 
-    def forward(self, input):
-        cnn_output = self.cnn(input)
+    def forward(self, _input):
+        cnn_output = self.cnn(_input)
         batch_size, channels, height, width = cnn_output.size()
         assert height == 1
         # eliminate height dimension
         cnn_output = cnn_output.squeeze(2)  # batch, channels, width
-        # Format input to rnn to sequence, batch, channels because
-        # that is expected input for RNN (unless batch_first=True)
-        # In PyTorch LSTM nomenclature, width is sequence length and
-        # channels is input size
+        # Format input to rnn to sequence, batch, channels because that is expected input for
+        # RNN (unless batch_first=True). In PyTorch LSTM nomenclature, width is the sequence length and
+        # channels are the input size
         cnn_output = cnn_output.permute(2, 0, 1)  # width, batch, channels
         rnn_output, _ = self.rnn(cnn_output)  # width, batch, channels
         # Reformat shape for fully connected layer

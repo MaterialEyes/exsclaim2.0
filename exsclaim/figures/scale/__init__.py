@@ -2,6 +2,7 @@ from .coco_eval import *
 from .coco_utils import *
 from .ctc import *
 from .dataset import *
+from .engine import *
 from .evaluate_scale import *
 from .label_reader_test import *
 from .lm import *

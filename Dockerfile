@@ -22,5 +22,5 @@ EXPOSE 8888
 COPY app.py ./
 COPY load_models.py ./
 
-#CMD ["python3", "app.py"]
+#CMD ["python3", "-m", "exsclaim", "/usr/src/app/query/nature-ESEM.json", "--caption_distributor", "--journal_scraper", "--figure_separator"]
 CMD ["jupyter", "notebook", "--no-browser", "--allow-root", "--port=8888", "--ip=0.0.0.0"]

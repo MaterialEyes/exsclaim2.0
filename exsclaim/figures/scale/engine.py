@@ -1,16 +1,20 @@
 # Acquired from https://github.com/pytorch/vision/tree/master/references/detection
 import math
-import pathlib
 import sys
-import time
 
 import numpy as np
 import torch
-import torchvision.models.detection.mask_rcnn
+
+from pathlib import Path
+from time import time
+from torchvision.models.detection import MaskRCNN, KeypointRCNN
 
 from . import process, utils
 from .coco_eval import CocoEvaluator
 from .coco_utils import get_coco_api_from_dataset
+
+
+__all__ = ["train_one_epoch", "get_epoch", "run_nms_on_outputs", "evaluate"]
 
 
 def train_one_epoch(
@@ -60,14 +64,26 @@ def train_one_epoch(
     return metric_logger
 
 
+def get_epoch(model, best_checkpoint):
+    cuda = torch.cuda.is_available()
+    if cuda:
+        checkpoint = torch.load(best_checkpoint)
+        model = model.cuda()
+    else:
+        checkpoint = torch.load(best_checkpoint, map_location="cpu")
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    return checkpoint["epoch"]
+
+
 def _get_iou_types(model):
     model_without_ddp = model
     if isinstance(model, torch.nn.parallel.DistributedDataParallel):
         model_without_ddp = model.module
     iou_types = ["bbox"]
-    if isinstance(model_without_ddp, torchvision.models.detection.MaskRCNN):
+    if isinstance(model_without_ddp, MaskRCNN):
         iou_types.append("segm")
-    if isinstance(model_without_ddp, torchvision.models.detection.KeypointRCNN):
+    if isinstance(model_without_ddp, KeypointRCNN):
         iou_types.append("keypoints")
     return iou_types
 
@@ -125,13 +141,13 @@ def evaluate(model, data_loader, device, model_name="unnamed_model"):
         images = list(img.to(cpu_device) for img in images)
 
         # torch.cuda.synchronize()
-        model_time = time.time()
+        model_time = time()
         outputs = model(images)
         nms_outputs = run_nms_on_outputs(outputs)
         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
         nms_outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in nms_outputs]
 
-        model_time = time.time() - model_time
+        model_time = time() - model_time
         res = {
             target["image_id"].item(): output
             for target, output in zip(targets, outputs)
@@ -140,19 +156,19 @@ def evaluate(model, data_loader, device, model_name="unnamed_model"):
             target["image_id"].item(): output
             for target, output in zip(targets, nms_outputs)
         }
-        evaluator_time = time.time()
+        evaluator_time = time()
         coco_evaluator.update(res)
         nms_evaluator.update(nms_res)
-        evaluator_time = time.time() - evaluator_time
+        evaluator_time = time() - evaluator_time
         metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
 
-    current_file = pathlib.Path(__file__).resolve(strict=True)
-    save_file = current_file.parent / "results" / "{}.txt".format(model_name)
+    current_file = Path(__file__).resolve(strict=True)
+    save_file = current_file.parent / "results" / f"{model_name}.txt"
     with open(save_file, "a") as f:
-        f.write("Averaged stats:{}\n".format(metric_logger))
+        f.write(f"Averaged stats:{metric_logger}\n")
 
     coco_evaluator.synchronize_between_processes()
     nms_evaluator.synchronize_between_processes()

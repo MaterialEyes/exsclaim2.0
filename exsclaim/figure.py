@@ -151,7 +151,7 @@ class FigureSeparator(ExsclaimTool):
 
     def run(self, search_query, exsclaim_dict):
         """Run the models relevant to manipulating article figures"""
-        # region Copy over
+        # region # FIXME: Need to Copy over to parent run
         with open(figures_file, "w", encoding="utf-8") as f:
             for figure in figures_separated:
                 f.write(f"{Path(figure).name}\n")
@@ -392,10 +392,8 @@ class FigureSeparator(ExsclaimTool):
             )
             # make the beginning of subfigure_padded_labels subfigure_labels
             subfigure_padded_labels[: len(subfigure_labels)] = subfigure_labels[:80]
-        # conver labels to tensor and add dimension
-        subfigure_padded_labels = (torch.from_numpy(subfigure_padded_labels)).unsqueeze(
-            0
-        )
+        # convert labels to tensor and add dimension
+        subfigure_padded_labels = (torch.from_numpy(subfigure_padded_labels)).unsqueeze(0)
         subfigure_padded_labels = Variable(subfigure_padded_labels.type(self.dtype))
         padded_label_list = [None, subfigure_padded_labels]
         assert subfigure_padded_labels.size()[0] == 1
@@ -488,7 +486,7 @@ class FigureSeparator(ExsclaimTool):
         self.exsclaim_json[figure_name] = figure_json
         return figure_json
 
-    def read_scale_bar(self, cropped_image):
+    def read_scale_bar(self, cropped_image:Image):
         """Outputs the text of an image cropped to a scale bar label bbox
 
         Args:
@@ -526,12 +524,12 @@ class FigureSeparator(ExsclaimTool):
             master_image (Master Image JSON): updated with scale objects
             scale_objects: updated with assigned objects removed
         """
-        geomtery = master_image["geometry"]
-        x1, y1, x2, y2 = boxes.convert_labelbox_to_coords(geomtery)
+        geometry = master_image["geometry"]
+        x1, y1, x2, y2 = boxes.convert_labelbox_to_coords(geometry)
         unassigned_scale_objects = []
         assigned_scale_objects = []
         for scale_object in scale_objects:
-            if boxes.is_contained(scale_object["geometry"], geomtery):
+            if boxes.is_contained(scale_object["geometry"], geometry):
                 assigned_scale_objects.append(scale_object)
             else:
                 unassigned_scale_objects.append(scale_object)

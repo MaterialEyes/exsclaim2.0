@@ -10,6 +10,7 @@ from torchvision import transforms
 from ..models.crnn import CRNN
 from .ctc import ctcBeamSearch
 from .dataset import ScaleLabelDataset
+from .engine import get_epoch
 
 
 def convert_to_rgb(image):
@@ -188,15 +189,7 @@ def train_crnn(
     optimizer = optimizers[optimizer]
     best_checkpoint = get_model(checkpoint_directory, model_name)
     if best_checkpoint is not None:
-        cuda = torch.cuda.is_available()
-        if cuda:
-            checkpoint = torch.load(best_checkpoint)
-            model = model.cuda()
-        else:
-            checkpoint = torch.load(best_checkpoint, map_location="cpu")
-        model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        current_epoch = checkpoint["epoch"]
+        current_epoch = get_epoch(model, best_checkpoint)
         best_loss = checkpoint["best_loss"]
     else:
         current_epoch = 0

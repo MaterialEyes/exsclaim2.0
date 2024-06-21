@@ -1,6 +1,7 @@
 test.html
 dep_checker.py
 **/error.html
+conda/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

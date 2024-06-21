@@ -49,14 +49,15 @@ class ScaleBarReaderTest:
         # Load scale bar label reading model
 
         # load an object detection model pre-trained on COCO
-        if depth == 18:
-            model = models.resnet18(weights=pretrained)
-        elif depth == 50:
-            model = models.resnet50(weights=pretrained)
-        elif depth == 152:
-            model = models.resnet152(weights=pretrained)
-        else:
-            raise ValueError(f"Depth must be 18, 50, or 152; not {depth}.")
+        match(depth):
+            case 18:
+                model = models.resnet18(weights=pretrained)
+            case 50:
+                model = models.resnet50(weights=pretrained)
+            case 152:
+                model = models.resnet152(weights=pretrained)
+            case _:
+                raise ValueError(f"Depth must be 18, 50, or 152; not {depth}.")
 
         cuda = torch.cuda.is_available()  # and (gpu_id >= 0)
         device = torch.device("cuda" if cuda else "cpu")
@@ -83,9 +84,7 @@ class ScaleBarReaderTest:
             model = model.cuda()
         else:
             model.load_state_dict(
-                torch.load(scale_label_recognition_checkpoint, map_location="cpu")[
-                    "model_state_dict"
-                ]
+                torch.load(scale_label_recognition_checkpoint, map_location="cpu")["model_state_dict"]
             )
 
         model.eval()

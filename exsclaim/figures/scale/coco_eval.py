@@ -137,11 +137,9 @@ class CocoEvaluator(object):
             if len(prediction) == 0:
                 continue
 
-            scores = prediction["scores"]
-            labels = prediction["labels"]
-            masks = prediction["masks"]
-
-            masks = masks > 0.5
+            # scores = prediction["scores"]
+            # labels = prediction["labels"]
+            masks = prediction["masks"] > 0.5
 
             scores = prediction["scores"].tolist()
             labels = prediction["labels"].tolist()
@@ -168,29 +166,23 @@ class CocoEvaluator(object):
             )
         return coco_results
 
-    def prepare_for_coco_keypoint(self, predictions):
-        coco_results = []
-        for original_id, prediction in predictions.items():
+    def prepare_for_coco_keypoint(self, predictions:dict):
+        coco_results = [None for _ in len(predictions.keys())]
+        for idx, (original_id, prediction) in enumerate(predictions.items()):
             if len(prediction) == 0:
                 continue
 
-            boxes = convert_to_xywh(prediction["boxes"]).tolist()
+            # boxes = convert_to_xywh(prediction["boxes"]).tolist()
             scores = prediction["scores"].tolist()
             labels = prediction["labels"].tolist()
             keypoints = prediction["keypoints"]
             keypoints = keypoints.flatten(start_dim=1).tolist()
 
-            coco_results.extend(
-                [
-                    {
-                        "image_id": original_id,
-                        "category_id": labels[k],
-                        "keypoints": keypoint,
-                        "score": scores[k],
-                    }
-                    for k, keypoint in enumerate(keypoints)
-                ]
-            )
+            coco_results[idx] = [
+                {"image_id": original_id, "category_id": labels[k], "keypoints": keypoint, "score": scores[k]}
+                for k, keypoint in enumerate(keypoints)
+            ]
+
         return coco_results
 
 
@@ -352,10 +344,8 @@ def evaluate(self):
     # add backward compatibility if useSegm is specified in params
     if p.useSegm is not None:
         p.iouType = "segm" if p.useSegm == 1 else "bbox"
-        print(
-            "useSegm (deprecated) is not None. Running {} evaluation".format(p.iouType)
-        )
-    # print('Evaluate annotation type *{}*'.format(p.iouType))
+        print(f"useSegm (deprecated) is not None. Running {p.iouType} evaluation")
+    # print(f"Evaluate annotation type *{p.iouType}*")
     p.imgIds = list(np.unique(p.imgIds))
     if p.useCats:
         p.catIds = list(np.unique(p.catIds))

@@ -1,9 +1,11 @@
 services:
     python:
         build: .
+        image: exsclaim/core
         env_file: .env
         environment:
             - HF_TOKEN=${HF_TOKEN}
+            - NTFY_LINK=${NTFY_LINK}
         networks:
             - backend
             - frontend
@@ -26,6 +28,7 @@ services:
         env_file: .env
         environment:
             - HF_TOKEN=${HF_TOKEN}
+            - NTFY_LINK=${NTFY_LINK}
         networks:
             - backend
             - frontend

@@ -10,6 +10,7 @@ interchangeable.
 
 from .browser import ExsclaimBrowser
 from .caption import safe_summarize_caption, get_context, get_keywords, safe_separate_captions
+from .figures import apply_mask
 from .journal import journals
 from .utilities import initialize_results_dir, PrinterFormatter
 
@@ -121,12 +122,11 @@ class ExsclaimTool(ABC):
 				new_separated = set()
 			counter += 1
 
-		t1 = timer()
 		# The timer measures in nanoseconds, this will convert it to seconds
-		time_diff = (t1 - t0) / 1e9
+		time_diff = (timer() - t0) / 1e9
 		self.display_info(f">>> Time Elapsed: {time_diff:,.2f} sec\t({counter - 1:,} figures)\n")
 		self._appendJSON(exsclaim_dict, new_separated)
-		return self.exsclaim_dict
+		return exsclaim_dict
 
 	@abstractmethod
 	def run(self, search_query:dict, exsclaim_json:dict):
@@ -190,7 +190,7 @@ class JournalScraper(ExsclaimTool):
 	def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
 		return exsclaim_json
 
-	def run(self, search_query, exsclaim_json={}):
+	def run(self, search_query, exsclaim_json=None):
 		"""Run the JournalScraper to find relevant article figures
 
 		Args:
@@ -199,6 +199,8 @@ class JournalScraper(ExsclaimTool):
 		Returns:
 			exsclaim_json (dict): Updated with results of search
 		"""
+		if exsclaim_json is None:
+			exsclaim_json = {}
 		self.display_info("Running Journal Scraper\n")
 		# Checks that user inputted journal family has been defined and
 		# grabs instantiates an instance of the journal family object
@@ -209,12 +211,14 @@ class JournalScraper(ExsclaimTool):
 		journal = journal_subclass(search_query)
 
 		self.results_directory.mkdir(exist_ok=True)
-		t0 = time()
+		t0 = timer()
 
 		articles = journal.get_article_extensions()
 		print(f"{articles=}")
 		# Extract figures, captions, and metadata from each article
+		counter = 1
 		for counter, article in enumerate(articles, start=1):
+			print(counter)
 			self.display_info(f">>> ({counter:,} of {len(articles)}) Extracting figures from: " + article.split("/")[-1])
 			try:
 				request = journal.domain + article
@@ -229,8 +233,9 @@ class JournalScraper(ExsclaimTool):
 					self.results_directory / "exsclaim.json", exsclaim_json
 				)
 
-		t1 = time()
-		self.display_info(f">>> Time Elapsed: {t1-t0:.2f} sec ({counter-1:,} articles)\n")
+		time_diff = (timer() - t0) / 1e9
+		self.display_info(f">>> Time Elapsed: {time_diff:,.2f} sec\t({counter - 1:,} articles)\n")
+
 		self._appendJSON(self.results_directory / "exsclaim.json", exsclaim_json)
 		return exsclaim_json
 
@@ -322,30 +327,13 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 			article_json[figure_name] = figure_json
 			figure_number += 1  # increment figure number
 			# Open a file in write binary mode, and write to it
-			figures_directory = self.results_directory / "figures"
-			figure_path = os.path.join(figures_directory, figure_name)
+			figure_path = self.results_directory / "figures" / figure_name
 
 			sleep(3)
 			self.page.screenshot(path=figure_path)
 
-			# Load the image
-			img = cv2.imread(figure_path, cv2.IMREAD_UNCHANGED)
-
-			# Convert the image to RGBA (just in case the image is in another format)
-			img = cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
-
-			# Define a 2D filter that will turn black (also shades close to black) pixels to transparent
-			low = np.array([0, 0, 0, 0])
-			high = np.array([50, 50, 50, 255])
-
-			# Apply the mask (this will turn 'black' pixels to transparent)
-			mask = cv2.inRange(img, low, high)
-			img[mask > 0] = [0, 0, 0, 0]
-
-			# Convert the image back to PIL format and save the result
-			img_pil = Image.fromarray(img)
-			img_pil.save(figure_path)
-			print('image saved as: ', figure_path)
+			apply_mark(figure_path)
+			print(f"image saved as: {figure_path}")
 
 		return article_json
 
@@ -630,21 +618,16 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 					figure_caption += caption.get_text()
 
 				if img_url is not None:
-					response = requests.get('https:'+ img_url, stream=True)
+					response = requests.get("https:" + img_url, stream=True)
 
-
-
-					figure_name = article_name + "_fig" + str(figure_number) + ".jpg"
-					figure_name = article_name + "_fig" + str(figure_number) + ".jpg"
-					figure_path = (
-							Path("output")  / "figures" / figure_name
-					)
+					figure_name = f"{article_name}_fig{figure_number}.jpg"
+					figure_path = Path("output") / "figures" / figure_name
 					# print('init_figurepath',figure_path )
 					# initialize the figure's json
 					figure_json = {
 						"title": soup.find("title").get_text(),
 						"article_name": article_name,
-						"image_url": image_url,
+						"image_url": img_url,
 						"figure_name": figure_name,
 						"full_caption": figure_caption,
 						"figure_path": str(figure_path),
@@ -667,8 +650,8 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 					figure_number += 1  # increment figure number
 					# Open a file with write binary mode, and write to it
 					figures_directory = self.results_directory / "figures"
-					figure_path = os.path.join(figures_directory , figure_name)
-					# print('figurepath',figure_path )
+					figure_path = figures_directory / figure_name
+					# print(f"{figure_path=}")
 					with open(figure_path, 'wb') as out_file:
 						shutil.copyfileobj(response.raw, out_file)
 		return article_json
@@ -741,6 +724,8 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 		html_directory = self.results_directory / "html"
 		html_directory.mkdir(exist_ok=True)
 
+		counter = 1
+		t0 = timer()
 		# Extract figures, captions, and metadata from each article
 		for counter, article in enumerate(articles, start=1):
 			with open(article, "r", encoding="utf-8") as file:
@@ -783,20 +768,16 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 			if counter % 1000 == 0:
 				self._appendJSON(self.results_directory / "exsclaim.json", exsclaim_json)
 
-		t1 = time()
-		self.display_info(
-			">>> Time Elapsed: {0:.2f} sec ({1} articles)\n".format(
-				t1 - t0, int(counter - 1)
-			)
-		)
+		time_diff = (timer() - t0) / 1e9
+		self.display_info(f">>> Time Elapsed: {time_diff:,.2f} sec\t({counter - 1:,} articles)\n")
 		self._appendJSON(self.results_directory / "exsclaim.json", exsclaim_json)
 		return exsclaim_json
 
-		return self._run(search_query,
-						 exsclaim_json,
-						 "HTML Scraper",
-						 "_captions",
-						 "Parsing captions")
+		# return self._run(search_query,
+		# 				 exsclaim_json,
+		# 				 "HTML Scraper",
+		# 				 "_captions",
+		# 				 "Parsing captions")
 
 
 class CaptionDistributor(ExsclaimTool):

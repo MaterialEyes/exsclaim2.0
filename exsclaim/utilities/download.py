@@ -3,13 +3,14 @@
 Adapted from `this StackOverflow <https://stackoverflow.com/questions/38511444/>`_
 """
 from bs4 import BeautifulSoup
+from os import PathLike
 from requests import Session, Response
 
 
 __all__ = ["download_file_from_google_drive", "get_confirm_token", "save_response_content"]
 
 
-def download_file_from_google_drive(file_id:str, destination:str):
+def download_file_from_google_drive(file_id:str, destination:PathLike[str]):
     URL = "https://drive.usercontent.google.com/download"
     session = Session()
     params = {"id": file_id, "export": "download", "confirm":"t"}
@@ -38,7 +39,7 @@ def get_confirm_token(response:Response) -> dict | None:
     return {_input["name"]: _input["value"] for _input in form.find_all("input", attrs={"type": "hidden"})}
 
 
-def save_response_content(response, destination):
+def save_response_content(response:Response, destination:PathLike[str]):
     CHUNK_SIZE = 32_768
     with open(destination, "wb") as f:
         for chunk in response.iter_content(CHUNK_SIZE):

@@ -1,3 +1,4 @@
+from .masks import *
 from .scale import *
 from .separator import *
 try:
