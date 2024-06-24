@@ -153,7 +153,11 @@ class JournalFamily(ABC, ExsclaimBrowser):
 
     @property
     def prepend(self) -> str:
-        return self_prepend
+        return self._prepend
+
+    @property
+    def extra_key(self) -> str:
+        return self._extra_key
 
     def __init__(self, search_query: dict, **kwargs):
         """creates an instance of a journal family search using a query
@@ -236,7 +240,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         return (False, "unknown")
 
     # @abstractmethod
-    def is_link_to_open_article(self, tag: Tag) -> bool:
+    def is_link_to_open_article(self, tag: Locator) -> bool:
         """Checks if link is to an open access article
         Args:
             tag (bs4.tag): A tag containing an href attribute that
@@ -254,10 +258,10 @@ class JournalFamily(ABC, ExsclaimBrowser):
         Returns:
             A list of all figures in the article as BeautifulSoup objects
         """
-        figure_list = [
-            a for a in soup.find_all("figure") if str(a).find(self.extra_key) > -1
-        ]
-        return figure_list
+        # figure_list = [
+        #     a for a in soup.find_all("figure") if self.extra_key in str(a)
+        # ]
+        return filter(lambda a: self.extra_key in str(a), soup.find_all("figure"))
 
     def get_figure_list(self, url:str) -> list[BeautifulSoup]:
         """
@@ -267,7 +271,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         Returns:
             A list of all figures in the article as BeautifulSoup Tag objects
         """
-        def get_figure_list_from_playwright(browser:Browser, page:Page, **kwargs):
+        def get_figure_list_from_playwright(page:Page, **kwargs):
             # options.add_argument("--disable-dev-shm-usage") # overcome limited resource problems
             # options.binary_location = "/gpfs/fs1/home/avriza/chrome/opt/google/chrome/google-chrome"
             # driver = webdriver.Chrome(service=Service('/gpfs/fs1/home/avriza/chromedriver'), options=options)
@@ -281,7 +285,8 @@ class JournalFamily(ABC, ExsclaimBrowser):
             #       fix_hairline=True,
             #       )
             page.goto(url)
-            return [a for a in page.locator("figure").all() if self.extra_key in str(a)]
+            figures = [a for a in page.locator("figure").all() if self.extra_key in str(a)]
+            return [BeautifulSoup(figure.inner_html(), "html.parser") for figure in figures]
 
         return self.temporary_browser(get_figure_list_from_playwright) # div.c-article-section__figure-description
 
@@ -340,6 +345,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         """
         image_tag = figure_subtree.find("img")
         image_url = image_tag.get("src")
+        # FIXME: image_url is coming up None
         return self.prepend + image_url
 
     def get_search_query_urls(self) -> list[str]:
@@ -348,7 +354,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         Returns:
             A list of urls (as strings)
         """
-        def get_search_query_urls_from_playwright(browser:Browser, page:Page, **kwargs):
+        def get_search_query_urls_from_playwright(page:Page, **kwargs):
             search_query = self.search_query
             # creates a list of search terms
             try:
@@ -362,7 +368,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
                 raise e
             # print('search list',search_list)
             search_product = list(product(*search_list))
-            # print('search_product',search_product)
+            # print("search_product",search_product)
 
             search_urls = []
             for term in search_product:
@@ -376,8 +382,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
                 # print('search_url', search_url)
 
                 page.goto(search_url)
-                wait_time = float(randint(0, 50))
-                sleep(wait_time / 10)
+                sleep(float(randint(0, 50)) / 10)
 
                 years, journal_codes, orderings = self.get_additional_url_arguments(page)
                 search_url_args = []
@@ -407,7 +412,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         max_scraped = self.search_query["maximum_scraped"]
         self.logger.info(f"GET request: {search_url}")
 
-        def get_articles_search_url_from_playwright(browser:Browser, page:Page, **kwargs):
+        def get_articles_search_url_from_playwright(page:Page, **kwargs):
             search_url = kwargs["search_url"]
             page.goto(search_url)
             wait_time = randint(0, 50)
@@ -427,7 +432,10 @@ class JournalFamily(ABC, ExsclaimBrowser):
             for page_number in range(start_page, stop_page + 1): # TODO: Convert all of the soups to Playwright locators
 
                 # print(soup.find_all("a", href=True))
-                for tag in page.locator("a[href]").all():
+                with open("test.html", "w") as f:
+                    f.write(page.locator("html").inner_html())
+                for article in page.locator("article.u-full-height.c-card.c-card--flush").all():
+                    tag = article.locator("a[href]")
                     url = tag.get_attribute("href").split('?page=search')[0]
 
                     # self.logger.debug("Candidate Article: {}".format(url))
@@ -443,8 +451,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
                         # It is an article but we are not interested
                         continue
                     # self.logger.debug("Candidate Article: PASS")
-                    if url.startswith('/doi/full/') or url.startswith('/en/content/articlehtml/'):
-                        article_paths.add(url)
+                    article_paths.add(url)
                     if len(article_paths) >= max_scraped:
                         return article_paths
                 # Get next page at end of loop since page 1 is obtained from
@@ -456,17 +463,17 @@ class JournalFamily(ABC, ExsclaimBrowser):
 
         return self.temporary_browser(get_articles_search_url_from_playwright, search_url=search_url)
 
-    def get_article_extensions(self) -> list:
+    def get_article_extensions(self) -> tuple:
         """Retrieves a list of article url paths from a search query"""
         # This returns urls based on the combinations of desired search terms.
         search_query_urls = self.get_search_query_urls()
         article_paths = set()
         for search_url in search_query_urls:
             new_article_paths = self.get_articles_from_search_url(search_url)
-            article_paths.update(new_article_paths)
+            article_paths |= new_article_paths
             if len(article_paths) >= self.search_query["maximum_scraped"]:
                 break
-        return list(article_paths)
+        return tuple(article_paths)
 
     @staticmethod
     def _get_figure_name(article_name:str, figure_idx:int) -> str:
@@ -505,7 +512,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         Returns:
             A dict of figure_jsons from an article
         """
-        def get_article_figures_from_playwright(browser:Browser, page:Page, **kwargs):
+        def get_article_figures_from_playwright(page:Page, **kwargs) -> tuple[bool, str, str]:
             page.goto(url)
             wait_time = float(randint(0, 50))
             sleep(wait_time / float(10))
@@ -517,10 +524,12 @@ class JournalFamily(ABC, ExsclaimBrowser):
             html_directory.mkdir(exist_ok=True)
             with open(html_directory / (url.split("/")[-1] + ".html"), "w", encoding="utf-8") as file:
                 file.write(page.locator("html").inner_html())
+            return is_open, _license, page.title()
 
+        is_open, _license, title = self.temporary_browser(get_article_figures_from_playwright)
         figure_subtrees = self.get_figure_list(url)
 
-        self.logger.info(len(figure_subtrees))
+        self.logger.info(f"Number of subfigures: {len(figure_subtrees):,}.")
         article_json = {}
 
         for figure_number, figure_subtree in enumerate(figure_subtrees, start=1):
@@ -536,7 +545,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
                 figure_caption += caption.get_text()
 
             figure_json = {
-                "title": soup.find('title').get_text(),
+                "title": title,
                 "article_url": url,
                 "license": _license,
                 "open": is_open,
@@ -662,9 +671,8 @@ class ACS(JournalFamilyDynamic):
         max_scraped = self.search_query["maximum_scraped"]
         self.logger.info(f"GET request: {url}")
 
-        def get_articles_from_playwright(browser:Browser, page:Page, **kwargs):
+        def get_articles_from_playwright(page:Page, url:str, **kwargs):
             article_paths = set()
-            url = kwargs["url"]
             page.goto(url)
 
             start_page, stop_page, total_articles = self.get_page_info(page)
@@ -699,7 +707,7 @@ class ACS(JournalFamilyDynamic):
         Returns:
             A dict of figure_jsons from an article
         """
-        def get_article_figures_from_playwright(browser:Browser, page:Page, **kwargs):
+        def get_article_figures_from_playwright(page:Page, **kwargs):
             # options.add_argument("--disable-dev-shm-usage") #overcome limited resource problems
             # options.binary_location = "/gpfs/fs1/home/avriza/chrome/opt/google/chrome/google-chrome"
             # driver = webdriver.Chrome(service=Service('/gpfs/fs1/home/avriza/chromedriver'), options=options)
@@ -906,6 +914,8 @@ class Nature(JournalFamily):
 
         total_results = page.locator("span[data-test=results-data]")
         if total_results.count() == 0:
+            if page.locator("h1[data-test='no-results']").count() == 1:
+                return 0, 0, 0
             raise ValueError("No articles were found, try to modify the search criteria")
 
         match = search(r"Showing (\d+)–(\d+) of\s*(\d+) results", total_results.inner_text())
@@ -1024,7 +1034,7 @@ class RSC(JournalFamilyDynamic):
 
     def get_articles_from_search_url(self, search_url: str) -> set:
         """Generates a list of articles from a single search term"""
-        def get_articles_from_playwright(browser:Browser, page:Page, **kwargs):
+        def get_articles_from_playwright(page:Page, **kwargs):
             max_scraped = self.search_query["maximum_scraped"]
             # self.logger.info("GET request: {}".format(search_url))
             page.goto(search_url)
@@ -1062,7 +1072,7 @@ class RSC(JournalFamilyDynamic):
         return f"{url.split('1&tab=all')[0]}{pg_size}&tab=all&fcategory=all&filter=all&Article%20Access=Open+Access"
 
     def get_figure_list(self, url:str):
-        def get_figure_list_from_playwright(browser:Browser, page:Page, **kwargs):
+        def get_figure_list_from_playwright(page:Page, **kwargs):
             page.goto(url)
             return [BeautifulSoup(fig.inner_html(), "html.parser") for fig in page.locator("figure.img-tbl__image").all()]
 
@@ -1094,7 +1104,7 @@ class RSC(JournalFamilyDynamic):
         Returns:
             A dict of figure_jsons from an article
         """
-        def get_article_figures_from_playwright(browser:Browser, page:Page, **kwargs) -> tuple[bool, str, str]:
+        def get_article_figures_from_playwright(page:Page, **kwargs) -> tuple[bool, str, str]:
             page.goto(url)
             is_open, _license = self.get_license(soup)
 

@@ -1,4 +1,3 @@
-# FIXME: These classes aren't in this repo but exist in https://github.com/MaterialEyes/exsclaim
 from .figures import CRNN, resnet152, YOLOv3, YOLOv3img, ctc, non_max_suppression_malisiewicz, process, create_scale_bar_objects
 from .tool import ExsclaimTool
 from .utilities import boxes, load_model_from_checkpoint
@@ -120,29 +119,18 @@ class FigureSeparator(ExsclaimTool):
             self.device,
         )
 
-    def _update_exsclaim(self, exsclaim_dict, figure_name, figure_dict):
+    def _update_exsclaim(self, exsclaim_dict:dict, figure_name:str, figure_dict:dict):
         figure_name = figure_name.split("/")[-1]
-        for master_image in figure_dict["figure_separator_results"][0]["master_images"]:
-            exsclaim_dict[figure_name]["master_images"].append(master_image)
 
-        for unassigned in figure_dict["figure_separator_results"][0]["unassigned"]:
-            exsclaim_dict[figure_name]["unassigned"]["master_images"].append(unassigned)
+        exsclaim_dict[figure_name]["master_images"].extend(
+            (master_image for master_image in figure_dict["figure_separator_results"][0]["master_images"])
+        )
+
+        exsclaim_dict[figure_name]["unassigned"]["master_images"].extend(
+            (unassigned for unassigned in figure_dict["figure_separator_results"][0]["unassigned"])
+        )
+
         return exsclaim_dict
-
-    def _appendJSON(self, exsclaim_json, figures_separated):
-        """Commit updates to EXSCLAIM JSON and updates list of separated figures
-
-        Args:
-            results_directory (string): Path to results directory
-            exsclaim_json (dict): Updated EXSCLAIM JSON
-            figures_separated (set): Figures which have already been separated
-        """
-        with open(self.results_directory / "exsclaim.json", "w", encoding="utf-8") as f:
-            json.dump(exsclaim_json, f, indent=3)
-
-        with open(self.results_directory / "_figures", "a+", encoding="utf-8") as f:
-            for figure in figures_separated:
-                f.write(f"{figure}\n")
 
     def _run_loop_function(self, search_query, exsclaim_json:dict, figure:Path, new_separated:set):
         self.extract_image_objects(figure.name)
@@ -151,18 +139,13 @@ class FigureSeparator(ExsclaimTool):
 
     def run(self, search_query, exsclaim_dict):
         """Run the models relevant to manipulating article figures"""
-        # region # FIXME: Need to Copy over to parent run
-        with open(figures_file, "w", encoding="utf-8") as f:
-            for figure in figures_separated:
-                f.write(f"{Path(figure).name}\n")
-        # endregion
-
         self.exsclaim_json = exsclaim_dict
         return self._run(search_query,
                          exsclaim_dict,
                          "Figure Separator",
                          "_figures",
                          "Extracting images",
+                         "_figures",
                          path=self.results_directory / "figures")
 
     @staticmethod
@@ -541,9 +524,7 @@ class FigureSeparator(ExsclaimTool):
         for scale_object in master_image["scale_bars"]:
             if scale_object["label"]:
                 scale_labels.add(scale_object["label"]["nm"])
-                nm_to_pixel = scale_object["label"]["nm"] / float(
-                    scale_object["length"]
-                )
+                nm_to_pixel = scale_object["label"]["nm"] / float(scale_object["length"])
                 label = scale_object["label"]["text"]
         if len(scale_labels) == 1:
             master_image["nm_height"] = (
@@ -687,14 +668,10 @@ class FigureSeparator(ExsclaimTool):
         subfigure_info = self.detect_subfigure_boundaries(full_figure_path)
 
         # Detect the subfigure labels on each of the bboxes found
-        subfigure_info, concate_img = self.detect_subfigure_labels(
-            full_figure_path, subfigure_info
-        )
+        subfigure_info, concate_img = self.detect_subfigure_labels(full_figure_path, subfigure_info)
 
         # Classify the subfigures
-        figure_json = self.classify_subfigures(
-            full_figure_path, subfigure_info, concate_img
-        )
+        figure_json = self.classify_subfigures(full_figure_path, subfigure_info, concate_img)
 
         # Detect scale bar lines and labels
         figure_json = self.determine_scale(full_figure_path, figure_json)

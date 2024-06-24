@@ -88,7 +88,7 @@ class Pipeline:
         self.results_directory.mkdir(exist_ok=True)
 
         # Set up logging
-        logging.basicConfig(level=logging.INFO, style="{")
+        handlers = []
         for log_output in self.query_dict.get("logging", []):
             if log_output.lower() == "print":
                 handler = logging.StreamHandler()
@@ -97,7 +97,9 @@ class Pipeline:
                 log_output = self.results_directory / log_output
                 handler = logging.FileHandler(filename=log_output, mode="w+")
                 handler.setFormatter(ExsclaimFormatter())
-            self.logger.addHandler(handler)
+            handlers.append(handler)
+
+        logging.basicConfig(level=logging.INFO, handlers=handlers, force=True)
 
         # Check for an existing exsclaim json
         try:
@@ -167,7 +169,7 @@ class Pipeline:
         @@@@@@@@@@@@@@@@@@@@   ,%@@&/   (@@@@@@@@@@@@@@@@@@@
         @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
         """
-        self.display_info(exsclaim_art) # FIXME: Printing the art twice for some reason
+        self.display_info(exsclaim_art)
         # set default values
         if tools is None:
             tools = []

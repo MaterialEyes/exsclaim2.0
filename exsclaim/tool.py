@@ -17,13 +17,16 @@ from .utilities import initialize_results_dir, PrinterFormatter
 from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup
 from glob import glob
+from json import dump, load
 from langchain_community.document_loaders import UnstructuredHTMLLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
 from logging import getLogger, StreamHandler
+from os import PathLike
 from pathlib import Path
 from PIL import Image
 from playwright.sync_api import Browser
 from time import time_ns as timer, time, sleep
+from typing import Iterable
 
 import json
 import os
@@ -54,7 +57,7 @@ class ExsclaimTool(ABC):
 			try:
 				with open(search_query) as f:
 					# Load query file to dict
-					self.search_query = json.load(f)
+					self.search_query = load(f)
 			except Exception as e:
 				self.logger.debug(f"Search Query must be a pathlib.Path or dictionary, not {search_query.__class__.__name__}.")
 				self.logger.exception(e)
@@ -68,24 +71,68 @@ class ExsclaimTool(ABC):
 			handler.setFormatter(PrinterFormatter())
 			self.logger.addHandler(handler)
 
+	def _appendJSON(self, exsclaim_json:dict, exsclaim_filename:PathLike[str]=None, data:Iterable[str]=None,
+					filename:str|PathLike[str]=None):
+		"""Commit updates to exsclaim json and update list of scraped articles
+
+		Args:
+			filename (string): File in which to store the updated EXSCLAIM JSON
+			exsclaim_json (dict): Updated EXSCLAIM JSON
+		"""
+		if exsclaim_filename is not None:
+			exsclaim_filename = self.results_directory / "exsclaim.json"
+		with open(exsclaim_filename, 'w', encoding="utf-8") as f:
+			dump(exsclaim_json, f, indent=3)
+
+		if data is None and filename is None:
+			return
+
+		if data is None ^ filename is None:
+			raise ValueError("If additional data is provided, the filename to append the data to must also be provided.")
+
+		with open(self.results_directory / filename, "a+", encoding="utf-8") as f:
+			for item in data:
+				f.write(f"{item}\n")
+
+	def _update_exsclaim(self, exsclaim_dict:dict, article_dict:dict):
+		"""Update the exsclaim_dict with article_dict contents
+
+		Args:
+			exsclaim_dict (dict): An EXSCLAIM JSON
+			article_dict (dict):
+		Returns:
+			exsclaim_dict (dict): EXSCLAIM JSON with article_dict
+				contents added.
+		"""
+		exsclaim_dict.update(article_dict)
+		return exsclaim_dict
+
 	@abstractmethod
 	def _load_model(self):
 		pass
 
-	@abstractmethod
-	def _update_exsclaim(self):
-		pass
+	def _start_timer(self):
+		self._t0 = timer()
+
+	def _end_timer(self, context:str):
+		# The timer measures in nanoseconds, this will convert it to seconds
+		time_diff = (timer() - self._t0) / 1e9
+		self.display_info(f">>> Time Elapsed: {time_diff:,.2f} sec\t({context})\n")
+		del self._t0
 
 	@abstractmethod
 	def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated:set):
 		...
 
 	def _run(self, search_query, exsclaim_dict:dict, display_name:str, subdirectory:str, loop_process_string:str,
-			 path:Path=None, N:int=100):
+			 append_file:str, path:Path=None, N:int=100):
+		if exsclaim_dict is None:
+			exsclaim_dict = {}
+
 		self.display_info(f"Running {display_name}\n")
 		self.results_directory.mkdir(exist_ok=True)
 
-		t0 = timer()
+		self._start_timer()
 		# List of objects (figures, captions, etc) that have already been separated
 		file = self.results_directory / subdirectory
 
@@ -118,14 +165,12 @@ class ExsclaimTool(ABC):
 
 			# Save to file every N iterations (to accommodate restart scenarios)
 			if counter % N == 0:
-				self._appendJSON(self.exsclaim_json, new_separated)
+				self._appendJSON(self.exsclaim_json, data=new_separated, filename=append_file)
 				new_separated = set()
 			counter += 1
 
-		# The timer measures in nanoseconds, this will convert it to seconds
-		time_diff = (timer() - t0) / 1e9
-		self.display_info(f">>> Time Elapsed: {time_diff:,.2f} sec\t({counter - 1:,} figures)\n")
-		self._appendJSON(exsclaim_dict, new_separated)
+		self._end_timer(f"{counter - 1:,} figures")
+		self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 		return exsclaim_dict
 
 	@abstractmethod
@@ -160,32 +205,14 @@ class JournalScraper(ExsclaimTool):
 	def _load_model(self):
 		pass
 
-	def _update_exsclaim(self, exsclaim_dict, article_dict):
-		"""Update the exsclaim_dict with article_dict contents
-
-		Args:
-			exsclaim_dict (dict): An EXSCLAIM JSON
-			article_dict (dict):
-		Returns:
-			exsclaim_dict (dict): EXSCLAIM JSON with article_dict
-				contents added.
-		"""
-		exsclaim_dict.update(article_dict)
-		return exsclaim_dict
-
-	def _appendJSON(self, filename, exsclaim_json):
+	def _appendJSON(self, exsclaim_json):
 		"""Commit updates to exsclaim json and update list of scraped articles
 
 		Args:
 			filename (string): File in which to store the updated EXSCLAIM JSON
 			exsclaim_json (dict): Updated EXSCLAIM JSON
 		"""
-		with open(filename, "w") as f:
-			json.dump(exsclaim_json, f, indent=3)
-		articles_file = self.results_directory / "_articles"
-		with open(articles_file, "a") as f:
-			for article in self.new_articles_visited:
-				f.write(f"{article.split('/')[-1]}\n")
+		super()._appendJSON(exsclaim_json, data=map(lambda article: article.split('/')[-1], self.new_articles_visited), filename="articles")
 
 	def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
 		return exsclaim_json
@@ -199,44 +226,35 @@ class JournalScraper(ExsclaimTool):
 		Returns:
 			exsclaim_json (dict): Updated with results of search
 		"""
-		if exsclaim_json is None:
-			exsclaim_json = {}
-		self.display_info("Running Journal Scraper\n")
-		# Checks that user inputted journal family has been defined and
-		# grabs instantiates an instance of the journal family object
+
+		# Initialize the subclass object based on the user input
 		journal_family_name = search_query["journal_family"]
 		if journal_family_name not in journals:
 			raise NameError(f"Journal family {journal_family_name} is not defined.")
-		journal_subclass = journals[journal_family_name]
-		journal = journal_subclass(search_query)
+		journal = journals[journal_family_name](search_query)
 
 		self.results_directory.mkdir(exist_ok=True)
-		t0 = timer()
+		self._start_timer()
 
 		articles = journal.get_article_extensions()
-		print(f"{articles=}")
+		self.display_info(f"{articles=}")
 		# Extract figures, captions, and metadata from each article
 		counter = 1
 		for counter, article in enumerate(articles, start=1):
-			print(counter)
-			self.display_info(f">>> ({counter:,} of {len(articles)}) Extracting figures from: " + article.split("/")[-1])
+			self.display_info(f">>> ({counter:,} of {len(articles):,}) Extracting figures from: " + article.split("/")[-1])
 			try:
-				request = journal.domain + article
-				article_dict = journal.get_article_figures(request)
+				article_dict = journal.get_article_figures(journal.domain + article)
 				exsclaim_json = self._update_exsclaim(exsclaim_json, article_dict)
 				self.new_articles_visited.add(article)
-			except Exception:
-				pass
-						# Save to file every N iterations (to accommodate restart scenarios)
+			except Exception as e:
+				self.display_exception(e, article)
+			# Save to file every N iterations (to accommodate restart scenarios)
 			if counter % 1_000 == 0:
-				self._appendJSON(
-					self.results_directory / "exsclaim.json", exsclaim_json
-				)
+				self._appendJSON(exsclaim_json)
 
-		time_diff = (timer() - t0) / 1e9
-		self.display_info(f">>> Time Elapsed: {time_diff:,.2f} sec\t({counter - 1:,} articles)\n")
+		self._end_timer(f"{counter-1:,} articles")
 
-		self._appendJSON(self.results_directory / "exsclaim.json", exsclaim_json)
+		self._appendJSON(exsclaim_json)
 		return exsclaim_json
 
 
@@ -679,30 +697,6 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 				break
 		return category
 
-	def _update_exsclaim(self, exsclaim_dict, article_dict):
-		"""Update the exsclaim_dict with article_dict contents
-
-		Args:
-			exsclaim_dict (dict): An EXSCLAIM JSON
-			article_dict (dict):
-		Returns:
-			exsclaim_dict (dict): EXSCLAIM JSON with article_dict
-				contents added.
-		"""
-		exsclaim_dict.update(article_dict)
-		return exsclaim_dict
-
-	def _appendJSON(self, filename, exsclaim_json):
-		"""Commit updates to exsclaim json and update list of scraped articles
-
-		Args:
-			filename (string): File in which to store the updated EXSCLAIM JSON
-			exsclaim_json (dict): Updated EXSCLAIM JSON
-		"""
-		with open(filename, "w") as f:
-			json.dump(exsclaim_json, f, indent=3)
-		articles_file = self.results_directory / "_articles"
-
 	def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
 		...
 
@@ -715,8 +709,6 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 		Returns:
 			exsclaim_json (dict): Updated with results of search
 		"""
-		if exsclaim_json is None:
-			exsclaim_json = {}
 		directory_path = search_query["html_folder"]
 
 		articles = glob(os.path.join(directory_path, '*.html'))
@@ -725,7 +717,7 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 		html_directory.mkdir(exist_ok=True)
 
 		counter = 1
-		t0 = timer()
+		self._start_timer()
 		# Extract figures, captions, and metadata from each article
 		for counter, article in enumerate(articles, start=1):
 			with open(article, "r", encoding="utf-8") as file:
@@ -747,30 +739,32 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 				with open(html_directory / (article_name + ".html"), "w", encoding="utf-8") as file:
 					file.write(str(soup))
 
-
-			self.display_info(f">>> ({counter} of {len(articles)}) Extracting figures from: {article.split('/')[-1]}")
+			self.display_info(f">>> ({counter:,} of {len(articles):,}) Extracting figures from: {article.split('/')[-1]}")
 			journal_name = self.get_journal(article)
 
-			if journal_name == 'nature':
-				article_dict = self.save_figures_nature(article)
-
-			if journal_name == 'acs':
-				article_dict = self.save_figures_acs(article)
-
-			if journal_name == 'wiley':
-				article_dict = self.save_figures_wiley(article)
-
-			if journal_name == 'rsc':
-				article_dict = self.save_figures_rsc(article)
+			match journal_name:
+				case "nature":
+					article_dict = self.save_figures_nature(article)
+					break
+				case "acs":
+					article_dict = self.save_figures_acs(article)
+					break
+				case "wiley":
+					article_dict = self.save_figures_wiley(article)
+					break
+				case "rsc":
+					article_dict = self.save_figures_rsc(article)
+					break
+				case _:
+					article_dict = {"article": article}
 
 			exsclaim_json = self._update_exsclaim(exsclaim_json, article_dict)
 
 			if counter % 1000 == 0:
-				self._appendJSON(self.results_directory / "exsclaim.json", exsclaim_json)
+				self._appendJSON(exsclaim_json)
 
-		time_diff = (timer() - t0) / 1e9
-		self.display_info(f">>> Time Elapsed: {time_diff:,.2f} sec\t({counter - 1:,} articles)\n")
-		self._appendJSON(self.results_directory / "exsclaim.json", exsclaim_json)
+		self._end_timer(f"{counter-1:,} articles")
+		self._appendJSON(exsclaim_json)
 		return exsclaim_json
 
 		# return self._run(search_query,
@@ -817,7 +811,7 @@ class CaptionDistributor(ExsclaimTool):
 			# caption = str(caption_dict.get(label, ''))  # Safely get the caption as a string
 			# query = figure_name_part + label_str + " " + caption
 
-			query = (exsclaim_dict[figure_name]["figure_name"].split('.')[0]).split('_')[-1] + str(label) + " " + str(caption_dict.get(label, ''))# caption_dict[label]
+			query = (exsclaim_dict[figure_name]["figure_name"].split('.')[0]).split('_')[-1] + f"{label} {caption_dict.get(label, '')}"# caption_dict[label]
 			# print(query)
 			master_image = {
 				"label": label,
@@ -829,7 +823,7 @@ class CaptionDistributor(ExsclaimTool):
 			exsclaim_dict[figure_name]["unassigned"]["captions"].append(master_image)
 		return exsclaim_dict
 
-	def _appendJSON(self, exsclaim_json, captions_distributed):
+	def _appendJSON(self, exsclaim_json: dict, data: Iterable[str] = None, filename:str=None):
 		"""Commit updates to EXSCLAIM JSON and updates list of ed figures
 
 		Args:
@@ -837,11 +831,7 @@ class CaptionDistributor(ExsclaimTool):
 			exsclaim_json (dict): Updated EXSCLAIM JSON
 			figures_separated (set): Figures which have already been separated
 		"""
-		with open(self.results_directory / "exsclaim.json", "w") as f:
-			json.dump(exsclaim_json, f, indent=3)
-		with open(self.results_directory / "_captions", "a+") as f:
-			for figure in captions_distributed:
-				f.write("%s\n" % figure.split("/")[-1])
+		super()._appendJSON(exsclaim_json, data=map(lambda figure: figure.split('/')[-1], data), filename=filename)
 
 	def _run_loop_function(self, search_query, exsclaim_json:dict, figure:Path, new_separated:set):
 		caption_text = exsclaim_json[figure_name]["full_caption"]
@@ -875,4 +865,5 @@ class CaptionDistributor(ExsclaimTool):
 						 exsclaim_json,
 						 "Caption Separator",
 						 "_captions",
-						 "Parsing captions")
+						 "Parsing captions",
+						 "_captions")

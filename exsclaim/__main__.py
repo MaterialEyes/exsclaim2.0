@@ -7,6 +7,7 @@ from argparse import ArgumentParser, BooleanOptionalAction
 from atexit import register
 from functools import wraps
 from json import load
+from os import getenv
 from pathlib import Path
 
 
@@ -71,7 +72,7 @@ def main():
 	# subparser = subparsers.add_parser("file", help="The path to the JSON file holding the search query.")
 
 	parser.add_argument("-v", "--version", action="version",
-						version=f"EXSCLAIM v{__version__}" if __version__ is not None else "EXSCLAIM! version is currently unavailable")
+						version=f"EXSCLAIM v{__version__}" if __version__ is not None else "EXSCLAIM! version is currently unavailable.")
 	parser.add_argument("query", help="The path to the JSON file holding the search query.")
 	parser.add_argument("--caption_distributor", "-cd", action="store_true")
 	parser.add_argument("--journal_scraper", "-js", action="store_true")
@@ -87,7 +88,8 @@ def main():
 	if not path.exists():
 		raise ValueError(f"The search query file \"{path}\" does not exist.")
 
-	return Pipeline(path).run(**args)
+	kwargs = {key: args.get(key, False) for key in {"caption_distributor", "journal_scraper", "figure_separator", "html_scraper"}}
+	return Pipeline(path).run(**kwargs)
 
 
 if __name__ == "__main__":

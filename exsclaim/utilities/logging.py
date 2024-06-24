@@ -27,7 +27,8 @@ class ExsclaimFormatter(Formatter):
 
 class PrinterFormatter(Formatter):
     def __init__(self):
-        super().__init__("\r\x1b[K%(asctime)s: %(message)s", "%m/%d/%Y %H:%M:%S")
+        super().__init__("%(asctime)s: %(message)s", "%m/%d/%Y %H:%M:%S")
+        # super().__init__("\r\x1b[K%(asctime)s: %(message)s", "%m/%d/%Y %H:%M:%S")
 
 
 class Printer(Handler):

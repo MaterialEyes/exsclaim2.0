@@ -31,7 +31,7 @@ class ExsclaimBrowser(object):
 			self.browser.close()
 			self.playwright.stop()
 
-	def temporary_browser(self, function:Callable[[Browser, Page, Any], Any], set_extra_headers=True, **kwargs):
+	def temporary_browser(self, function:Callable[[Page, Any], Any], set_extra_headers=True, **kwargs):
 		with sync_playwright() as playwright:
 			browser = playwright.chromium.launch(headless=True, chromium_sandbox=False)
 
@@ -39,7 +39,7 @@ class ExsclaimBrowser(object):
 			if set_extra_headers:
 				self.set_extra_page_headers(page)
 
-			values = function(browser, page, **kwargs)
+			values = function(page, browser=browser, **kwargs)
 			page.close()
 			browser.close()
 		return values
