@@ -19,8 +19,9 @@ from playwright.sync_api import sync_playwright, Page, Browser, Locator
 from PIL import Image
 from shutil import copyfileobj
 from random import randint
-from re import compile, search
+from re import compile, search, sub, match
 from time import sleep
+from typing import Type
 from urllib.request import urlretrieve
 
 
@@ -345,8 +346,12 @@ class JournalFamily(ABC, ExsclaimBrowser):
         """
         image_tag = figure_subtree.find("img")
         image_url = image_tag.get("src")
+        if image_url is None:
+            raise ValueError("No image url found.")
+        image_url = image_url.lstrip("//")
+        # Replaces a part of the URL that sets the image as a certain size to its full size
+        return sub(r"(.+.com/)lw\d+(/.+)", "full", image_url)
         # FIXME: image_url is coming up None
-        return self.prepend + image_url
 
     def get_search_query_urls(self) -> list[str]:
         """Create list of search query urls based on input query json
@@ -480,10 +485,9 @@ class JournalFamily(ABC, ExsclaimBrowser):
         return f"{article_name}_fig{figure_idx}.jpg"
 
     def get_figures(self, figure_idx:int, figure, figure_json:dict, url:str) -> tuple[dict, str]:
-        image_url = self.get_figure_url(figure)
-        image_url = self.prepend + image_url  # .replace('_hi-res','')
-        if ":" not in image_url:
-            image_url = "https:" + image_url
+        image_url = self.prepend + self.get_figure_url(figure)  # .replace('_hi-res','')
+        if not match("https?://.+", image_url):
+            image_url = "https://" + image_url
 
         article_name = url.split("/")[-1].split("?")[0]
 
@@ -1264,7 +1268,7 @@ class Wiley(JournalFamily):
         return self.prepend + figure_subtree.find("a", href=True)["href"]
 
 
-journals = {
+journals:dict[str, Type[JournalFamily]] = {
     "acs": ACS,
     "nature": Nature,
     "rsc": RSC,
