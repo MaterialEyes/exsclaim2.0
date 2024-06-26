@@ -10,15 +10,9 @@ services:
             - backend
             - frontend
         volumes:
-            - type: bind
-              source: ./exsclaim
-              target: /usr/src/app/exsclaim
-            - type: bind
-              source: ./query
-              target: /usr/src/app/query
-            - type: bind
-              source: ./notebooks
-              target: /usr/src/app/notebooks
+            - ./exsclaim:/usr/src/app/exsclaim
+            - ./query:/usr/src/app/query
+            - ./notebooks:/usr/src/app/notebooks
         ports:
             - "8888:8888"
 

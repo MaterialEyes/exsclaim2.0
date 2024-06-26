@@ -1,7 +1,7 @@
 {
     "name": "nature_ESEM",
     "journal_family": "nature",
-    "maximum_scraped": 500,
+    "maximum_scraped": 50,
     "sortby": "relevant",
     "query":
     {

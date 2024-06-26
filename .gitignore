@@ -7,7 +7,7 @@ conda/
 __pycache__/
 *.py[cod]
 *$py.class
-exsclaim/figures/checkpoints/
+**/exsclaim/figures/checkpoints/
 output/
 # C extensions
 *.so
