@@ -67,14 +67,14 @@ setup(
 	],
 	entry_points={
 		'console_scripts': [
-			'exsclaim=exsclaim.command_line.__main__:main',
+			'exsclaim=exsclaim.__main__:main',
 		],
 	},
 	python_requires='>=3.10',
 	project_urls={
-		'Documentation': 'https://github.com/MaterialEyes/exsclaim/wiki',
-		'Source': 'https://github.com/MaterialEyes/exsclaim',
-		'Tracker': 'https://github.com/MaterialEyes/exsclaim/issues',
+		'Documentation': 'https://github.com/MaterialEyes/exsclaim2.0/wiki',
+		'Source': 'https://github.com/MaterialEyes/exsclaim2.0',
+		'Tracker': 'https://github.com/MaterialEyes/exsclaim2.0/issues',
 	},
 )
 

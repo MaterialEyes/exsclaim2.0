@@ -10,7 +10,7 @@ services:
             - backend
             - frontend
         volumes:
-            - ./exsclaim:/usr/src/app/exsclaim
+#            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
             - ./query:/usr/src/app/query
             - ./notebooks:/usr/src/app/notebooks
         ports:

@@ -134,7 +134,7 @@ class Pipeline:
                 be included in tools list. Overridden by a tools argument
             figure_separator (boolean): true if FigureSeparator should
                 be included in tools list. Overridden by a tools argument
-            html_scraper (boolean): true if FigureSeparator should
+            html_scraper (boolean): true if HTMLScraper should
                 be included in tools list. Overridden by a tools argument
         Returns:
             exsclaim_dict (dict): an exsclaim json
