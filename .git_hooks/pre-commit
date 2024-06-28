@@ -1,6 +1,6 @@
 #!/bin/bash
 
-GIT_DIR=/argonne/code/exsclaim2.0
+GIT_DIR=${GIT_DIR-`git rev-parse --show-toplevel`}
 VERSION_FILE="$GIT_DIR/exsclaim/version.py"
 read -r -d '' VERSION <  "$VERSION_FILE"
 VERSION=$(echo "$VERSION" | sed 's/version = //g' | sed 's/"//g')
@@ -10,5 +10,6 @@ if [[ "$VERSION" == *"b"* ]]; then
 	BETA_NUMBER=$((BETA_NUMBER+1))
 	VERSION="${SHORT_VERSION}b${BETA_NUMBER}"
 	echo "version = \"$VERSION\"" > "$VERSION_FILE"
+	git add "$VERSION_FILE"
 	echo "Changed the version number to $VERSION."
 fi
