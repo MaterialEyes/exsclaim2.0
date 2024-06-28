@@ -10,11 +10,14 @@ services:
             - backend
             - frontend
         volumes:
-#            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
+            # This was added for when the exsclaim module was being edited while a container already existed.
+            # Can be removed if no work is being done to exsclaim since pip already locally installed it.
+            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
             - ./query:/usr/src/app/query
             - ./notebooks:/usr/src/app/notebooks
         ports:
             - "8888:8888"
+        command: [ "exsclaim", "/usr/src/app/query/nature-ESEM.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]
 
     # The service that is used to create a Python Interpreter in JetBrain's PyCharm Professional IDE
     pycharm:

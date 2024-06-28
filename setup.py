@@ -5,6 +5,11 @@ from os import system
 # build with python setup.py bdist_wheel
 # upload to testpypi w/ python3 -m twine upload --repository testpypi dist/*
 
+here = Path(__file__).parent.resolve()
+with open(here / "exsclaim" / "version.py") as f:
+	# version will be loaded in from the minimal version file
+	exec(f.read())
+
 
 def install_playwright_dependencies():
 	from sys import platform
@@ -14,7 +19,39 @@ def install_playwright_dependencies():
 	system("playwright install-deps && playwright install chromium")
 
 
-here = Path(__file__).parent.resolve()
+def write_version():
+	"""
+	Inspired by numpy's gitversion.py which dynamically writes the __version__, as well as git information for logging.
+	"""
+	from subprocess import Popen, PIPE
+	from os.path import dirname, join
+
+	git_hash = ""
+
+	try:
+		p = Popen(["git", "log", "-1", "--format=\"%H\""],
+				  stdout=PIPE,
+				  stderr=PIPE,
+				  cwd=dirname(__file__))
+	except FileNotFoundError:
+		pass
+	else:
+		out, err = p.communicate()
+		if p.returncode == 0:
+			git_hash = out.decode("utf-8").strip()
+
+	loc = here / "exsclaim" / "version.py"
+	with open("/usr/src/app/version_place.txt", "w") as f:
+		f.write(f"{loc.absolute()}\n")
+
+	with open(loc, 'w', encoding="utf-8") as f:
+		f.write(f'version = "{version}"\n'
+				'__version__ = version\n'
+				'full_version = version\n\n'
+				f'git_revision = "{git_hash}"\n'
+				'release = "b" not in version\n'
+				'short_version = version.split("b")[0]')
+
 
 with open(here / "README.md", "r") as fh:
 	long_description = fh.read()
@@ -24,7 +61,7 @@ with open(here / "requirements.txt", "r") as f:
 
 setup(
 	name="exsclaim",
-	version="2.0.2b0",
+	version=version,
 	author="Eric Schwenker, Trevor Spreadbury, Weixin Jiang, Maria Chan",
 	author_email="developer@materialeyes.org",
 	description="EXSCLAIM! is a library for the automatic EXtraction, Separation, and Caption-based natural Language Annotation of IMages from scientific figures.",
@@ -78,5 +115,5 @@ setup(
 	},
 )
 
-
+write_version()
 install_playwright_dependencies()
