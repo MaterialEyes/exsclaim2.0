@@ -40,11 +40,7 @@ def write_version():
 		if p.returncode == 0:
 			git_hash = out.decode("utf-8").strip()
 
-	loc = here / "exsclaim" / "version.py"
-	with open("/usr/src/app/version_place.txt", "w") as f:
-		f.write(f"{loc.absolute()}\n")
-
-	with open(loc, 'w', encoding="utf-8") as f:
+	with open(here / "exsclaim" / "version.py", 'w', encoding="utf-8") as f:
 		f.write(f'version = "{version}"\n'
 				'__version__ = version\n'
 				'full_version = version\n\n'

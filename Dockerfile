@@ -38,8 +38,6 @@ RUN apt install -yq tzdata && \
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["jupyter", "notebook", "--no-browser", "--allow-root", "--port=8888", "--ip=0.0.0.0"]
 
-COPY --from=base /usr/src/app/version_place.txt /usr/src/app/version_place.txt
-
 COPY --from=base /usr/local/bin/exsclaim /usr/local/bin/exsclaim
 COPY --from=base /usr/local/bin/playwright /usr/local/bin/playwright
 COPY --from=base /usr/local/bin/jupyter /usr/local/bin/jupyter

@@ -4,7 +4,7 @@ from .figure import *
 from .journal import *
 from .pipeline import *
 from .tool import *
-from .version import __version__
+from .version import version as __version__
 
 from .figures import *
 from .tests import *
