@@ -2,20 +2,13 @@ FROM python:3.11.9 AS base
 
 WORKDIR /usr/src/app
 
+SHELL ["/bin/bash", "-c"]
+
 COPY requirements.txt ./exsclaim-install/
 COPY ./exsclaim ./exsclaim-install/exsclaim
 COPY ./setup.py ./exsclaim-install/
 COPY ./README.md ./exsclaim-install/
 RUN pip install ./exsclaim-install --no-cache-dir
-
-# region You can comment out this region if you don't need Jupyter capabilities in your Docker image/container
-COPY jupyter_requirements.txt ./
-RUN pip install -r jupyter_requirements.txt --no-cache-dir
-RUN jupyter contrib nbextension install
-RUN jupyter nbextension enable execute_time/ExecuteTime && \
-	jupyter nbextension enable toc2/main
-EXPOSE 8888
-# endregion
 
 FROM python:3.11.9 AS prod
 ENV TZ="America/Chicago"
@@ -36,13 +29,42 @@ RUN apt install -yq tzdata && \
 # endregion
 
 ENTRYPOINT ["./entrypoint.sh"]
-CMD ["jupyter", "notebook", "--no-browser", "--allow-root", "--port=8888", "--ip=0.0.0.0"]
+CMD [ "exsclaim", "/usr/src/app/query/nature-ESEM.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]
 
 COPY --from=base /usr/local/bin/exsclaim /usr/local/bin/exsclaim
 COPY --from=base /usr/local/bin/playwright /usr/local/bin/playwright
-COPY --from=base /usr/local/bin/jupyter /usr/local/bin/jupyter
-COPY --from=base /usr/local/bin/jupyter-* /usr/local/bin/
 
 COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 
 RUN playwright install-deps && playwright install chromium
+
+FROM python:3.11.9 AS jupyter-base
+
+WORKDIR /usr/src/app
+
+COPY jupyter_requirements.txt jupyter_extensions.txt ./
+RUN pip install -r jupyter_requirements.txt --no-cache-dir
+RUN pip install -r jupyter_extensions.txt --no-cache-dir
+RUN pip install --upgrade notebook
+
+EXPOSE 8888
+
+FROM prod AS jupyter
+
+WORKDIR /usr/src/app
+
+CMD ["jupyter", "notebook", "--allow-root", "--port=8888", "--ip=0.0.0.0"]
+
+COPY --from=jupyter-base /usr/local/bin/jupyter /usr/local/bin/jupyter
+COPY --from=jupyter-base /usr/local/bin/jupyter-* /usr/local/bin/
+COPY --from=jupyter-base /usr/local/share/jupyter /usr/local/share/jupyter
+COPY --from=jupyter-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+
+RUN playwright install-deps && playwright install chromium
+
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+RUN ls -la /root/.nvm && \
+    \. /root/.nvm/nvm.sh && \
+    \. /root/.nvm/bash_completion && \
+    nvm install v20.15.0 && \
+    jupyter lab build
