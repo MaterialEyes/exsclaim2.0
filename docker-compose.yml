@@ -1,3 +1,5 @@
+name: exsclaim2
+
 services:
     python:
         build:
@@ -49,30 +51,27 @@ services:
         ports:
             - "8888:8888"
 
-    postgresql:
+    postgres:
         image: postgres:latest
-        expose:
-            - "5432"
         env_file:
             -   .env
-        environment:
-            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-            - POSTGRES_DB=${POSTGRES_DB}
-            - POSTGRES_USER=${POSTGRES_USER}
+        expose:
+            - "$POSTGRES_PORT"
         networks:
             backend:
                 aliases:
                     - db
-                    - postgres
+                    - postgresql
         healthcheck:
             test: [ "CMD", "/usr/bin/pg_isready", "-d", "$POSTGRES_DB", "-U", "$POSTGRES_USER", "-p", "$POSTGRES_PORT" ]
-            interval: 15s
+            interval: 5s
             timeout: 60s
-            retries: 5
-            start_period: 40s
+            retries: 12
+            start_period: 10s
 
     api:
         restart: always
+        env_file: .env
         environment:
             - DJANGO_SECRET_KEY=local
         image: exsclaim/ui/api
@@ -82,7 +81,7 @@ services:
                 ENV: dev
                 EXSCLAIM_GITHUB: MaterialEyes/exsclaim2.0
                 EXSCLAIM_GIT_REVISION: exsclaim2_for_spin
-            target: base
+            target: prod
         command: >
             bash -c "./manage.py migrate &&
                  ./manage.py runserver 0.0.0.0:8000"
@@ -92,21 +91,32 @@ services:
             - ./api/docs:/code/docs
         ports:
             - "8000:8000"
+        networks:
+            - frontend
+            - backend
         depends_on:
-            postgresql:
+            postgres:
                 condition: service_healthy
 
     dashboard:
         build: dashboard
+        env_file: .env
         image: exsclaim/ui/dashboard
+        environment:
+            - POSTGRES_PORT="${POSTGRES_PORT-5078}"
         ports:
             - "3000:3000"
+        networks:
+            - frontend
+            - backend
         volumes:
             - "./dashboard:/app"
         depends_on:
-            - api
+            api:
+                condition: service_healthy
 
 networks:
+    frontend:
     backend:
 
 volumes:

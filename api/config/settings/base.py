@@ -6,6 +6,18 @@ from configurations import Configuration
 BASE_DIR = dirname(dirname(abspath(__file__)))
 
 
+def get_database_connection_string() -> str:
+    from psycopg import connect, OperationalError
+    username = getenv("POSTGRES_USER", "exsclaim")
+    password = getenv("POSTGRES_PASSWORD", "exsclaimtest!9700")
+    port = getenv("POSTGRES_PORT", "5432")
+    database_name = getenv("POSTGRES_DB", "exsclaim")
+
+    # db is one of the aliases given through Docker Compose
+    url = f'postgres://{username}:{password}@db:{port}/{database_name}'
+    return url
+
+
 class BaseConfig(Configuration):
 
     INSTALLED_APPS = (
@@ -55,7 +67,7 @@ class BaseConfig(Configuration):
     # Postgres
     DATABASES = {
         'default': dj_database_url.config(
-            default='postgres://postgres:exsclaimtest!9700@postgres:5432/exsclaim',
+            default=get_database_connection_string(),
             conn_max_age=int(getenv('POSTGRES_CONN_MAX_AGE', 600))
         )
     }

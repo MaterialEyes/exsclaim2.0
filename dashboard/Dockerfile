@@ -12,7 +12,9 @@ RUN npm install
 
 COPY . ./
 
+RUN npx browserslist@latest --update-db
 RUN npm run build
+RUN npm audit fix || echo
 
 FROM node:current-alpine AS prod
 
@@ -25,8 +27,8 @@ RUN npm install
 
 CMD ["npm", "start"]
 
-COPY --from=appbuild /app/dist ./dist
-
+COPY --from=appbuild /app/build ./build
+COPY --from=appbuild /app/node_modules ./node_modules
 
 # Using install_and_run.sh due to a issue that occurred from running
 # npm install in the Dockerfile and then attaching a volume to allow

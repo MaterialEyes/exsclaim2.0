@@ -416,7 +416,8 @@ class Pipeline:
         draw = ImageDraw.Draw(labeled_image)
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-        except OSError:
+        except OSError as e:
+            self.display_info(f"Could not create font DejaVuSans.ttf, using default. {e}")
             font = ImageFont.load_default()
 
         figures_path = self.results_directory / "figures"
