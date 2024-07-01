@@ -44,7 +44,7 @@ def write_version():
 		f.write(f'version = "{version}"\n'
 				'__version__ = version\n'
 				'full_version = version\n\n'
-				f'git_revision = "{git_hash}"\n'
+				f'git_revision = {git_hash}\n' # Quotes are included in git_hash
 				'release = "b" not in version\n'
 				'short_version = version.split("b")[0]')
 

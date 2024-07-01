@@ -1,16 +1,32 @@
 # Pull official image
-FROM node:current-alpine
+FROM node:current-alpine AS appbuild
 
 # set the working direction
 WORKDIR /app
-ENV PATH /app/node_modules/.bin:$PATH
 
 # install app dependencies
 COPY package.json ./
 COPY package-lock.json ./
-COPY install_and_run.sh ./
+
+RUN npm install
 
 COPY . ./
+
+RUN npm run build
+
+FROM node:current-alpine AS prod
+
+WORKDIR /app
+
+ENV PATH /app/node_modules/.bin:$PATH
+
+COPY package.json ./
+RUN npm install
+
+CMD ["npm", "start"]
+
+COPY --from=appbuild /app/dist ./dist
+
 
 # Using install_and_run.sh due to a issue that occurred from running
 # npm install in the Dockerfile and then attaching a volume to allow
@@ -24,4 +40,4 @@ COPY . ./
 #         different versions? defeats whole purpose of Docker
 #     idea: modify node modules path and move to different directory 
 #         in container -- lose syntax highlighting and nice features
-CMD ["sh", "./install_and_run.sh"]
+#CMD ["sh", "./install_and_run.sh"]

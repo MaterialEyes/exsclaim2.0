@@ -7,7 +7,7 @@ newrelic==9.10.0
 
 # For the persistence stores
 # psycopg2-binary==2.9.2
-psycopg==3.1.19
+psycopg[binary]==3.1.19
 dj-database-url==2.2.0
 
 # Model Tools
