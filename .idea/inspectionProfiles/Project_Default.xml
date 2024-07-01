@@ -24,8 +24,11 @@
     <inspection_tool class="PyCompatibilityInspection" enabled="true" level="WARNING" enabled_by_default="true">
       <option name="ourVersions">
         <value>
-          <list size="1">
+          <list size="4">
+            <item index="0" class="java.lang.String" itemvalue="3.10" />
             <item index="1" class="java.lang.String" itemvalue="3.11" />
+            <item index="2" class="java.lang.String" itemvalue="3.12" />
+            <item index="3" class="java.lang.String" itemvalue="3.13" />
           </list>
         </value>
       </option>
@@ -33,8 +36,17 @@
     <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
       <option name="ignoredPackages">
         <value>
-          <list size="1">
-            <item index="0" class="java.lang.String" itemvalue="promptify" />
+          <list size="10">
+            <item index="0" class="java.lang.String" itemvalue="colors" />
+            <item index="1" class="java.lang.String" itemvalue="firebase" />
+            <item index="2" class="java.lang.String" itemvalue="psycopg2-binary" />
+            <item index="3" class="java.lang.String" itemvalue="promptify" />
+            <item index="4" class="java.lang.String" itemvalue="regex" />
+            <item index="5" class="java.lang.String" itemvalue="greenlet" />
+            <item index="6" class="java.lang.String" itemvalue="huggingface-hub" />
+            <item index="7" class="java.lang.String" itemvalue="playwright" />
+            <item index="8" class="java.lang.String" itemvalue="MarkupSafe" />
+            <item index="9" class="java.lang.String" itemvalue="Jinja2" />
           </list>
         </value>
       </option>
