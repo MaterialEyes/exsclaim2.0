@@ -5,7 +5,7 @@ from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.chat_models import ChatOpenAI
-from langchain_community.llms import HuggingFacePipeline
+# from langchain_community.llms import HuggingFacePipeline
 from langchain_community.vectorstores import Chroma
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from re import sub
@@ -99,48 +99,50 @@ def separate_captions(caption, api, llm):
 
         # Parse the string into a dictionary
         output_dict = json.loads(output_string) # , cls=CustomEncoder)
-
     else:
-        # Create a local tokenizer copy the first time
-        if os.path.isdir("./tokenizer/"):
-            tokenizer = AutoTokenizer.from_pretrained("./tokenizer/")
-        else:
-            tokenizer = AutoTokenizer.from_pretrained("model_name")
-            os.mkdir("./tokenizer/")
-            tokenizer.save_pretrained("./tokenizer/")
+        output_dict = {}
 
-        model = AutoModelForCausalLM.from_pretrained("eachadea/vicuna-13b-1.1")  # , device_map="auto") #, load_in_8bit=True)
-        pipe = pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            max_length=2048,
-            temperature=0.6,
-            top_p=0.95,
-            repetition_penalty=1.2
-        )
-        llm = HuggingFacePipeline(pipeline=pipe)
-
-        template = """Answer the question based on the context below. If the
-    question cannot be answered using the information provided answer
-    with "I don't know".
-
-    Context: {context}
-
-    Question: {query}
-
-    Answer: """
-
-        prompt_template = PromptTemplate(
-            input_variables=["context","query"],
-            template=template
-        )
-
-        conversation = LLMChain(
-            prompt=prompt_template,
-            llm=llm)
-
-        query = "Can you separate the given text into the exact subcaptions and format as a dictionary with keys the letter of each subcaption?"
+    # else:
+    #     # Create a local tokenizer copy the first time
+    #     if os.path.isdir("./tokenizer/"):
+    #         tokenizer = AutoTokenizer.from_pretrained("./tokenizer/")
+    #     else:
+    #         tokenizer = AutoTokenizer.from_pretrained("model_name")
+    #         os.mkdir("./tokenizer/")
+    #         tokenizer.save_pretrained("./tokenizer/")
+    #
+    #     model = AutoModelForCausalLM.from_pretrained("eachadea/vicuna-13b-1.1")  # , device_map="auto") #, load_in_8bit=True)
+    #     pipe = pipeline(
+    #         "text-generation",
+    #         model=model,
+    #         tokenizer=tokenizer,
+    #         max_length=2048,
+    #         temperature=0.6,
+    #         top_p=0.95,
+    #         repetition_penalty=1.2
+    #     )
+    #     # llm = HuggingFacePipeline(pipeline=pipe)
+    #
+    #     template = """Answer the question based on the context below. If the
+    # question cannot be answered using the information provided answer
+    # with "I don't know".
+    #
+    # Context: {context}
+    #
+    # Question: {query}
+    #
+    # Answer: """
+    #
+    #     prompt_template = PromptTemplate(
+    #         input_variables=["context","query"],
+    #         template=template
+    #     )
+    #
+    #     # conversation = LLMChain(
+    #     #     prompt=prompt_template,
+    #     #     llm=llm)
+    #
+    #     query = "Can you separate the given text into the exact subcaptions and format as a dictionary with keys the letter of each subcaption?"
 
     return output_dict
 

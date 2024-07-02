@@ -1,13 +1,13 @@
 {
     "name": "nature_ESEM",
     "journal_family": "nature",
-    "maximum_scraped": 50,
+    "maximum_scraped": 5,
     "sortby": "relevant",
     "query":
     {
         "search_field_1":
         {
-            "term":"ESEM",  
+            "term":"ESEM",
             "synonyms":["Environmental SEM", "Environmental Scanning Electron Microscope"]
         }
     },

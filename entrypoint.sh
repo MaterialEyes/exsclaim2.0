@@ -1,9 +1,7 @@
 #!/bin/bash
 
-GIT_DIR=${GIT_DIR-`git rev-parse --show-toplevel`}
-VERSION_FILE="$GIT_DIR/exsclaim/version.py"
-read -r -d '' $LOCAL_VERSION <  "$VERSION_FILE"
-$LOCAL_VERSION=$(echo "$LOCAL_VERSION" | sed 's/version = //g' | sed 's/"//g')
+$LOCAL_VERSION=$(exsclaim -v | sed 's/EXSCLAIM! v//g')
+echo "$LOCAL_VERSION"
 
 GIT_VERSION=$(curl -s https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/exsclaim2_for_spin/exsclaim/version.py | sed 's/version = //g' | sed 's/"//g')
 if [ "$GIT_VERSION" != "$LOCAL_VERSION" ]; then

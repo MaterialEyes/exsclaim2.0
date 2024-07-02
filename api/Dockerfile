@@ -6,11 +6,13 @@ ARG EXSCLAIM_GIT_REVISION
 
 # Allows docker to cache installed dependencies between builds
 COPY ./requirements requirements
-RUN pip install -r requirements/base.txt --no-cache-dir
-RUN if [[ $ENV == 'dev' ]]; \
-    then \
-        pip install -r requirements/dev.txt --no-cache-dir \
-    fi
+RUN pip install -r requirements/base.txt
+# FIXME: Not running when $ENV is dev
+#RUN if [[ "$ENV" == "dev" ]]; then \
+#    	wait 5s; \
+#    	pip install -r requirements/dev.txt; \
+#    fi
+RUN pip install -r requirements/dev.txt
 
 # Can't use -n "$EXSCLAIM_GIT_REVISION" because even if the revision has a value, it will run as if it doesn't
 RUN if [ "$EXSCLAIM_GIT_REVISION" = "" ]; then \

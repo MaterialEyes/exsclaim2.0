@@ -7,10 +7,10 @@ services:
         image: exsclaim/core
         env_file: .env
         environment:
-            - HF_TOKEN=${HF_TOKEN}
             - NTFY_LINK=${NTFY_LINK}
         networks:
             - backend
+#        user: "${UID}:${GID}"
 #        volumes:
 #            # This was added for when the exsclaim module was being edited while a container already existed.
 #            # Can be removed if no work is being done to exsclaim since pip already locally installed it.
@@ -33,6 +33,7 @@ services:
             - type: bind
               source: ./query
               target: /usr/src/app/query
+#        user: "${UID}:${GID}"
 
     jupyter:
         build:
@@ -50,6 +51,7 @@ services:
             - ./notebooks:/usr/src/app/notebooks
         ports:
             - "8888:8888"
+#        user: "${UID}:${GID}"
 
     postgres:
         image: postgres:latest
@@ -68,6 +70,7 @@ services:
             timeout: 60s
             retries: 12
             start_period: 10s
+#        user: "${UID}:${GID}"
 
     api:
         restart: always
@@ -97,6 +100,7 @@ services:
         depends_on:
             postgres:
                 condition: service_healthy
+#        user: "${UID}:${GID}"
 
     dashboard:
         build: dashboard
@@ -114,6 +118,7 @@ services:
         depends_on:
             api:
                 condition: service_healthy
+#        user: "${UID}:${GID}"
 
 networks:
     frontend:
