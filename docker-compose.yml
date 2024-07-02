@@ -11,11 +11,11 @@ services:
             - NTFY_LINK=${NTFY_LINK}
         networks:
             - backend
-        volumes:
-            # This was added for when the exsclaim module was being edited while a container already existed.
-            # Can be removed if no work is being done to exsclaim since pip already locally installed it.
-            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
-            - ./query:/usr/src/app/query
+#        volumes:
+#            # This was added for when the exsclaim module was being edited while a container already existed.
+#            # Can be removed if no work is being done to exsclaim since pip already locally installed it.
+#            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
+#            - ./query:/usr/src/app/query
 
     # The service that is used to create a Python Interpreter in JetBrain's PyCharm Professional IDE
     pycharm:

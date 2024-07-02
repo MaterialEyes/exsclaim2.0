@@ -26,7 +26,7 @@ def write_version():
 	from subprocess import Popen, PIPE
 	from os.path import dirname, join
 
-	git_hash = ""
+	git_hash = "None"
 
 	try:
 		p = Popen(["git", "log", "-1", "--format=\"%H\""],
@@ -55,6 +55,8 @@ with open(here / "README.md", "r") as fh:
 with open(here / "requirements.txt", "r") as f:
 	install_requires = list(f.read().splitlines())
 
+url = "https://github.com/MaterialEyes/exsclaim2.0"
+
 setup(
 	name="exsclaim",
 	version=version,
@@ -63,7 +65,7 @@ setup(
 	description="EXSCLAIM! is a library for the automatic EXtraction, Separation, and Caption-based natural Language Annotation of IMages from scientific figures.",
 	long_description=long_description,
 	long_description_content_type="text/markdown",
-	url="https://github.com/MaterialEyes/exsclaim2.0",
+	url=url,
 	packages=find_packages(),
 	install_requires=install_requires,
 	package_data={
@@ -105,9 +107,9 @@ setup(
 	},
 	python_requires='>=3.10',
 	project_urls={
-		'Documentation': 'https://github.com/MaterialEyes/exsclaim2.0/wiki',
-		'Source': 'https://github.com/MaterialEyes/exsclaim2.0',
-		'Tracker': 'https://github.com/MaterialEyes/exsclaim2.0/issues',
+		"Documentation": f"{url}/wiki",
+		"Source": url,
+		"Issue Tracker": f"{url}/issues",
 	},
 )
 

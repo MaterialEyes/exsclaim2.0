@@ -31,9 +31,11 @@ RUN apt install -yq tzdata && \
 ENTRYPOINT ["./entrypoint.sh"]
 CMD [ "exsclaim", "/usr/src/app/query/nature-ESEM.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]
 
+#COPY exsclaim ./exsclaim
+COPY query ./query
+
 COPY --from=base /usr/local/bin/exsclaim /usr/local/bin/exsclaim
 COPY --from=base /usr/local/bin/playwright /usr/local/bin/playwright
-
 COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 
 RUN playwright install-deps && playwright install chromium
