@@ -9,7 +9,7 @@ interchangeable.
 """
 
 from .browser import ExsclaimBrowser
-from .caption import safe_summarize_caption, get_context, get_keywords, safe_separate_captions
+from .caption import get_context, get_keywords, separate_captions
 from .figures import apply_mask
 from .journal import journals
 from .utilities import initialize_results_dir, PrinterFormatter
@@ -41,8 +41,15 @@ __all__ = ["ExsclaimTool", "JournalScraper", "HTMLScraper", "CaptionDistributor"
 
 
 class ExsclaimTool(ABC):
-	def __init__(self, search_query, logger_name=None):
-		self.logger = getLogger(logger_name if logger_name is not None else __name__)
+	def __init__(self, search_query, **kwargs):
+		self.logger = kwargs.get("logger", None)
+		if self.logger is None:
+			self.logger = getLogger(kwargs.get("logger_name", __name__))
+			# set up logging / printing
+			if "print" in self.search_query.get("logging", []):
+				handler = StreamHandler()
+				handler.setFormatter(PrinterFormatter())
+				self.logger.addHandler(handler)
 		self.initialize_query(search_query)
 
 	def initialize_query(self, search_query):
@@ -63,13 +70,7 @@ class ExsclaimTool(ABC):
 				self.logger.exception(e)
 
 		# Set up file structure
-		self.results_directory = initialize_results_dir(self.search_query.get("results_dirs", None)) / self.search_query["name"]
-
-		# set up logging / printing
-		if "print" in self.search_query.get("logging", []):
-			handler = StreamHandler()
-			handler.setFormatter(PrinterFormatter())
-			self.logger.addHandler(handler)
+		self.results_directory = initialize_results_dir(self.search_query.get("results_dir", None)) / self.search_query["name"]
 
 	def _appendJSON(self, exsclaim_json:dict, exsclaim_filename:PathLike[str]=None, data:Iterable[str]=None,
 					filename:str|PathLike[str]=None):
@@ -79,7 +80,7 @@ class ExsclaimTool(ABC):
 			filename (string): File in which to store the updated EXSCLAIM JSON
 			exsclaim_json (dict): Updated EXSCLAIM JSON
 		"""
-		if exsclaim_filename is not None:
+		if exsclaim_filename is None:
 			exsclaim_filename = self.results_directory / "exsclaim.json"
 		with open(exsclaim_filename, 'w', encoding="utf-8") as f:
 			dump(exsclaim_json, f, indent=3)
@@ -87,7 +88,7 @@ class ExsclaimTool(ABC):
 		if data is None and filename is None:
 			return
 
-		if data is None ^ filename is None:
+		if (data is None) ^ (filename is None):
 			raise ValueError("If additional data is provided, the filename to append the data to must also be provided.")
 
 		with open(self.results_directory / filename, "a+", encoding="utf-8") as f:
@@ -155,21 +156,21 @@ class ExsclaimTool(ABC):
 			if exsclaim_dict[figure]["figure_name"] not in separated
 		]
 
-		for _path in figures:
-			self.display_info(f">>> ({counter:,} of {+len(figures):,}) {loop_process_string} from: {figure_path}")
+		for counter, _path in enumerate(figures, start=counter):
+			self.display_info(f">>> ({counter:,} of {+len(figures):,}) {loop_process_string} from: {_path}")
 
 			try:
-				exsclaim_dict = self._loop_func(search_query, exsclaim_dict, _path, new_separated)
+				exsclaim_dict = self._run_loop_function(search_query, exsclaim_dict, _path, new_separated)
 			except Exception as e:
 				self.display_exception(e, _path)
+				raise e
 
 			# Save to file every N iterations (to accommodate restart scenarios)
 			if counter % N == 0:
 				self._appendJSON(self.exsclaim_json, data=new_separated, filename=append_file)
 				new_separated = set()
-			counter += 1
 
-		self._end_timer(f"{counter - 1:,} figures")
+		self._end_timer(f"{counter-1:,} figures")
 		self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 		return exsclaim_dict
 
@@ -198,8 +199,9 @@ class JournalScraper(ExsclaimTool):
 	Parameters:
 	None
 	"""
-	def __init__(self, search_query:dict):
-		super().__init__(search_query, __name__ + ".JournalScraper")
+	def __init__(self, search_query:dict, **kwargs):
+		kwargs.setdefault("logger_name", __name__ + ".JournalScraper")
+		super().__init__(search_query, **kwargs)
 		self.new_articles_visited = set()
 
 	def _load_model(self):
@@ -233,6 +235,10 @@ class JournalScraper(ExsclaimTool):
 			raise NameError(f"Journal family {journal_family_name} is not defined.")
 		journal = journals[journal_family_name](search_query)
 
+		if exsclaim_json is None:
+			exsclaim_json = dict()
+
+		self.display_info(f"Running Journal Scraper\n")
 		self.results_directory.mkdir(exist_ok=True)
 		self._start_timer()
 
@@ -267,8 +273,9 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 	None
 	"""
 
-	def __init__(self, search_query, browser:Browser=None): # provide the location with the folder with the html files
-		super().__init__(search_query, logger_name=__name__ + ".HTMLScraper")
+	def __init__(self, search_query, browser:Browser=None, **kwargs): # provide the location with the folder with the html files
+		kwargs.setdefault("logger_name", __name__ + ".HTMLScraper")
+		super().__init__(search_query, **kwargs)
 		ExsclaimBrowser.__init__(self, browser=browser)
 		# self.new_articles_visited = set()
 		self.search_query = search_query
@@ -277,7 +284,7 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 
 		# Set up file structure
 		base_results_dir = initialize_results_dir(
-			self.search_query.get("results_dirs", None)
+			self.search_query.get("results_dir", None)
 		)
 		self.results_directory = base_results_dir / self.search_query["name"]
 		figures_directory = self.results_directory / "figures"
@@ -784,8 +791,9 @@ class CaptionDistributor(ExsclaimTool):
 		Absolute path to caption nlp model
 	"""
 
-	def __init__(self, search_query:dict=None):
-		super().__init__(search_query if search_query is not None else {}, __name__ + ".CaptionDistributor")
+	def __init__(self, search_query:dict=None, **kwargs):
+		kwargs.setdefault("logger_name", __name__ + ".CaptionDistributor")
+		super().__init__(search_query if search_query is not None else {}, **kwargs)
 		self.model_path = ""
 
 	def _load_model(self):
@@ -816,7 +824,7 @@ class CaptionDistributor(ExsclaimTool):
 			master_image = {
 				"label": label,
 				"description": caption_dict[label],  # ["description"],
-				"keywords": safe_summarize_caption(query, api, llm).split(', '),
+				"keywords": get_keywords(query, api, llm).split(', '),
 				# "context": get_context(query, documents, embeddings),
 				# "general": get_keywords(get_context(query, documents, embeddings), api, llm).split(', '),
 			}
@@ -834,14 +842,14 @@ class CaptionDistributor(ExsclaimTool):
 		super()._appendJSON(exsclaim_json, data=map(lambda figure: figure.split('/')[-1], data), filename=filename)
 
 	def _run_loop_function(self, search_query, exsclaim_json:dict, figure:Path, new_separated:set):
-		caption_text = exsclaim_json[figure_name]["full_caption"]
+		caption_text = exsclaim_json[figure]["full_caption"]
 		# print('full caption',caption_text)
 		delimiter = 0
-		llm = search_query["llm"]
+		llm = search_query.get("llm", "gpt-3.5-turbo")
 		# print(f"{llm=}")
 		api = search_query["openai_API"]
-		# print('api',api)
-		caption_dict = safe_separate_captions(caption_text, api, llm="gpt-3.5-turbo")
+		# print(f"{api=}")
+		caption_dict = separate_captions(caption_text, api, llm=llm)
 		# caption.associate_caption_text( # here add the gpt3 code separate_captions(caption_text) #
 		#  model, caption_text, search_query["query"]
 		# )
@@ -849,7 +857,7 @@ class CaptionDistributor(ExsclaimTool):
 		exsclaim_json = self._update_exsclaim(search_query,
 											  exsclaim_json, figure, delimiter, caption_dict
 											  )
-		new_captions_distributed.add(figure_name)
+		new_captions_distributed.add(figure)
 		return exsclaim_json
 
 	def run(self, search_query, exsclaim_json):
@@ -861,6 +869,8 @@ class CaptionDistributor(ExsclaimTool):
 		Returns:
 			exsclaim_json (dict): Updated with results of search
 		"""
+		from os import getenv
+		search_query.setdefault("openai_API", getenv("OPENAI_API_KEY", None))
 		return self._run(search_query,
 						 exsclaim_json,
 						 "Caption Separator",

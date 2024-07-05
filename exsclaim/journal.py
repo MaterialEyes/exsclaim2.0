@@ -171,10 +171,10 @@ class JournalFamily(ABC, ExsclaimBrowser):
         self.search_query = search_query
         self.open = search_query.get("open", False)
         self.order = search_query.get("order", "relevant")
-        self.logger = getLogger(__name__)
+        self.logger = kwargs.get("logger", getLogger(__name__))
 
         # Set up file structure
-        base_results_dir = paths.initialize_results_dir(self.search_query.get("results_dirs", None))
+        base_results_dir = paths.initialize_results_dir(search_query.get("results_dir", None))
         self.results_directory = base_results_dir / self.search_query["name"]
         figures_directory = self.results_directory / "figures"
         figures_directory.mkdir(exist_ok=True)
@@ -347,11 +347,12 @@ class JournalFamily(ABC, ExsclaimBrowser):
         image_tag = figure_subtree.find("img")
         image_url = image_tag.get("src")
         if image_url is None:
-            raise ValueError("No image url found.")
+            image_url = image_tag.get("data-src")
+            if image_url is None:
+                raise ValueError("No image url found.")
         image_url = image_url.lstrip("//")
         # Replaces a part of the URL that sets the image as a certain size to its full size
-        return sub(r"(.+.com/)lw\d+(/.+)", "full", image_url)
-        # FIXME: image_url is coming up None
+        return sub(r"(.+.com/)lw\d+(/.+)", r"\1full\2", image_url)
 
     def get_search_query_urls(self) -> list[str]:
         """Create list of search query urls based on input query json
@@ -485,7 +486,15 @@ class JournalFamily(ABC, ExsclaimBrowser):
         return f"{article_name}_fig{figure_idx}.jpg"
 
     def get_figures(self, figure_idx:int, figure, figure_json:dict, url:str) -> tuple[dict, str]:
-        image_url = self.prepend + self.get_figure_url(figure)  # .replace('_hi-res','')
+        try:
+            image_url = self.prepend + self.get_figure_url(figure)  # .replace('_hi-res','')
+        except ValueError as e:
+            error_dir = self.results_directory / "html" / "errors"
+            error_dir.mkdir(exist_ok=True, parents=True)
+            with open(error_dir / f"{url}_{figure_idx}.html", "w") as f:
+                f.write(f"<!--No image url found-->\n{figure_subtree}")
+            raise e
+
         if not match("https?://.+", image_url):
             image_url = "https://" + image_url
 
@@ -556,7 +565,10 @@ class JournalFamily(ABC, ExsclaimBrowser):
                 "full_caption": figure_caption,
             }
 
-            figure_json, image_url = self.get_figures(figure_number, figure_subtree, figure_json, url)
+            try:
+                figure_json, image_url = self.get_figures(figure_number, figure_subtree, figure_json, url)
+            except ValueError as e:
+                self.logger.exception(e)
             # figure_name = self._get_figure_name(figure_json["article_name"], figure_subtree)
             figure_name = self._get_figure_name(figure_json["article_name"], figure_number)
 
@@ -681,7 +693,6 @@ class ACS(JournalFamilyDynamic):
 
             start_page, stop_page, total_articles = self.get_page_info(page)
 
-            # raise NameError("journal family {0} is not defined")
             for page_number in range(start_page, stop_page + 1):
                 for locator in page.locator("a[href]").all():
                     url = locator.get_attribute['href']

@@ -10,12 +10,11 @@ from langchain_community.vectorstores import Chroma
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from re import sub
 from time import sleep
-import openai
-import os
+from openai import OpenAI
 
 
 __all__ = ["CustomEncoder", "get_context", "remove_control_characters", "create_openai_completion", "separate_captions",
-           "get_keywords", "safe_summarize_caption", "safe_separate_captions"]
+           "get_keywords"]
 
 
 def get_context(query, documents, embeddings):
@@ -32,7 +31,7 @@ def get_context(query, documents, embeddings):
     return context
 
 
-def remove_control_characters(s):
+def remove_control_characters(s:str) -> str:
     return sub(r'[\x00-\x1F\x7F-\x9F]', '', s)
 
 
@@ -43,20 +42,19 @@ class CustomEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def create_openai_completion(api_key:str, caption_prompt:str):
-    openai.api_key = api_key
+def create_openai_completion(api_key:str, caption_prompt:str, model:str="gpt-3.5-turbo") -> str:
+    client = OpenAI(api_key=api_key)
 
-    completion = openai.ChatCompletion.create(
-        model='gpt-3.5-turbo',
-        messages=[
-            {'role': 'assistant', 'content': caption_prompt}
-        ],
+    # TODO: Continue working on updating the ChatGPT interface
+    completion = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "assistant", "content": caption_prompt}],
         temperature=0
     )
     output_string = completion['choices'][0]['message']['content'].strip()
 
     # Replace single quotes with double quotes to make the string valid JSON
-    output_string = output_string.replace("\\", "\\\\").replace("'", "\"")
+    output_string = output_string.replace(r"\", r"\\").replace("'", "\"")
     return remove_control_characters(output_string)
 
 
@@ -67,8 +65,6 @@ def retry(max_tries=5, delay_seconds=2):
     :param float delay_seconds: The number of seconds between tries.
     :return: The returned value from the function.
     """
-    from time import sleep
-
     def retry_decorator(func):
         @wraps(func)
         def retry_wrapper(*args, **kwargs):
@@ -91,6 +87,7 @@ def retry(max_tries=5, delay_seconds=2):
     return retry_decorator
 
 
+@retry
 def separate_captions(caption, api, llm):
     if llm == "gpt-3.5-turbo":
         caption_prompt = f"Please separate the given full caption into the exact subcaptions and format as a dictionary with keys the letter of each subcaption. If there is no full caption then return an empty dictionary. Do not hallucinate\n{caption}"
@@ -103,6 +100,7 @@ def separate_captions(caption, api, llm):
         output_dict = {}
 
     # else:
+    #     import os
     #     # Create a local tokenizer copy the first time
     #     if os.path.isdir("./tokenizer/"):
     #         tokenizer = AutoTokenizer.from_pretrained("./tokenizer/")
@@ -147,47 +145,8 @@ def separate_captions(caption, api, llm):
     return output_dict
 
 
+@retry()
 def get_keywords(caption, api, llm):
-    llm = ChatOpenAI(model_name='gpt-3.5-turbo', openai_api_key=api)
     caption_prompt = f"You are an experienced material scientist. Summarize the text in a less than three keywords separated by comma. The keywords should be a broad and general description of the caption and can be related to the materials used, characterization techniques or any other scientific related keyword. Do not hallucinate or create content that does not exist in the provided text: {caption}"
 
-    return create_openai_completion(api, caption_prompt)
-
-
-def safe_summarize_caption(*args, **kwargs):
-    """Safely call the get_keywords function with exponential backoff."""
-    max_retries = 5
-    base_wait_time = 2  # starting with 2 seconds
-
-    for attempt in range(max_retries):
-        try:
-            # Attempt to call the get_keywords function
-            return get_keywords(*args, **kwargs)
-        except Exception as e:
-            if attempt < max_retries - 1:  # if it's not the last attempt
-                wait_time = base_wait_time * (2 ** attempt)  # double the wait time with every retry
-                print(f"Error: {e}. Retrying in {wait_time} seconds...")
-                sleep(wait_time)
-            else:
-                # If we've reached the maximum retries, raise the exception or return a default value
-                return None
-
-
-def safe_separate_captions(*args, **kwargs):
-    """Safely call the get_keywords function with exponential backoff."""
-    max_retries = 5
-    base_wait_time = 2  # starting with 2 seconds
-
-    for attempt in range(max_retries):
-        try:
-            # Attempt to call the get_keywords function
-            return separate_captions(*args, **kwargs)
-        except Exception as e:
-            if attempt < max_retries - 1:  # if it's not the last attempt
-                wait_time = base_wait_time * (2 ** attempt)  # double the wait time with every retry
-                print(f"Error: {e}. Retrying in {wait_time} seconds...")
-                sleep(wait_time)
-            else:
-                # If we've reached the maximum retries, raise the exception
-                print("Max retries reached. Skipping this caption.")
-                return None # or return a default value, or raise the exception
+    return create_openai_completion(api, caption_prompt, llm)

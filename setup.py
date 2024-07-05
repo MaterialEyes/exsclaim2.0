@@ -94,11 +94,14 @@ setup(
 	},
 	classifiers=[
 		"Development Status :: 4 - Beta",
+		"Environment :: Console",
 		"Intended Audience :: Science/Research",
-		"Topic :: Scientific/Engineering :: Image Processing",
-		"Programming Language :: Python :: 3",
 		"License :: OSI Approved :: MIT License",
 		"Operating System :: OS Independent",
+		"Programming Language :: Python :: 3.10",
+		"Programming Language :: Python :: 3.11",
+		"Programming Language :: Python :: 3.12",
+		"Topic :: Scientific/Engineering :: Image Processing",
 	],
 	entry_points={
 		'console_scripts': [
@@ -107,9 +110,10 @@ setup(
 	},
 	python_requires='>=3.10',
 	project_urls={
-		"Documentation": f"{url}/wiki",
 		"Source": url,
+		"Documentation": f"{url}/wiki",
 		"Issue Tracker": f"{url}/issues",
+		"Paper": "https://arxiv.org/abs/2103.10631",
 	},
 )
 

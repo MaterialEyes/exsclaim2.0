@@ -14,6 +14,7 @@ COPY . ./
 
 RUN npx browserslist@latest --update-db
 RUN npm run build
+# The echo bypasses an error so the build doesn't stop
 RUN npm audit fix || echo
 
 FROM node:current-alpine AS prod

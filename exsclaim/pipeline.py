@@ -1,4 +1,5 @@
 from .figure import FigureSeparator
+from .notifications import *
 from .tool import ExsclaimTool, CaptionDistributor, JournalScraper, HTMLScraper
 from .utilities import paths, PrinterFormatter, ExsclaimFormatter, convert_labelbox_to_coords, crop_from_geometry
 
@@ -65,7 +66,6 @@ class Pipeline:
         Args:
             query_path (dict or path to json): An EXSCLAIM user query JSON
         """
-        self.logger = logging.getLogger(__name__)
         # Load Query on which Pipeline will run
         self.current_path = Path(__file__).resolve().parent
         if "test" == query_path:
@@ -87,7 +87,7 @@ class Pipeline:
         self.results_directory = base_results_dir / self.query_dict["name"]
         self.results_directory.mkdir(exist_ok=True)
 
-        # Set up logging
+        # region Set up logging
         handlers = []
         for log_output in self.query_dict.get("logging", []):
             if log_output.lower() == "print":
@@ -100,17 +100,29 @@ class Pipeline:
             handlers.append(handler)
 
         logging.basicConfig(level=logging.INFO, handlers=handlers, force=True)
+        self.logger = logging.getLogger(__name__)
+        # endregion
 
-        # Check for an existing exsclaim json
-        try:
-            self.exsclaim_path = self.results_directory / "exsclaim.json"
+        # region Check for an existing exsclaim json
+        self.exsclaim_path = self.results_directory / "exsclaim.json"
+
+        if self.exsclaim_path.exists():
             with open(self.exsclaim_path, "r") as f:
                 # Load configuration file values
                 self.exsclaim_dict = load(f)
-        except Exception:
+        else:
             self.logger.info("No exsclaim.json file found, starting a new one.")
             # Keep preset values
             self.exsclaim_dict = {}
+        # endregion
+
+        # region Set up notifications
+        exsclaim_notifications = self.query_dict.get("notifications", {})
+        notifications = [_class.from_json(json)
+                         for key, _class in notifiers.items()
+                         for json in exsclaim_notifications.get(key, [])]
+        self.notifications = notifications
+        # endregion
 
     def display_info(self, info):
         """Display information to the user as the specified in the query
@@ -174,13 +186,13 @@ class Pipeline:
         if tools is None:
             tools = []
             if journal_scraper:
-                tools.append(JournalScraper(self.query_dict))
+                tools.append(JournalScraper(self.query_dict, logger=self.logger))
             if html_scraper:
-                tools.append(HTMLScraper(self.query_dict))
+                tools.append(HTMLScraper(self.query_dict, logger=self.logger))
             if caption_distributor:
-                tools.append(CaptionDistributor(self.query_dict))
+                tools.append(CaptionDistributor(self.query_dict, logger=self.logger))
             if figure_separator:
-                tools.append(FigureSeparator(self.query_dict))
+                tools.append(FigureSeparator(self.query_dict, logger=self.logger))
 
         # run each ExsclaimTool on search query
         for tool in tools:
@@ -242,7 +254,7 @@ class Pipeline:
         masters = []
 
         captions = unassigned.get("captions", {})
-        not_assigned = {[a["label"] for a in captions]}
+        not_assigned = {a["label"] for a in captions}
 
         for index, master_image in enumerate(figure.get("master_images", [])):
             label_json = master_image.get("subfigure_label", {})

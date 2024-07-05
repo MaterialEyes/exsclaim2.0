@@ -1,13 +1,12 @@
 #!/bin/bash
 
 LOCAL_VERSION=$(exsclaim -v | sed 's/EXSCLAIM v//g')
-echo "Local version: $LOCAL_VERSION"
-
 GIT_VERSION=$(curl -s https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/exsclaim2_for_spin/exsclaim/version.py | sed 's/version = //g' | sed 's/"//g')
-echo "Git version: $GIT_VERSION"
+
 if [ "$GIT_VERSION" != "$LOCAL_VERSION" ]; then
-	# The local version not is up-to-date and needs to be upgraded.
+	# The local version is not up-to-date and needs to be upgraded.
 	pip install --upgrade git+"https://github.com/MaterialEyes/exsclaim2.0@$GIT_VERSION"
 fi
 
-python3 -m "$@"
+#python3 -m "$@"
+"$@"

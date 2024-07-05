@@ -1,4 +1,5 @@
 FROM python:3.11.9 AS base
+LABEL authors="Len Washington III"
 
 WORKDIR /usr/src/app
 
@@ -8,7 +9,7 @@ COPY requirements.txt ./exsclaim-install/
 COPY ./exsclaim ./exsclaim-install/exsclaim
 COPY ./setup.py ./exsclaim-install/
 COPY ./README.md ./exsclaim-install/
-RUN pip install ./exsclaim-install --no-cache-dir
+RUN pip install ./exsclaim-install
 
 FROM python:3.11.9 AS prod
 ENV TZ="America/Chicago"
@@ -29,7 +30,7 @@ RUN apt install -yq tzdata && \
 # endregion
 
 ENTRYPOINT ["./entrypoint.sh"]
-CMD [ "exsclaim", "/usr/src/app/query/nature-ESEM.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]
+CMD [ "python3", "-m", "exsclaim", "/usr/src/app/query/nature-ESEM.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]
 
 #COPY exsclaim ./exsclaim
 COPY query ./query
