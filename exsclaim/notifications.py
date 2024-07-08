@@ -51,8 +51,8 @@ class NTFY(Notifications):
 			"Title": "EXSCLAIM Notification"
 		}
 
-		if self.access_token is not None:
-			headers["Authorization"] = f"Bearer {self.access_token}"
+		if self._access_token is not None:
+			headers["Authorization"] = f"Bearer {self._access_token}"
 
 		post(self._ntfy_url, data,
 			 headers=headers)

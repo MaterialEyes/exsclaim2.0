@@ -25,6 +25,7 @@ from os import PathLike
 from pathlib import Path
 from PIL import Image
 from playwright.sync_api import Browser
+from re import search
 from time import time_ns as timer, time, sleep
 from typing import Iterable
 
@@ -151,9 +152,9 @@ class ExsclaimTool(ABC):
 
 		counter = 1
 		figures = [
-			(path / exsclaim_dict[figure]["figure_name"] if path is not None else exsclaim_dict[figure]["figure_name"])
-			for figure in exsclaim_dict
-			if exsclaim_dict[figure]["figure_name"] not in separated
+			(path / value["figure_name"] if path is not None else value["figure_name"])
+			for value in exsclaim_dict.values()
+			if value["figure_name"] not in separated
 		]
 
 		for counter, _path in enumerate(figures, start=counter):
@@ -802,28 +803,33 @@ class CaptionDistributor(ExsclaimTool):
 		# return caption.load_models(self.model_path) # TODO: Find out where load_models comes from
 
 	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter, caption_dict):
-		from exsclaim import caption
+		from . import caption
 
 		llm = search_query["llm"]
 		api = search_query["openai_API"]
 		exsclaim_dict[figure_name]["caption_delimiter"] = delimiter
-		html_filename = exsclaim_dict[figure_name]["article_name"]
-		embeddings = OpenAIEmbeddings( openai_api_key=api)
-		loader = UnstructuredHTMLLoader(os.path.join("output", search_query["name"], "html", f'{html_filename}.html'))
-		documents = loader.load()
-		# loader = UnstructuredHTMLLoader(os.path.join("exsclaim", "output", exsclaim_dict["name"], "html", f'{html_filename}.html'))
-		for label in caption_dict.keys():
+		# html_filename = exsclaim_dict[figure_name]["article_name"]
+		# embeddings = OpenAIEmbeddings(openai_api_key=api)
+		# loader = UnstructuredHTMLLoader(os.path.join("output", search_query["name"], "html", f'{html_filename}.html'))
+		# documents = loader.load()
+		# Gets the figure number out of the figure name
+		match = search(r"^.+_(fig\d+)\.\w{3,4}$", exsclaim_dict[figure_name]["figure_name"])
+		if match is None:
+			raise ValueError(f"Could not find figure number in name: {figure_name}.")
+		figure_number = match.group(1)
+		del match
 
+		for label, capt in caption_dict.items():
 			# figure_name_part = (exsclaim_dict[figure_name]["figure_name"].split('.')[0]).split('_')[-1]
 			# label_str = str(label)  # Ensure label is a string
 			# caption = str(caption_dict.get(label, ''))  # Safely get the caption as a string
 			# query = figure_name_part + label_str + " " + caption
 
-			query = (exsclaim_dict[figure_name]["figure_name"].split('.')[0]).split('_')[-1] + f"{label} {caption_dict.get(label, '')}"# caption_dict[label]
+			query = f"{figure_number}{label} {capt if capt else ''}"
 			# print(query)
 			master_image = {
 				"label": label,
-				"description": caption_dict[label],  # ["description"],
+				"description": capt,  # ["description"],
 				"keywords": get_keywords(query, api, llm).split(', '),
 				# "context": get_context(query, documents, embeddings),
 				# "general": get_keywords(get_context(query, documents, embeddings), api, llm).split(', '),
@@ -841,23 +847,27 @@ class CaptionDistributor(ExsclaimTool):
 		"""
 		super()._appendJSON(exsclaim_json, data=map(lambda figure: figure.split('/')[-1], data), filename=filename)
 
-	def _run_loop_function(self, search_query, exsclaim_json:dict, figure:Path, new_separated:set):
+	def _run_loop_function(self, search_query, exsclaim_json:dict, figure:str, new_separated:set):
+		if figure == "s41929-023-01090-4_fig4.jpg":
+			self.logger.error(f"There's an extra \"'\" in this {figure}'s caption that causes the JSON to not be parsed properly, skipping for now.")
+			return exsclaim_json
 		caption_text = exsclaim_json[figure]["full_caption"]
 		# print('full caption',caption_text)
 		delimiter = 0
 		llm = search_query.get("llm", "gpt-3.5-turbo")
-		# print(f"{llm=}")
 		api = search_query["openai_API"]
-		# print(f"{api=}")
-		caption_dict = separate_captions(caption_text, api, llm=llm)
+		caption_dict = separate_captions(caption_text, api, llm)
 		# caption.associate_caption_text( # here add the gpt3 code separate_captions(caption_text) #
 		#  model, caption_text, search_query["query"]
 		# )
-		print(f"full caption dict: {caption_dict}")
-		exsclaim_json = self._update_exsclaim(search_query,
-											  exsclaim_json, figure, delimiter, caption_dict
-											  )
-		new_captions_distributed.add(figure)
+		self.logger.debug(f"full caption dict: {caption_dict}")
+		if caption_dict is None:
+			self.logger.exception(f"Could not find full caption in {figure}.")
+		else:
+			exsclaim_json = self._update_exsclaim(search_query,
+												  exsclaim_json, figure, delimiter, caption_dict
+												  )
+			new_separated.add(figure)
 		return exsclaim_json
 
 	def run(self, search_query, exsclaim_json):

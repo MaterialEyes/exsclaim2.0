@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
+import logging
 from functools import wraps
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
@@ -51,18 +52,19 @@ def create_openai_completion(api_key:str, caption_prompt:str, model:str="gpt-3.5
         messages=[{"role": "assistant", "content": caption_prompt}],
         temperature=0
     )
-    output_string = completion['choices'][0]['message']['content'].strip()
+    output_string = completion.choices[0].message.content.strip()
 
     # Replace single quotes with double quotes to make the string valid JSON
-    output_string = output_string.replace(r"\", r"\\").replace("'", "\"")
+    output_string = output_string.replace("\\", "\\\\").replace("'", "\"")
     return remove_control_characters(output_string)
 
 
-def retry(max_tries=5, delay_seconds=2):
+def retry(max_tries=5, delay_seconds=2, logger:logging.Logger=logging.getLogger(__name__)):
     """
     Retries a function if a failure occurs.
     :param int max_tries: The maximum number of tries the system should attempt before throwing an error.
     :param float delay_seconds: The number of seconds between tries.
+    :param logging.Logger logger: The logger to use if an error occurs.
     :return: The returned value from the function.
     """
     def retry_decorator(func):
@@ -74,79 +76,40 @@ def retry(max_tries=5, delay_seconds=2):
                     return func(*args, **kwargs)
                 except Exception as e:
                     wait_time = delay_seconds * (2 ** tries)
-                    print(f"Error: {e}. Retrying in {wait_time} seconds...")
+                    logger.exception(f"Error: {e}. Retrying in {wait_time} seconds...")
                     tries += 1
                     if tries == max_tries:
-                        print("Max retries reached. Skipping this caption.")
+                        logger.exception("Max retries reached. Skipping this caption.")
                         return None
                         # raise e
                     sleep(wait_time)
 
         return retry_wrapper
-
     return retry_decorator
 
 
-@retry
-def separate_captions(caption, api, llm):
+@retry()
+def separate_captions(caption:str, api:str, llm:str) -> dict:
+    output_dict = dict()
     if llm == "gpt-3.5-turbo":
-        caption_prompt = f"Please separate the given full caption into the exact subcaptions and format as a dictionary with keys the letter of each subcaption. If there is no full caption then return an empty dictionary. Do not hallucinate\n{caption}"
+        caption_prompt = f"Please separate the given full caption into the exact subcaptions and format as a syntactically valid Python dictionary with keys the letter of each subcaption. If there is no full caption then return an empty dictionary. Do not hallucinate\n{caption}"
 
         output_string = create_openai_completion(api, caption_prompt)
 
         # Parse the string into a dictionary
-        output_dict = json.loads(output_string) # , cls=CustomEncoder)
+        try:
+            output_dict = json.loads(output_string) # , cls=CustomEncoder)
+        except json.decoder.JSONDecodeError as e:
+            logging.error(f"Could not decode the JSON response given.\n`{output_string}`")
+            raise e
     else:
-        output_dict = {}
-
-    # else:
-    #     import os
-    #     # Create a local tokenizer copy the first time
-    #     if os.path.isdir("./tokenizer/"):
-    #         tokenizer = AutoTokenizer.from_pretrained("./tokenizer/")
-    #     else:
-    #         tokenizer = AutoTokenizer.from_pretrained("model_name")
-    #         os.mkdir("./tokenizer/")
-    #         tokenizer.save_pretrained("./tokenizer/")
-    #
-    #     model = AutoModelForCausalLM.from_pretrained("eachadea/vicuna-13b-1.1")  # , device_map="auto") #, load_in_8bit=True)
-    #     pipe = pipeline(
-    #         "text-generation",
-    #         model=model,
-    #         tokenizer=tokenizer,
-    #         max_length=2048,
-    #         temperature=0.6,
-    #         top_p=0.95,
-    #         repetition_penalty=1.2
-    #     )
-    #     # llm = HuggingFacePipeline(pipeline=pipe)
-    #
-    #     template = """Answer the question based on the context below. If the
-    # question cannot be answered using the information provided answer
-    # with "I don't know".
-    #
-    # Context: {context}
-    #
-    # Question: {query}
-    #
-    # Answer: """
-    #
-    #     prompt_template = PromptTemplate(
-    #         input_variables=["context","query"],
-    #         template=template
-    #     )
-    #
-    #     # conversation = LLMChain(
-    #     #     prompt=prompt_template,
-    #     #     llm=llm)
-    #
-    #     query = "Can you separate the given text into the exact subcaptions and format as a dictionary with keys the letter of each subcaption?"
+        logging.exception(f"Unsupported llm type: {llm}, returning an empty dictionary.")
 
     return output_dict
 
 
 @retry()
-def get_keywords(caption, api, llm):
+def get_keywords(caption:str, api:str, llm:str) -> str:
     caption_prompt = f"You are an experienced material scientist. Summarize the text in a less than three keywords separated by comma. The keywords should be a broad and general description of the caption and can be related to the materials used, characterization techniques or any other scientific related keyword. Do not hallucinate or create content that does not exist in the provided text: {caption}"
 
     return create_openai_completion(api, caption_prompt, llm)

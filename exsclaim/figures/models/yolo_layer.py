@@ -17,10 +17,10 @@ def bboxes_iou(bboxes_a, bboxes_b, xyxy=True):
     and area of the union.
 
     Args:
-        bbox_a (array): An array whose shape is :math:`(N, 4)`.
+        bboxes_a (array): An array whose shape is :math:`(N, 4)`.
             :math:`N` is the number of bounding boxes.
             The dtype should be :obj:`numpy.float32`.
-        bbox_b (array): An array similar to :obj:`bbox_a`,
+        bboxes_b (array): An array similar to :obj:`bbox_a`,
             whose shape is :math:`(K, 4)`.
             The dtype should be :obj:`numpy.float32`.
     Returns:

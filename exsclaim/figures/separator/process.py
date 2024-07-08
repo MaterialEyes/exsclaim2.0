@@ -46,7 +46,7 @@ def label2yolobox(labels:np.ndarray, info_img:tuple[int, int, int, int, int, int
     return labels
 
 
-def yolobox2label(box, info_img):
+def yolobox2label(box, info_img:tuple[int, int, int, int, int, int]):
     """
     Transform yolo box labels to yxyx box labels.
     Args:

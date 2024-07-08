@@ -6,10 +6,10 @@ import torch
 import torch.nn as nn
 
 
-__all__ = ["add_conv", "resblock", "create_yolov3_modules", "YOLOv3", "create_yolov3img_modules", "YOLOv3img"]
+__all__ = ["add_conv", "Resblock", "create_yolov3_modules", "YOLOv3", "create_yolov3img_modules", "YOLOv3img"]
 
 
-def add_conv(in_ch, out_ch, ksize, stride):
+def add_conv(in_ch, out_ch, ksize, stride, name="conv") -> nn.Sequential:
     """
     Add a conv2d / batchnorm / leaky ReLU block.
     Args:
@@ -17,13 +17,13 @@ def add_conv(in_ch, out_ch, ksize, stride):
         out_ch (int): number of output channels of the convolution layer.
         ksize (int): kernel size of the convolution layer.
         stride (int): stride of the convolution layer.
+        name (str): name of the convolution layer. Defaults to "conv".
     Returns:
         stage (Sequential) : Sequential layers composing a convolution block.
     """
     stage = nn.Sequential()
     pad = (ksize - 1) // 2
-    stage.add_module(
-        "conv",
+    stage.add_module(name,
         nn.Conv2d(
             in_channels=in_ch,
             out_channels=out_ch,
@@ -38,26 +38,26 @@ def add_conv(in_ch, out_ch, ksize, stride):
     return stage
 
 
-class resblock(nn.Module):
+class Resblock(nn.Module):
     """
-    Sequential residual blocks each of which consists of \
-    two convolution layers.
+    Sequential residual blocks each of which consists of two convolution layers.
     Args:
         ch (int): number of input and output channels.
         nblocks (int): number of residual blocks.
         shortcut (bool): if True, residual tensor addition is enabled.
     """
 
-    def __init__(self, ch, nblocks=1, shortcut=True):
+    def __init__(self, ch:int, nblocks:int=1, shortcut:bool=True):
 
-        super().__init__()
+        super(Resblock, self).__init__()
         self.shortcut = shortcut
         self.module_list = nn.ModuleList()
-        for i in range(nblocks):
-            resblock_one = nn.ModuleList()
-            resblock_one.append(add_conv(ch, ch // 2, 1, 1))
-            resblock_one.append(add_conv(ch // 2, ch, 3, 1))
-            self.module_list.append(resblock_one)
+        # for _ in range(nblocks):
+        #     self.module_list.append(
+        #         nn.ModuleList([add_conv(ch, ch // 2, 1, 1), add_conv(ch // 2, ch, 3, 1)])
+        #     )
+        self.module_list = nn.ModuleList([nn.ModuleList([add_conv(ch, ch // 2, 1, 1), add_conv(ch // 2, ch, 3, 1)])
+                                          for _ in range(nblocks)])
 
     def forward(self, x):
         for module in self.module_list:
@@ -83,18 +83,18 @@ def create_yolov3_modules(config_model, ignore_thre):
     mlist = nn.ModuleList()
     mlist.append(add_conv(in_ch=3, out_ch=32, ksize=3, stride=1))
     mlist.append(add_conv(in_ch=32, out_ch=64, ksize=3, stride=2))
-    mlist.append(resblock(ch=64))
+    mlist.append(Resblock(ch=64))
     mlist.append(add_conv(in_ch=64, out_ch=128, ksize=3, stride=2))
-    mlist.append(resblock(ch=128, nblocks=2))
+    mlist.append(Resblock(ch=128, nblocks=2))
     mlist.append(add_conv(in_ch=128, out_ch=256, ksize=3, stride=2))
-    mlist.append(resblock(ch=256, nblocks=8))  # shortcut 1 from here
+    mlist.append(Resblock(ch=256, nblocks=8))  # shortcut 1 from here
     mlist.append(add_conv(in_ch=256, out_ch=512, ksize=3, stride=2))
-    mlist.append(resblock(ch=512, nblocks=8))  # shortcut 2 from here
+    mlist.append(Resblock(ch=512, nblocks=8))  # shortcut 2 from here
     mlist.append(add_conv(in_ch=512, out_ch=1024, ksize=3, stride=2))
-    mlist.append(resblock(ch=1024, nblocks=4))
+    mlist.append(Resblock(ch=1024, nblocks=4))
 
     # YOLOv3
-    mlist.append(resblock(ch=1024, nblocks=2, shortcut=False))
+    mlist.append(Resblock(ch=1024, nblocks=2, shortcut=False))
     mlist.append(add_conv(in_ch=1024, out_ch=512, ksize=1, stride=1))
     # 1st yolo branch
     mlist.append(add_conv(in_ch=512, out_ch=1024, ksize=3, stride=1))
@@ -106,7 +106,7 @@ def create_yolov3_modules(config_model, ignore_thre):
     mlist.append(nn.Upsample(scale_factor=2, mode="nearest"))
     mlist.append(add_conv(in_ch=768, out_ch=256, ksize=1, stride=1))
     mlist.append(add_conv(in_ch=256, out_ch=512, ksize=3, stride=1))
-    mlist.append(resblock(ch=512, nblocks=1, shortcut=False))
+    mlist.append(Resblock(ch=512, nblocks=1, shortcut=False))
     mlist.append(add_conv(in_ch=512, out_ch=256, ksize=1, stride=1))
     # 2nd yolo branch
     mlist.append(add_conv(in_ch=256, out_ch=512, ksize=3, stride=1))
@@ -118,7 +118,7 @@ def create_yolov3_modules(config_model, ignore_thre):
     mlist.append(nn.Upsample(scale_factor=2, mode="nearest"))
     mlist.append(add_conv(in_ch=384, out_ch=128, ksize=1, stride=1))
     mlist.append(add_conv(in_ch=128, out_ch=256, ksize=3, stride=1))
-    mlist.append(resblock(ch=256, nblocks=2, shortcut=False))
+    mlist.append(Resblock(ch=256, nblocks=2, shortcut=False))
     mlist.append(
         YOLOLayer(config_model, layer_no=2, in_ch=256, ignore_thre=ignore_thre)
     )
@@ -129,11 +129,10 @@ def create_yolov3_modules(config_model, ignore_thre):
 class YOLOv3(nn.Module):
     """
     YOLOv3 model module. The module list is defined by create_yolov3_modules function. \
-    The network returns loss values from three YOLO layers during training \
-    and detection results during test.
+    The network returns loss values from three YOLO layers during training and detection results during test.
     """
 
-    def __init__(self, config_model, ignore_thre=0.7):
+    def __init__(self, config_model:dict, ignore_thre=0.7):
         """
         Initialization of YOLOv3 class.
         Args:
@@ -145,9 +144,7 @@ class YOLOv3(nn.Module):
         if config_model["TYPE"] == "YOLOv3":
             self.module_list = create_yolov3_modules(config_model, ignore_thre)
         else:
-            raise Exception(
-                "Model name {} is not available".format(config_model["TYPE"])
-            )
+            raise NameError(f"Model name {config_model['TYPE']} is not available.")
 
     def forward(self, x, targets=None):
         """
@@ -212,30 +209,28 @@ def create_yolov3img_modules(config_model, ignore_thre):
     mlist = nn.ModuleList()
     mlist.append(add_conv(in_ch=4, out_ch=32, ksize=3, stride=1))
     mlist.append(add_conv(in_ch=32, out_ch=64, ksize=3, stride=2))
-    mlist.append(resblock(ch=64))
+    mlist.append(Resblock(ch=64))
     mlist.append(add_conv(in_ch=64, out_ch=128, ksize=3, stride=2))
-    mlist.append(resblock(ch=128, nblocks=2))
+    mlist.append(Resblock(ch=128, nblocks=2))
     mlist.append(add_conv(in_ch=128, out_ch=256, ksize=3, stride=2))
-    mlist.append(resblock(ch=256, nblocks=8))  # shortcut 1 from here
+    mlist.append(Resblock(ch=256, nblocks=8))  # shortcut 1 from here
     mlist.append(add_conv(in_ch=256, out_ch=512, ksize=3, stride=2))
-    mlist.append(resblock(ch=512, nblocks=8))  # shortcut 2 from here
+    mlist.append(Resblock(ch=512, nblocks=8))  # shortcut 2 from here
     mlist.append(add_conv(in_ch=512, out_ch=1024, ksize=3, stride=2))
-    mlist.append(resblock(ch=1024, nblocks=4))
+    mlist.append(Resblock(ch=1024, nblocks=4))
 
     # YOLOv3
-    mlist.append(resblock(ch=1024, nblocks=2, shortcut=False))
+    mlist.append(Resblock(ch=1024, nblocks=2, shortcut=False))
     mlist.append(add_conv(in_ch=1024, out_ch=512, ksize=1, stride=1))
     # 1st yolo branch
     mlist.append(add_conv(in_ch=512, out_ch=1024, ksize=3, stride=1))
-    mlist.append(
-        YOLOimgLayer(config_model, layer_no=0, in_ch=1024, ignore_thre=ignore_thre)
-    )
+    mlist.append(YOLOimgLayer(config_model, layer_no=0, in_ch=1024, ignore_thre=ignore_thre))
 
     mlist.append(add_conv(in_ch=512, out_ch=256, ksize=1, stride=1))
     mlist.append(nn.Upsample(scale_factor=2, mode="nearest"))
     mlist.append(add_conv(in_ch=768, out_ch=256, ksize=1, stride=1))
     mlist.append(add_conv(in_ch=256, out_ch=512, ksize=3, stride=1))
-    mlist.append(resblock(ch=512, nblocks=1, shortcut=False))
+    mlist.append(Resblock(ch=512, nblocks=1, shortcut=False))
     mlist.append(add_conv(in_ch=512, out_ch=256, ksize=1, stride=1))
     # 2nd yolo branch
     mlist.append(add_conv(in_ch=256, out_ch=512, ksize=3, stride=1))
@@ -247,7 +242,7 @@ def create_yolov3img_modules(config_model, ignore_thre):
     mlist.append(nn.Upsample(scale_factor=2, mode="nearest"))
     mlist.append(add_conv(in_ch=384, out_ch=128, ksize=1, stride=1))
     mlist.append(add_conv(in_ch=128, out_ch=256, ksize=3, stride=1))
-    mlist.append(resblock(ch=256, nblocks=2, shortcut=False))
+    mlist.append(Resblock(ch=256, nblocks=2, shortcut=False))
     mlist.append(
         YOLOimgLayer(config_model, layer_no=2, in_ch=256, ignore_thre=ignore_thre)
     )
@@ -274,11 +269,9 @@ class YOLOv3img(nn.Module):
         if config_model["TYPE"] == "YOLOv3":
             self.module_list = create_yolov3img_modules(config_model, ignore_thre)
         else:
-            raise Exception(
-                "Model name {} is not available".format(config_model["TYPE"])
-            )
+            raise Exception(f"Model name {config_model['TYPE']} is not available")
 
-    def forward(self, x, targets=None):
+    def forward(self, x:torch.Tensor, targets:torch.Tensor=None):
         """
         Forward path of YOLOv3.
         Args:
@@ -324,8 +317,6 @@ class YOLOv3img(nn.Module):
                 x = torch.cat((x, route_layers[0]), 1)
         if train:
             return sum(output)
-        else:
-            return output
-
+        return output
 
 #             return torch.cat(output, 1)

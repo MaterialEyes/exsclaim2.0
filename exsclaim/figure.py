@@ -1,4 +1,5 @@
-from .figures import CRNN, resnet152, YOLOv3, YOLOv3img, ctc, non_max_suppression_malisiewicz, process, create_scale_bar_objects
+from .figures import CRNN, resnet152, YOLOv3, YOLOv3img, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, \
+    preprocess, postprocess, yolobox2label, label2yolobox, preprocess_mask
 from .tool import ExsclaimTool
 from .utilities import boxes, load_model_from_checkpoint
 
@@ -8,20 +9,18 @@ import logging
 import numpy as np
 import torch
 import warnings
-import yaml
 
 from glob import glob
 from os.path import join
 from pathlib import Path
 from PIL import Image
 from scipy.special import softmax
-from skimage import io
-from time import time_ns as timer
 from torch.autograd import Variable
 from torch.nn.functional import softmax
 from torchvision import transforms
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
+from yaml import load, FullLoader
 
 
 __all__ = ["FigureSeparator"]
@@ -48,19 +47,13 @@ class FigureSeparator(ExsclaimTool):
         model_path = Path(__file__).resolve().parent / "figures"
         configuration_file = model_path / "config" / "yolov3_default_subfig.cfg"
         with open(configuration_file, "r") as f:
-            configuration = yaml.load(f, Loader=yaml.FullLoader)
+            configuration = load(f, Loader=FullLoader)
 
         self.image_size = configuration["TEST"]["IMGSIZE"]
         self.nms_threshold = configuration["TEST"]["NMSTHRE"]
         self.confidence_threshold = 0.0001
         self.gpu_id = 1
-        # This suppresses warning if the user has no CUDA device initialized,
-        # which is unnecessary as we are explicitly checking. This may not
-        # be necessary in the future, described in:
-        # https://github.com/pytorch/pytorch/issues/47038
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            self.cuda = torch.cuda.is_available()
+        self.cuda = torch.cuda.is_available()
 
         self.dtype = torch.cuda.FloatTensor if self.cuda else torch.FloatTensor
         if self.cuda:
@@ -82,7 +75,7 @@ class FigureSeparator(ExsclaimTool):
         # Load classification model
         master_config_file = model_path / "config" / "yolov3_default_master.cfg"
         with open(master_config_file, "r") as f:
-            master_config = yaml.load(f, Loader=yaml.FullLoader)
+            master_config = load(f, Loader=FullLoader)
 
         self.classifier_model = load_model_from_checkpoint(
             YOLOv3img(master_config["MODEL"]), "classifier_model.pt", self.cuda, self.device
@@ -90,7 +83,7 @@ class FigureSeparator(ExsclaimTool):
 
         # Load scale bar detection model
         # load an object detection model pre-trained on COCO
-        scale_bar_detection_model = fasterrcnn_resnet50_fpn(weights=True)
+        scale_bar_detection_model = fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
 
         input_features = scale_bar_detection_model.roi_heads.box_predictor.cls_score.in_features
 
@@ -135,7 +128,7 @@ class FigureSeparator(ExsclaimTool):
 
     def _run_loop_function(self, search_query, exsclaim_json:dict, figure:Path, new_separated:set):
         self.extract_image_objects(figure.name)
-        new_figures_separated.add(figure.name)
+        new_separated.add(figure.name)
         return exsclaim_json
 
     def run(self, search_query, exsclaim_dict):
@@ -164,7 +157,7 @@ class FigureSeparator(ExsclaimTool):
         paths = [glob(join(search_query["results_dir"], "figures", "*" + ext)) for ext in extensions]
         return paths
 
-    def detect_subfigure_boundaries(self, figure_path):
+    def detect_subfigure_boundaries(self, figure_path:Path):
         """Detects the bounding boxes of subfigures in figure_path
 
         Args:
@@ -175,26 +168,29 @@ class FigureSeparator(ExsclaimTool):
                 x1, y1, x2, y2, confidence
         """
         # Preprocess the figure for the models
-        img = cv2.imread(figure_path)
+        img = cv2.imread(str(figure_path))
+        if img is None:
+            raise FileNotFoundError(f"Could not find {figure_path}.")
+
         if len(np.shape(img)) == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
         else:
             img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
 
-        img, info_img = process.preprocess(img, self.image_size, jitter=0)
+        img, info_img = preprocess(img, self.image_size, jitter=0)
         img = np.transpose(img / 255.0, (2, 0, 1))
         # TODO: Check if the copy is necessary
         img = np.copy(img)
         img = torch.from_numpy(img).float().unsqueeze(0)
         img = Variable(img.type(self.dtype))
 
-        img_raw = Image.open(figure_path).convert("RGB")
-        width, height = img_raw.size
+        with Image.open(figure_path).convert("RGB") as img_raw:
+            width, height = img_raw.size
 
         # Run model on figure
         with torch.no_grad():
             outputs = self.object_detection_model(img.to(self.device))
-            outputs = process.postprocess(
+            outputs = postprocess(
                 outputs,
                 dtype=self.dtype,
                 conf_thres=self.confidence_threshold,
@@ -210,7 +206,7 @@ class FigureSeparator(ExsclaimTool):
             return subfigure_info
 
         for x1, y1, x2, y2, conf, cls_conf, cls_pred in outputs[0]:
-            box = process.yolobox2label(
+            box = yolobox2label(
                 [
                     y1.data.cpu().numpy(),
                     x1.data.cpu().numpy(),
@@ -269,7 +265,7 @@ class FigureSeparator(ExsclaimTool):
             bbox = tuple(subfigure[:4])
             img_patch = img_raw.crop(bbox)
             img_patch = np.array(img_patch)[:, :, ::-1]
-            img_patch, _ = process.preprocess(img_patch, 28, jitter=0)
+            img_patch, _ = preprocess(img_patch, 28, jitter=0)
             img_patch = np.transpose(img_patch / 255.0, (2, 0, 1))
             img_patch = torch.from_numpy(img_patch).type(self.dtype).unsqueeze(0)
 
@@ -357,9 +353,9 @@ class FigureSeparator(ExsclaimTool):
         img = concate_img[..., :3].copy()
         mask = concate_img[..., 3:].copy()
 
-        img, info_img = process.preprocess(img, self.image_size, jitter=0)
+        img, info_img = preprocess(img, self.image_size, jitter=0)
         img = np.transpose(img / 255.0, (2, 0, 1))
-        mask = process.preprocess_mask(mask, self.image_size, info_img)
+        mask = preprocess_mask(mask, self.image_size, info_img)
         mask = np.transpose(mask / 255.0, (2, 0, 1))
         new_concate_img = np.concatenate((img, mask), axis=0)
         img = torch.from_numpy(new_concate_img).float().unsqueeze(0)
@@ -371,7 +367,7 @@ class FigureSeparator(ExsclaimTool):
         if len(subfigure_labels) > 0:
             subfigure_labels = np.stack(subfigure_labels)
             # convert coco labels to yolo
-            subfigure_labels = process.label2yolobox(
+            subfigure_labels = label2yolobox(
                 subfigure_labels, info_img, self.image_size, lrflip=False
             )
             # make the beginning of subfigure_padded_labels subfigure_labels
@@ -398,7 +394,8 @@ class FigureSeparator(ExsclaimTool):
         figure_json["figure_name"] = figure_name
         figure_json.get("master_images", [])
 
-        full_figure_is_master = True if len(subfigure_labels) == 0 else False
+        # full_figure_is_master = True if len(subfigure_labels) == 0 else False
+        full_figure_is_master = len(subfigure_labels) == 0
 
         # max to handle case where pair info has only 1
         # (the full figure is the master image)
@@ -416,7 +413,7 @@ class FigureSeparator(ExsclaimTool):
             classification = np.argmax(preds[best_anchor, int(ty), int(tx), 5:])
             master_label = label_names[classification]
             subfigure_label = chr(int(sub_cat / feature_size[feature_index]) + ord("a"))
-            master_cls_conf = max(softmax(preds[best_anchor, int(ty), int(tx), 5:]))
+            master_cls_conf = max(softmax(torch.tensor(preds[best_anchor, int(ty), int(tx), 5:]), dim=-1))
 
             if full_figure_is_master:
                 img_raw = Image.fromarray(
@@ -434,7 +431,7 @@ class FigureSeparator(ExsclaimTool):
                 y1 = y - h / 2
                 y2 = y + h / 2
 
-                x1, y1, x2, y2 = process.yolobox2label([y1, x1, y2, x2], info_img)
+                x1, y1, x2, y2 = yolobox2label([y1, x1, y2, x2], info_img)
 
             # Saving the data into a json. Eventually it would be good to make the json
             # be updated in each model's function. This could eliminate the need to pass
@@ -646,7 +643,7 @@ class FigureSeparator(ExsclaimTool):
         figure_json["master_images"] = master_images
         return figure_json
 
-    def extract_image_objects(self, figure_path=str) -> dict:
+    def extract_image_objects(self, figure_path:str) -> dict:
         """Separate and classify subfigures in an article figure
 
         Args:
@@ -663,7 +660,7 @@ class FigureSeparator(ExsclaimTool):
         self.scale_bar_detection_model.eval()
 
         # Get full path to figure
-        full_figure_path = self.results_directory.parent / figure_path
+        full_figure_path = self.results_directory / "figures" / figure_path
 
         # Detect the bounding boxes of each subfigure
         subfigure_info = self.detect_subfigure_boundaries(full_figure_path)

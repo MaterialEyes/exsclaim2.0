@@ -8,6 +8,7 @@ import numpy as np
 
 from csv import writer
 from cv2 import imwrite as cv_imwrite
+from datetime import datetime as dt
 from enum import Flag, auto
 from functools import reduce
 from json import load, dump
@@ -33,7 +34,7 @@ class SaveMethods(Flag):
     def from_str(cls, string:str):
         match(string):
             case "save_subfigures":
-                return cls.SAVE_SUBFIGURES
+                return cls.SUBFIGURES
             case "visualization" | "visualize":
                 return cls.VISUALIZATION
             case "boxes":
@@ -101,6 +102,7 @@ class Pipeline:
 
         logging.basicConfig(level=logging.INFO, handlers=handlers, force=True)
         self.logger = logging.getLogger(__name__)
+        self.logger.info(f"Results will be located in: `{self.results_directory}`.")
         # endregion
 
         # region Check for an existing exsclaim json
@@ -238,6 +240,9 @@ class Pipeline:
                 db_push = list(self.exsclaim_dict.values())
                 collection.insert_many(db_push)
 
+        for notifier in self.notifications:
+            notifier.notify(f"EXSCLAIM! query finished at: {dt.now():%Y-%m-%dT%H:%M%z}.")
+
         return self.exsclaim_dict
 
     @staticmethod
@@ -341,7 +346,7 @@ class Pipeline:
             :param bool order_c_copy: If the path should be copied with order='C' as the only parameter.
             Added so the call for the master image would be the same as before.
             """
-            directory.mkdir(exist_ok=True)
+            directory.mkdir(exist_ok=True, parents=True)
             _class = image.get("classification", "uas")[:3].lower()
             _name = '_'.join(name_generator(_class)) + figure_extension
 
@@ -661,8 +666,8 @@ class Pipeline:
         # Save lists of rows to csvs
         for _type, rows in csv_info.items():
             with open(csv_dir / f"{sub('_', '', _type)}.csv", "w", encoding="utf-8", newline="") as file:
-                with writer(file) as csv_writer:
-                    csv_writer.writerows(rows)
+                csv_writer = writer(file)
+                csv_writer.writerows(rows)
 
     def to_postgres(self):
         """Send csv files to a postgres database

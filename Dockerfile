@@ -63,8 +63,6 @@ COPY --from=jupyter-base /usr/local/bin/jupyter-* /usr/local/bin/
 COPY --from=jupyter-base /usr/local/share/jupyter /usr/local/share/jupyter
 COPY --from=jupyter-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 
-RUN playwright install-deps && playwright install chromium
-
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
 RUN ls -la /root/.nvm && \
     \. /root/.nvm/nvm.sh && \

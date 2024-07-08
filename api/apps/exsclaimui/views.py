@@ -1,7 +1,7 @@
 from rest_framework import viewsets, mixins, response
 from os import system
 try:
-    from exsclaim.pipeline import Pipeline  # FIXME: Isn't being loaded properly
+    from exsclaim.pipeline import Pipeline
     loaded_exsclaim = True
 except ModuleNotFoundError as e:
     loaded_exsclaim = False

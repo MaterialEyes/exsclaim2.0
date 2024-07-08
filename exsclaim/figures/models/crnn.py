@@ -129,32 +129,28 @@ class CRNN(nn.Module):
                     max_pooling_stride,
                 )
             if layer in batch_normalization:
-                cnn.add_module(
-                    "Batch Nomralization {}".format(layer), nn.BatchNorm2d(out_channel)
-                )
-            cnn.add_module("Activation {}".format(layer), activation_function)
+                cnn.add_module(f"Batch Nomralization {layer}", nn.BatchNorm2d(out_channel))
+            cnn.add_module(f"Activation {layer}", activation_function)
             if layer in dropout:
-                cnn.add_module("Dropout {}".format(layer), nn.Dropout2d(0.5))
+                cnn.add_module(f"Dropout {layer}", nn.Dropout2d(0.5))
         # Add a Max Pooling layer to get the height of the image to 1 and
         # the width to the desired sequence length
         divisor = int(current_dims[1] / sequence_length)
         kernel = (current_dims[0] + 1, max(divisor + 1, 3))
         padding = (current_dims[0] // 2, max(divisor // 2, 1))
         stride = (current_dims[0], divisor)
-        cnn.add_module(
-            "Max Pooling Last {}".format(divisor), nn.MaxPool2d(kernel, stride, padding)
-        )
+        cnn.add_module(f"Max Pooling Last {divisor}", nn.MaxPool2d(kernel, stride, padding))
+
         current_dims = max_pooling_output_dim(current_dims, kernel, padding, stride)
         hidden = 256
         recurrent_types = {
             "bi-lstm": nn.LSTM(out_channel, hidden, bidirectional=True),
             "lstm": nn.LSTM(out_channel, hidden, bidirectional=False),
         }
+
         # Build the RNN layers
         rnn = nn.Sequential()
-        rnn.add_module(
-            "Recurrent Layer {}".format(layer + 1), recurrent_types[recurrent_type]
-        )
+        rnn.add_module(f"Recurrent Layer {layer + 1}", recurrent_types[recurrent_type])
         if recurrent_type == "bi-lstm":
             hidden_out = hidden * 2
         else:
