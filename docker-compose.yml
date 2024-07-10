@@ -8,6 +8,7 @@ services:
         env_file: .env
         environment:
             - NTFY_LINK=${NTFY_LINK}
+            - OPENAI_API_KEY=${OPENAI_API_KEY}
         networks:
             - backend
         volumes:
@@ -24,6 +25,7 @@ services:
         environment:
             - HF_TOKEN=${HF_TOKEN}
             - NTFY_LINK=${NTFY_LINK}
+            - OPENAI_API_KEY=${OPENAI_API_KEY}
         networks:
             - backend
         volumes:
@@ -39,11 +41,16 @@ services:
             -   .env
         expose:
             - "$POSTGRES_PORT"
+        ports:
+            - "6543:$POSTGRES_PORT"
         networks:
             backend:
                 aliases:
                     - db
                     - postgresql
+        volumes:
+            - ./db:/docker-entrypoint-initdb.d
+            - ./sql-data:/var/lib/postgresql/data:Z
         healthcheck:
             test: [ "CMD", "/usr/bin/pg_isready", "-d", "$POSTGRES_DB", "-U", "$POSTGRES_USER", "-p", "$POSTGRES_PORT" ]
             interval: 5s
@@ -56,7 +63,8 @@ services:
         env_file: .env
         environment:
             - DJANGO_SECRET_KEY=local
-        image: exsclaim/ui/api
+            - OPENAI_API_KEY=${OPENAI_API_KEY}
+        image: exsclaim/ui/django-api
         build:
             context: ./api
             args:
@@ -71,11 +79,42 @@ services:
             - ./api/apps:/code/apps
             - ./api/config:/code/config
             - ./api/docs:/code/docs
+            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
         ports:
             - "8000:8000"
         networks:
             - frontend
             - backend
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    fastapi:
+        restart: always
+        env_file: .env
+        environment:
+            - OPENAI_API_KEY=${OPENAI_API_KEY}
+        image: exsclaim/ui/api
+        build:
+            context: ./fastapi
+            args:
+                EXSCLAIM_GITHUB: MaterialEyes/exsclaim2.0
+                EXSCLAIM_GIT_REVISION: exsclaim2_for_spin
+            target: dev
+        volumes:
+            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
+            - ./fastapi/api:/usr/src/app/api
+            - ./logs:/logs
+            - ./output:/results
+        ports:
+            - "81:80"
+        networks:
+            frontend:
+                aliases:
+                    - api
+            backend:
+                aliases:
+                    - api
         depends_on:
             postgres:
                 condition: service_healthy
@@ -86,6 +125,7 @@ services:
         image: exsclaim/ui/dashboard
         environment:
             - POSTGRES_PORT="${POSTGRES_PORT-5078}"
+            - PORT=${FASTAPI_PORT}
         ports:
             - "3000:3000"
         networks:

@@ -21,11 +21,11 @@ from shutil import copyfileobj
 from random import randint
 from re import compile, search, sub, match
 from time import sleep
-from typing import Type
+from typing import Literal, Type
 from urllib.request import urlretrieve
 
 
-__all__ = ["JournalFamily", "JournalFamilyDynamic", "ACS", "Nature", "RSC", "Wiley", "journals"]
+__all__ = ["JournalFamily", "JournalFamilyDynamic", "ACS", "Nature", "RSC", "Wiley", "journals", "COMPATIBLE_JOURNALS"]
 
 
 class JournalFamily(ABC, ExsclaimBrowser):
@@ -365,12 +365,11 @@ class JournalFamily(ABC, ExsclaimBrowser):
             # creates a list of search terms
             try:
                 search_list = [
-                    [search_query["query"][key]["term"]]
-                    + search_query["query"][key].get("synonyms", [])
-                    for key in search_query["query"]
+                    [value["term"]] + (value["synonyms"] if value.get("synonyms", None) else [])
+                    for key, value in search_query["query"].items()
                 ]
             except TypeError as e:
-                print(f"{search_query=}")
+                self.logger.exception(f"{search_query=}")
                 raise e
             # print('search list',search_list)
             search_product = list(product(*search_list))
@@ -1285,3 +1284,5 @@ journals:dict[str, Type[JournalFamily]] = {
     "rsc": RSC,
     "wiley": Wiley,
 }
+
+COMPATIBLE_JOURNALS = Literal["ACS", "Nature", "RSC", "Wiley"]

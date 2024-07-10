@@ -11,11 +11,15 @@ from langchain_community.vectorstores import Chroma
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from re import sub
 from time import sleep
+from typing import Literal, Union, get_args
 from openai import OpenAI
 
 
 __all__ = ["CustomEncoder", "get_context", "remove_control_characters", "create_openai_completion", "separate_captions",
-           "get_keywords"]
+           "get_keywords", "COMPATIBLE_LLMS"]
+
+
+COMPATIBLE_LLMS = Literal["gpt-3.5-turbo"]
 
 
 def get_context(query, documents, embeddings):
@@ -46,7 +50,6 @@ class CustomEncoder(json.JSONEncoder):
 def create_openai_completion(api_key:str, caption_prompt:str, model:str="gpt-3.5-turbo") -> str:
     client = OpenAI(api_key=api_key)
 
-    # TODO: Continue working on updating the ChatGPT interface
     completion = client.chat.completions.create(
         model=model,
         messages=[{"role": "assistant", "content": caption_prompt}],
@@ -89,27 +92,42 @@ def retry(max_tries=5, delay_seconds=2, logger:logging.Logger=logging.getLogger(
 
 
 @retry()
-def separate_captions(caption:str, api:str, llm:str) -> dict:
+def separate_captions(caption: str, api: str, llm: COMPATIBLE_LLMS) -> dict:
     output_dict = dict()
-    if llm == "gpt-3.5-turbo":
-        caption_prompt = f"Please separate the given full caption into the exact subcaptions and format as a syntactically valid Python dictionary with keys the letter of each subcaption. If there is no full caption then return an empty dictionary. Do not hallucinate\n{caption}"
+    if llm not in get_args(COMPATIBLE_LLMS):
+        logging.exception(f"Unsupported llm type: {llm}, returning an empty dictionary of captions.")
+        return output_dict
 
-        output_string = create_openai_completion(api, caption_prompt)
+    match llm:
+        case "gpt-3.5-turbo":
+            caption_prompt = f"Please separate the given full caption into the exact subcaptions and format as a syntactically valid Python dictionary with keys the letter of each subcaption. If there is no full caption then return an empty dictionary. Do not hallucinate\n{caption}"
 
-        # Parse the string into a dictionary
-        try:
-            output_dict = json.loads(output_string) # , cls=CustomEncoder)
-        except json.decoder.JSONDecodeError as e:
-            logging.error(f"Could not decode the JSON response given.\n`{output_string}`")
-            raise e
-    else:
-        logging.exception(f"Unsupported llm type: {llm}, returning an empty dictionary.")
+            output_string = create_openai_completion(api, caption_prompt)
+
+            # Parse the string into a dictionary
+            try:
+                output_dict = json.loads(output_string) # , cls=CustomEncoder)
+            except json.decoder.JSONDecodeError as e:
+                logging.error(f"Could not decode the JSON response given.\n`{output_string}`")
+                raise e
+        case _:
+            logging.exception(f"Supported llm type: {llm} does not define how captions should be retrieved. Returning an empty dictionary.")
 
     return output_dict
 
 
 @retry()
-def get_keywords(caption:str, api:str, llm:str) -> str:
+def get_keywords(caption:str, api:str, llm: COMPATIBLE_LLMS) -> str:
+    if llm not in get_args(COMPATIBLE_LLMS):
+        logging.exception(f"Unsupported llm type: {llm}, returning an empty string of keywords..")
+        return ""
+
     caption_prompt = f"You are an experienced material scientist. Summarize the text in a less than three keywords separated by comma. The keywords should be a broad and general description of the caption and can be related to the materials used, characterization techniques or any other scientific related keyword. Do not hallucinate or create content that does not exist in the provided text: {caption}"
 
-    return create_openai_completion(api, caption_prompt, llm)
+    match llm:
+        case "gpt-3.5-turbo":
+            return create_openai_completion(api, caption_prompt, llm)
+        case _:
+            logging.exception(f"Supported llm type: {llm} does not define how keywords should be retrieved. Returning an empty string.")
+            return ""
+

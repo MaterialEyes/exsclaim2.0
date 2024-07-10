@@ -1,30 +1,28 @@
+from .models import *
+from .serializers import *
+from json import dumps
+from exsclaim.pipeline import Pipeline
+from os import getenv, system
+from pathlib import Path
+from psycopg import connect
 from rest_framework import viewsets, mixins, response
-from os import system
-try:
-    from exsclaim.pipeline import Pipeline
-    loaded_exsclaim = True
-except ModuleNotFoundError as e:
-    loaded_exsclaim = False
-    print(f"\n\n\n\nCan't load exsclaim! {e}\n\n\n\n")
+from tarfile import open as tar_open
 
-from .models import (
-    Article,
-    Figure,
-    Subfigure,
-    ScaleBar,
-    ScaleBarLabel,
-    SubfigureLabel,
-    Query,
-)
-from .serializers import (
-    ArticleSerializer,
-    FigureSerializer,
-    SubfigureSerializer,
-    ScaleBarSerializer,
-    ScaleBarLabelSerializer,
-    SubfigureLabelSerializer,
-    QuerySerializer,
-)
+
+__all__ = ["ArticleViewSet", "FigureViewSet", "SubfigureViewSet", "ScaleBarViewSet", "ScaleBarLabelViewSet",
+           "SubfigureLabelViewSet", "QueryViewSet"]
+
+
+def get_database_connection_string() -> str:
+    from psycopg import connect, OperationalError
+    username = getenv("POSTGRES_USER", "exsclaim")
+    password = getenv("POSTGRES_PASSWORD", "exsclaimtest!9700")
+    port = getenv("POSTGRES_PORT", "5432")
+    database_name = getenv("POSTGRES_DB", "exsclaim")
+
+    # db is one of the aliases given through Docker Compose
+    url = f'postgres://{username}:{password}@db:{port}/{database_name}'
+    return url
 
 
 class ArticleViewSet(viewsets.ModelViewSet):
@@ -73,43 +71,67 @@ class QueryViewSet(viewsets.ModelViewSet):
 
         name = input_query.get('name')
         journal_family = input_query.get('journal_family').lower()
-        maximum_scraped = input_query.get('maximum_scraped')
+        maximum_scraped = int(input_query.get('maximum_scraped'))
         sortby = input_query.get('sortby')
         term = input_query.get('term')
         synonyms = input_query.get('synonyms')
         save_format = input_query.get('save_format')
-        access = input_query.get('access')
+        access = input_query.get('access', False)
         llm = input_query.get('llm')
         model_key = input_query.get('model_key')
 
         # running user input through EXSCLAIM
         # follow this: https://github.com/MaterialEyes/exsclaim-ui/blob/main/query/views.py
 
-        exsclaim_input = {
-            "name": name,
-            "journal_family": journal_family,
-            "maximum_scraped": maximum_scraped,
-            "sortby": sortby,
-            "query": {
-                "search_field_1": {
-                    "term": term,
-                    "synonyms": synonyms
-                }
-            },
-            "llm": llm,
-            "openai_API": model_key,
-            "open": access,
-            "save_format": save_format,
-            "logging": []
-        }
+        with connect(get_database_connection_string()) as db:
+            cursor = db.cursor()
+            cursor.execute("SELECT uuid_generate_v4() AS uuid;")
+            uuid = str(cursor.fetchone()[0])
 
-        try:
-            test_pipeline = Pipeline(exsclaim_input)
-            results = test_pipeline.run()
-        except NameError as e:
-            raise e
+            results_dir = Path("/results") / uuid
+            results_dir.mkdir(exist_ok=True, parents=True)
 
-        print(results)
+            exsclaim_input = {
+                "name": name,
+                "journal_family": journal_family,
+                "maximum_scraped": maximum_scraped,
+                "sortby": sortby,
+                "query": {
+                    "search_field_1": {
+                        "term": term,
+                        "synonyms": synonyms
+                    }
+                },
+                "llm": llm,
+                "openai_API": model_key,
+                "open": access,
+                "save_format": save_format,
+                "logging": ["exsclaim.log"],
+                "results_dir": str(results_dir)
+            }
+
+            try:
+                test_pipeline = Pipeline(exsclaim_input)
+                results = test_pipeline.run()
+            except NameError as e:
+                raise e
+
+            print(results)
+
+            db_json = exsclaim_input.copy()
+            db_json["openai_API"] = "openai_API" in db_json.keys()
+            for unnecessary_key in ["notifications", "results_dir", "logging"]:
+                if unnecessary_key in db_json:
+                    db_json.pop(unnecessary_key)
+
+            cursor.execute("INSERT INTO results VALUES(%s, %s, %s);", (uuid, dumps(db_json), "tar.gz"))
+            db.commit()
+            cursor.close()
+
+        with tar_open(f"/results/{uuid}.tar.gz", "w:gz") as tar:
+            tar.add(results_dir / exsclaim_input["name"], arcname=exsclaim_input["name"])
+
+        system(f"rm -rf {results_dir}")
 
         queryset = Query.objects.all()
 
@@ -125,7 +147,7 @@ class QueryViewSet(viewsets.ModelViewSet):
             input_query.save_format = save_format
             input_query.access = access
             input_query.llm = llm
-            input_query.model_key = model_key
+            input_query.llm_token = model_key
             input_query.save(update_fields=['name', 'journal_family', 'maximum_scraped', 'sortby', 'term', 'synonyms', 'save_format', 'access', 'llm', 'model_key'])
 
             serializer = QuerySerializer(input_query)

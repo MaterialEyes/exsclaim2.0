@@ -134,7 +134,7 @@ class Pipeline:
         """
         self.logger.info(info)
 
-    def run(self, tools:list[ExsclaimTool]=None, figure_separator=True, caption_distributor=True, journal_scraper=True, html_scraper=True):
+    def run(self, tools:list[ExsclaimTool]=None, figure_separator=True, caption_distributor=True, journal_scraper=True, html_scraper=True) -> dict:
         """Run EXSCLAIM pipeline on Pipeline instance's query path
 
         Args:

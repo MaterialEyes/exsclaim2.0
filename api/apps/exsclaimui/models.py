@@ -3,6 +3,9 @@ from django.contrib.postgres.fields import ArrayField
 from pathlib import Path
 
 
+__all__ = ["Article", "Figure", "Subfigure", "ScaleBar", "ScaleBarLabel", "SubfigureLabel", "Query"]
+
+
 def get_figures_path():
     current_dir = Path(__file__).resolve(strict=True).parent
     figures = current_dir.parent.parent
@@ -14,7 +17,7 @@ class Article(models.Model):
     title = models.TextField()
     url = models.URLField()
     license = models.URLField(null=True, blank=True)
-    open = models.BooleanField(null=True, blank=True)
+    open = models.BooleanField(null=False, blank=True)
     authors = models.CharField(max_length=250, null=True)
     abstract = models.TextField(null=True, blank=True)
 
@@ -76,6 +79,7 @@ class Subfigure(models.Model):
         models.CharField(max_length=20),
         null=True, blank=True
     )
+
 
 class ScaleBar(models.Model):
     # ScaleBar ID is "<article doi>-fig<figure number>-<subfigure label>-<scale bar #>"

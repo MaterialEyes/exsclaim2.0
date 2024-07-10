@@ -1,13 +1,9 @@
 from rest_framework import serializers
-from .models import (
-    Article,
-    Figure,
-    Subfigure,
-    ScaleBar,
-    ScaleBarLabel,
-    SubfigureLabel,
-    Query
-)
+from .models import *
+
+
+__all__ = ["ArticleSerializer", "FigureSerializer", "SubfigureSerializer", "ScaleBarSerializer", "ScaleBarLabelSerializer",
+           "SubfigureLabelSerializer", "QuerySerializer"]
 
 
 class ArticleSerializer(serializers.ModelSerializer):
