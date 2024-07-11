@@ -1,9 +1,24 @@
 name: exsclaim2
 
 services:
+    base:
+        build:
+            dockerfile: Dockerfile.exsclaim
+            args:
+                - EXSCLAIM_GITHUB_REVISION=exsclaim2_for_spin
+                - UID=${UID:-1000}
+                - GID=${GID:-1000}
+                - UNAME=${UNAME:-exsclaim}
+        image: exsclaim/base
+        env_file: .env
+
     python:
         build:
             target: "prod"
+            args:
+                - UID=${UID:-1000}
+                - GID=${GID:-1000}
+                - UNAME=${UNAME:-exsclaim}
         image: exsclaim/core
         env_file: .env
         environment:
@@ -16,10 +31,15 @@ services:
 #            # Can be removed if no work is being done to exsclaim since pip already locally installed it.
             - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
             - ./query:/usr/src/app/query
+            - ./output:/usr/src/app/output
 
     jupyter:
         build:
             target: "jupyter"
+            args:
+                - UID=${UID:-1000}
+                - GID=${GID:-1000}
+                - UNAME=${UNAME:-exsclaim}
         image: exsclaim/jupyter
         env_file: .env
         environment:
@@ -39,6 +59,9 @@ services:
         image: postgres:latest
         env_file:
             -   .env
+        environment:
+            - TZ=${TZ}
+            - PGTZ=${TZ}
         expose:
             - "$POSTGRES_PORT"
         ports:
@@ -69,8 +92,6 @@ services:
             context: ./api
             args:
                 ENV: dev
-                EXSCLAIM_GITHUB: MaterialEyes/exsclaim2.0
-                EXSCLAIM_GIT_REVISION: exsclaim2_for_spin
             target: prod
         command: >
             bash -c "./manage.py migrate &&
@@ -97,15 +118,16 @@ services:
         image: exsclaim/ui/api
         build:
             context: ./fastapi
-            args:
-                EXSCLAIM_GITHUB: MaterialEyes/exsclaim2.0
-                EXSCLAIM_GIT_REVISION: exsclaim2_for_spin
             target: dev
+            args:
+                - UID=${UID:-1000}
+                - GID=${GID:-1000}
+                - UNAME=${UNAME:-exsclaim}
         volumes:
             - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
             - ./fastapi/api:/usr/src/app/api
-            - ./logs:/logs
-            - ./output:/results
+            - ./logs:/exsclaim/logs
+            - ./output:/exsclaim/results
         ports:
             - "81:80"
         networks:
@@ -120,7 +142,12 @@ services:
                 condition: service_healthy
 
     dashboard:
-        build: dashboard
+        build:
+            context: ./dashboard
+            args:
+                - UID=${UID:-1000}
+                - GID=${GID:-1000}
+                - UNAME=${UNAME:-exsclaim}
         env_file: .env
         image: exsclaim/ui/dashboard
         environment:
@@ -134,7 +161,7 @@ services:
         volumes:
             - "./dashboard:/app"
         depends_on:
-            api:
+            fastapi:
                 condition: service_healthy
 
 networks:

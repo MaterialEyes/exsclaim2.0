@@ -26,15 +26,15 @@ class NTFY(Notifications):
 		super().__init__(**kwargs)
 		self._ntfy_url = url
 		self._access_token = access_token
-		self._priority = kwargs.get("priority", 3)
+		self._priority = kwargs.get("priority", "3")
 
 	@classmethod
-	def from_json(cls, json:dict):
+	def from_json(cls, json: dict):
 		url = json.get("url", None)
 		if url is None:
 			raise ValueError("The URL must be provided for NTFY notifications.")
 		access_token = json.get("access_token", None)
-		priority = json.get("priority", 3)
+		priority = json.get("priority", "3")
 		return cls(url, access_token, priority=priority)
 
 	def notify(self, data: dict | str, exception: Exception = None):

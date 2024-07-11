@@ -120,10 +120,10 @@ class Pipeline:
 
         # region Set up notifications
         exsclaim_notifications = self.query_dict.get("notifications", {})
-        notifications = [_class.from_json(json)
+        notifications = (_class.from_json(json)
                          for key, _class in notifiers.items()
-                         for json in exsclaim_notifications.get(key, [])]
-        self.notifications = notifications
+                         for json in exsclaim_notifications.get(key, []))
+        self.notifications:tuple[Notifications] = tuple(notifications)
         # endregion
 
     def display_info(self, info):
@@ -184,64 +184,73 @@ class Pipeline:
         @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
         """
         self.display_info(exsclaim_art)
-        # set default values
-        if tools is None:
-            tools = []
-            if journal_scraper:
-                tools.append(JournalScraper(self.query_dict, logger=self.logger))
-            if html_scraper:
-                tools.append(HTMLScraper(self.query_dict, logger=self.logger))
-            if caption_distributor:
-                tools.append(CaptionDistributor(self.query_dict, logger=self.logger))
-            if figure_separator:
-                tools.append(FigureSeparator(self.query_dict, logger=self.logger))
+        _id = self.query_dict.get("id", None)
+        try:
+            # set default values
+            if tools is None:
+                tools = []
+                if journal_scraper:
+                    tools.append(JournalScraper(self.query_dict, logger=self.logger))
+                if html_scraper:
+                    tools.append(HTMLScraper(self.query_dict, logger=self.logger))
+                if caption_distributor:
+                    tools.append(CaptionDistributor(self.query_dict, logger=self.logger))
+                if figure_separator:
+                    tools.append(FigureSeparator(self.query_dict, logger=self.logger))
 
-        # run each ExsclaimTool on search query
-        for tool in tools:
-            self.exsclaim_dict = tool.run(self.query_dict, self.exsclaim_dict)
+            # run each ExsclaimTool on search query
+            for tool in tools:
+                self.exsclaim_dict = tool.run(self.query_dict, self.exsclaim_dict)
 
-        # group unassigned objects
-        self.group_objects()
+            # group unassigned objects
+            self.group_objects()
 
-        # Save results as specified
-        save_methods = self.query_dict.get("save_format", None)
-        if save_methods is not None:
-            save_methods = SaveMethods.from_list(save_methods)
+            # Save results as specified
+            save_methods = self.query_dict.get("save_format", None)
+            if save_methods is not None:
+                self.logger.info(f"The save methods are a {type(save_methods)} with value \"{save_methods}\".")
+                save_methods = SaveMethods.from_list(save_methods)
 
-            if SaveMethods.SUBFIGURES in save_methods:
-                self.to_file()
+                if SaveMethods.SUBFIGURES in save_methods:
+                    self.to_file()
 
-            if SaveMethods.VISUALIZATION in save_methods:
-                for figure in self.exsclaim_dict:
-                    self.make_visualization(figure)
+                if SaveMethods.VISUALIZATION in save_methods:
+                    for figure in self.exsclaim_dict:
+                        self.make_visualization(figure)
 
-            if SaveMethods.BOXES in save_methods:
-                for figure in self.exsclaim_dict:
-                    self.draw_bounding_boxes(figure)
+                if SaveMethods.BOXES in save_methods:
+                    for figure in self.exsclaim_dict:
+                        self.draw_bounding_boxes(figure)
 
-            if SaveMethods.POSTGRES in save_methods:
-                self.to_csv()
-                self.to_postgres()
+                if SaveMethods.POSTGRES in save_methods:
+                    self.to_csv()
+                    self.to_postgres()
 
-            elif SaveMethods.CSV in save_methods and SaveMethods.POSTGRES not in save_methods:
-                self.to_csv()
+                elif SaveMethods.CSV in save_methods and SaveMethods.POSTGRES not in save_methods:
+                    self.to_csv()
 
-            if SaveMethods.MONGO in save_methods:
-                try:
-                    import pymongo
-                except ImportError | ModuleNotFoundError:
-                    from os import system
-                    system("pip install pymongo==4.7.3")
-                    import pymongo
+                if SaveMethods.MONGO in save_methods:
+                    try:
+                        import pymongo
+                    except ImportError | ModuleNotFoundError:
+                        from os import system
+                        system("pip install pymongo==4.7.3")
+                        import pymongo
 
-                db_client = pymongo.MongoClient(self.query_dict["mongo_connection"])
-                db = db_client["materialeyes"]
-                collection = db[self.query_dict["name"]]
-                db_push = list(self.exsclaim_dict.values())
-                collection.insert_many(db_push)
+                    db_client = pymongo.MongoClient(self.query_dict["mongo_connection"])
+                    db = db_client["materialeyes"]
+                    collection = db[self.query_dict["name"]]
+                    db_push = list(self.exsclaim_dict.values())
+                    collection.insert_many(db_push)
+
+            # Creates success messages to be sent to the notifiers
+            message = f"EXSCLAIM! query{f' `{_id}`' if _id is not None else ''} finished at: {dt.now():%Y-%m-%dT%H:%M%z}."
+        except Exception as e:
+            self.logger.exception(e)
+            message = f"An error occurred at {dt.now():%Y-%m-%dT%H:%M%z} running{' the' if _id is None else ''} EXSCLAIM! query{f' `{_id}`' if _id is not None else ''}."
 
         for notifier in self.notifications:
-            notifier.notify(f"EXSCLAIM! query finished at: {dt.now():%Y-%m-%dT%H:%M%z}.")
+            notifier.notify(message)
 
         return self.exsclaim_dict
 

@@ -248,7 +248,7 @@ class JournalScraper(ExsclaimTool):
 		# Extract figures, captions, and metadata from each article
 		counter = 1
 		for counter, article in enumerate(articles, start=1):
-			self.display_info(f">>> ({counter:,} of {len(articles):,}) Extracting figures from: " + article.split("/")[-1])
+			self.display_info(f">>> ({counter:,} of {len(articles):,}) Extracting figures from: {article.split('/')[-1]}")
 			try:
 				article_dict = journal.get_article_figures(journal.domain + article)
 				exsclaim_json = self._update_exsclaim(exsclaim_json, article_dict)

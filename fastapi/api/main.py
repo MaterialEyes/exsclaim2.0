@@ -2,13 +2,16 @@ import exsclaim
 import logging
 import pathlib
 
+from datetime import datetime as dt, timedelta as td
 from fastapi import FastAPI, Response, Path
-from json import dumps
+from json import dump, dumps
 from os import getenv
 from psycopg import connect, OperationalError
 from pydantic import BaseModel
+from subprocess import Popen
 from typing import Any, Annotated, Union, Literal
 from threading import Thread
+from uuid import UUID
 
 
 def get_database_connection_string() -> str:
@@ -24,7 +27,7 @@ def get_database_connection_string() -> str:
 
 printer_handler = logging.StreamHandler()
 printer_handler.setFormatter(exsclaim.PrinterFormatter())
-file_handler = logging.FileHandler("/logs/exsclaim-api.log", "a")
+file_handler = logging.FileHandler("/exsclaim/logs/exsclaim-api.log", "a")
 file_handler.setFormatter(exsclaim.ExsclaimFormatter())
 
 logging.basicConfig(level=logging.INFO,
@@ -45,36 +48,43 @@ class Item(BaseModel):
 class NTFY(BaseModel):
 	"""A base model representing the necessary info to send an NTFY notification."""
 	link: str
-	"""The access token that may be needed to send the NTFY notification as stated in https://docs.ntfy.sh/publish/#access-tokens"""
 	access_token: str = None
-	"""The priority of the message as stated in https://docs.ntfy.sh/publish/#message-priority"""
+	"""The access token that may be needed to send the NTFY notification as stated in https://docs.ntfy.sh/publish/#access-tokens"""
 	priority: Annotated[int, Path(title="The priority of the message", ge=1, le=5)] = 3
+	"""The priority of the message as stated in https://docs.ntfy.sh/publish/#message-priority"""
+
+	def to_json(self):
+		return {
+			"url": self.link,
+			"access_token": self.access_token,
+			"priority": str(self.priority),
+		}
 
 
 class Query(BaseModel):
 	name: str
-	"""The Journal Family that EXSCLAIM should look through."""
 	journal_family: exsclaim.COMPATIBLE_JOURNALS = "Nature"
+	"""The Journal Family that EXSCLAIM should look through."""
+	maximum_scraped: int = 5
 	"""The maximum number of articles that EXSCLAIM should scrape. \
 	Maximum does not specify how many articles will be scraped before the process ends, only what the upper limit is."""
-	maximum_scraped: int = 5
-	"""How the search feature should sort the articles, by the relevancy or the recent publish date."""
 	sortby: Literal["relevant", "recent"] = "relevant"
-	"""The term of phrase that you want searched."""
+	"""How the search feature should sort the articles, by the relevancy or the recent publish date."""
 	term: str
-	"""Any synonyms that you're term might be related to."""
+	"""The term or phrase that you want searched."""
 	synonyms: list[str] = []
-	save_format: Literal["subfigures", "visualization", "boxes", "postgres", "csv", "mongo"] = "mongo"
-	"""Determines if EXSCLAIM only uses open-access articles (True)."""
+	"""Any synonyms that you're term might be related to."""
+	save_format: list[Literal["subfigures", "visualization", "boxes", "postgres", "csv", "mongo"]] = ["mongo"]
 	open_access: bool = False
-	"""The Large Language Model (LLM) that is used to separate captions and generate keywords for articles and figures."""
+	"""Determines if EXSCLAIM only uses open-access articles (True)."""
 	llm: exsclaim.COMPATIBLE_LLMS = "gpt-3.5-turbo"
+	"""The Large Language Model (LLM) that is used to separate captions and generate keywords for articles and figures."""
+	model_key: str = ""
 	"""The API key that might be needed depending on the specified llm."""
-	llm_token: str = ""
-	"""The email address that will receive a notification when EXSCLAIM has finished running."""
 	emails: list[str] = []
-	"""A list of NTFY links that will receive a notification when EXSCLAIM has finished running."""
+	"""The email address that will receive a notification when EXSCLAIM has finished running."""
 	ntfy: list[NTFY] = []
+	"""A list of NTFY links that will receive a notification when EXSCLAIM has finished running."""
 
 
 @app.get("/")
@@ -87,23 +97,6 @@ def healthcheck():
 	return f"EXSCLAIM! version {exsclaim.__version__} is running fine."
 
 
-def run_query(query:dict) -> dict:
-	try:
-		test_pipeline = exsclaim.Pipeline(query)
-		results = test_pipeline.run(
-			html_scraper=False
-		)
-
-		with tar_open(f"/results/{uuid}.tar.gz", "w:gz") as tar:
-			tar.add(results_dir / exsclaim_input["name"], arcname=exsclaim_input["name"])
-
-		system(f"rm -rf {results_dir}")
-		return results
-	except NameError as e:
-		logger.exception(e)
-		return {}
-
-
 @app.post("/query")
 def query(search_query: Query) -> Response:
 	try:
@@ -112,7 +105,7 @@ def query(search_query: Query) -> Response:
 			cursor.execute("SELECT uuid_generate_v4() AS uuid;")
 			uuid = str(cursor.fetchone()[0])
 
-			results_dir = pathlib.Path("/results") / uuid
+			results_dir = pathlib.Path("/exsclaim") / "results" / uuid
 			results_dir.mkdir(exist_ok=True, parents=True)
 
 			exsclaim_input = {
@@ -127,15 +120,22 @@ def query(search_query: Query) -> Response:
 					}
 				},
 				"llm": search_query.llm,
-				"openai_API": search_query.llm_token,
+				"openai_API": search_query.model_key,
 				"open": search_query.open_access,
 				"save_format": search_query.save_format,
 				"logging": ["exsclaim.log"],
-				"results_dir": str(results_dir)
+				"results_dir": str(results_dir),
+				"notifications": {
+					"ntfy": list(map(lambda ntfy: ntfy.to_json(), search_query.ntfy)),
+					"emails": search_query.emails,
+				}
 			}
 
-			thread = Thread(target=run_query, args=(exsclaim_input,))
-			thread.start()
+			with open(results_dir / "search_query.json", "w") as f:
+				dump(exsclaim_input, f)
+			Popen(["python3", str(pathlib.Path(__file__).parent / "run_exsclaim.py"), uuid, str(results_dir / "search_query.json")],
+				  start_new_session=True,
+			)
 
 			db_json = exsclaim_input.copy()
 			db_json["openai_API"] = "openai_API" in db_json.keys()
@@ -147,19 +147,51 @@ def query(search_query: Query) -> Response:
 			db.commit()
 			cursor.close()
 
-		try:
-			return Response(f"Thank you, your request is currently being processed, and the results can be found using id: {uuid}.",
-						status_code=200, media_type="text/plain")
-		finally:
-			thread.join()
+		return Response(f"Thank you, your request is currently being processed, and the results can be found using id: {uuid}.",
+					status_code=200, media_type="text/plain")
 	except OperationalError as e:
 		logger.exception(e)
 		return Response("An error occurred connecting to the database. Please try again later.", status_code=500,
 						media_type="text/plain")
 	except Exception as e:
 		logger.exception(e)
-		return Response("An unknown error occurred. Please try again later.", status_code=500, media_type="text/plain")
+		return Response("An unknown error occurred within the EXSCLAIM! API. Please try again later.", status_code=503, media_type="text/plain")
 
+
+@app.get("/status/{result_id}")
+def status(result_id: str | UUID) -> Response:
+	if isinstance(result_id, str):
+		try:
+			result_id = UUID(result_id)
+		except ValueError:
+			return Response("The result ID inserted is not a valid UUID, try again with a correct value.", status_code=422, media_type="text/plain")
+
+	try:
+		with connect(get_database_connection_string()) as db:
+			cursor = db.cursor()
+			cursor.execute("SELECT status, start_time, end_time FROM results WHERE id = %s", (result_id,))
+			results = cursor.fetchone()
+			if results is None:
+				return Response(f"There is no query recorded in our database with id: \"{result_id}\".", status_code=404, media_type="text/plain")
+
+			status, start_time, end_time = results
+
+			match status:
+				case "Running":
+					# TODO: Make this human readable
+					time_diff = dt.now() - start_time
+					response = Response(f"The query was started {time_diff} ago and is still currently running.", status_code=200, media_type="text/plain")
+				case "Finished":
+					response = Response(f"The query was finished execution at {end_time}.", status_code=200, media_type="text/plain")
+				case "Closed due to an error":
+					response = Response(f"The query stopped running at {end_time} due to an error.", status_code=500, media_type="text/plain")
+				case _:
+					response = Response(status, status_code=200, media_type="text/plain")
+	except OperationalError as e:
+		logger.exception(e)
+		response = Response("An unknown Internal Server Error has occurred. Please try again later.", status_code=500, media_type="text/plain")
+
+	return response
 
 @app.get("/items/{item_id}")
 def read_item(item_id: int, q: Union[str, None] = None):

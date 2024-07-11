@@ -7,29 +7,13 @@ __all__ = ["ExsclaimBrowser"]
 
 class ExsclaimBrowser(object):
 	def __init__(self, browser:Browser=None, set_extra_headers:bool=True, **kwargs):
-		# Initialize the playwright browser
-		# if browser is None:
-			# self.playwright = sync_playwright().start()
-			# self.browser = self.playwright.chromium.launch(headless=kwargs.get("headless", True),
-			# 											   chromium_sandbox=kwargs.get("chromium_sandbox", False))
-			# browser = self.browser
-
-		# self.page = browser.new_page()
-		# if set_extra_headers:
-		# 	self.set_extra_page_headers(self.page)
 		...
 
 	def __del__(self):
 		self.close_browser()
 
 	def close_browser(self):
-		try:
-			self.page.close()
-		except AttributeError as e:
-			print(e)
-		if hasattr(self, "playwright"):
-			self.browser.close()
-			self.playwright.stop()
+		...
 
 	def temporary_browser(self, function:Callable[[Page, Any], Any], set_extra_headers=True, **kwargs):
 		with sync_playwright() as playwright:

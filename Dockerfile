@@ -1,45 +1,16 @@
-FROM python:3.11.9 AS base
-LABEL authors="Len Washington III"
+FROM exsclaim/base AS prod
+ARG UID=1000
+ARG GID=1000
 
 WORKDIR /usr/src/app
 
-SHELL ["/bin/bash", "-c"]
-
-COPY requirements.txt ./exsclaim-install/
-COPY ./exsclaim ./exsclaim-install/exsclaim
-COPY ./setup.py ./exsclaim-install/
-COPY ./README.md ./exsclaim-install/
-RUN pip install ./exsclaim-install
-
-FROM python:3.11.9 AS prod
-ENV TZ="America/Chicago"
-
-WORKDIR /usr/src/app
-
-COPY ./entrypoint.sh ./
+COPY --chown=$UID:$GID entrypoint.sh load_models.py ./
 RUN chmod +x ./entrypoint.sh
-COPY ./load_models.py ./
-
-RUN apt update && apt install ffmpeg libsm6 libxext6 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2\
-     libatspi2.0-0 libxcomposite1 libxdamage1 libbz2-dev -y
-
-# region Configures the timezone
-RUN apt install -yq tzdata && \
-    ln -fs "/usr/share/zoneinfo/$TZ" /etc/localtime && \
-    dpkg-reconfigure -f noninteractive tzdata
-# endregion
 
 ENTRYPOINT ["./entrypoint.sh"]
-CMD [ "python3", "-m", "exsclaim", "/usr/src/app/query/nature-ESEM.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]
+CMD [ "python3", "-m", "exsclaim", "query", "/usr/src/app/query/nature-ESEM.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]
 
-#COPY exsclaim ./exsclaim
-COPY query ./query
-
-COPY --from=base /usr/local/bin/exsclaim /usr/local/bin/exsclaim
-COPY --from=base /usr/local/bin/playwright /usr/local/bin/playwright
-COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-
-RUN playwright install-deps && playwright install chromium
+COPY --chown=$UID:$GID query ./query
 
 FROM python:3.11.9 AS jupyter-base
 

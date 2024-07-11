@@ -437,8 +437,6 @@ class JournalFamily(ABC, ExsclaimBrowser):
             for page_number in range(start_page, stop_page + 1): # TODO: Convert all of the soups to Playwright locators
 
                 # print(soup.find_all("a", href=True))
-                with open("test.html", "w") as f:
-                    f.write(page.locator("html").inner_html())
                 for article in page.locator("article.u-full-height.c-card.c-card--flush").all():
                     tag = article.locator("a[href]")
                     url = tag.get_attribute("href").split('?page=search')[0]
