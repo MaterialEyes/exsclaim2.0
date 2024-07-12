@@ -6,9 +6,10 @@ services:
             dockerfile: Dockerfile.exsclaim
             args:
                 - EXSCLAIM_GITHUB_REVISION=exsclaim2_for_spin
-                - UID=${UID:-1000}
-                - GID=${GID:-1000}
-                - UNAME=${UNAME:-exsclaim}
+                - UID=${UID}
+                - GID=${GID}
+                - UNAME=${UNAME}
+                - TZ=${TZ}
         image: exsclaim/base
         env_file: .env
 
@@ -16,13 +17,12 @@ services:
         build:
             target: "prod"
             args:
-                - UID=${UID:-1000}
-                - GID=${GID:-1000}
-                - UNAME=${UNAME:-exsclaim}
+                - UID=${UID}
+                - GID=${GID}
+                - UNAME=${UNAME}
         image: exsclaim/core
         env_file: .env
         environment:
-            - NTFY_LINK=${NTFY_LINK}
             - OPENAI_API_KEY=${OPENAI_API_KEY}
         networks:
             - backend
@@ -37,14 +37,13 @@ services:
         build:
             target: "jupyter"
             args:
-                - UID=${UID:-1000}
-                - GID=${GID:-1000}
-                - UNAME=${UNAME:-exsclaim}
+                - UID=${UID}
+                - GID=${GID}
+                - UNAME=${UNAME}
         image: exsclaim/jupyter
         env_file: .env
         environment:
             - HF_TOKEN=${HF_TOKEN}
-            - NTFY_LINK=${NTFY_LINK}
             - OPENAI_API_KEY=${OPENAI_API_KEY}
         networks:
             - backend
@@ -56,14 +55,9 @@ services:
             - "8888:8888"
 
     postgres:
-        image: postgres:latest
-        env_file:
-            -   .env
-        environment:
-            - TZ=${TZ}
-            - PGTZ=${TZ}
-        expose:
-            - "$POSTGRES_PORT"
+        image: exsclaim/db
+        build: ./db
+        env_file: .env
         ports:
             - "6543:$POSTGRES_PORT"
         networks:
@@ -72,14 +66,7 @@ services:
                     - db
                     - postgresql
         volumes:
-            - ./db:/docker-entrypoint-initdb.d
             - ./sql-data:/var/lib/postgresql/data:Z
-        healthcheck:
-            test: [ "CMD", "/usr/bin/pg_isready", "-d", "$POSTGRES_DB", "-U", "$POSTGRES_USER", "-p", "$POSTGRES_PORT" ]
-            interval: 5s
-            timeout: 60s
-            retries: 12
-            start_period: 10s
 
     api:
         restart: always
@@ -115,21 +102,23 @@ services:
         env_file: .env
         environment:
             - OPENAI_API_KEY=${OPENAI_API_KEY}
+            - PORT=${FASTAPI_PORT}
         image: exsclaim/ui/api
         build:
             context: ./fastapi
             target: dev
             args:
-                - UID=${UID:-1000}
-                - GID=${GID:-1000}
-                - UNAME=${UNAME:-exsclaim}
-        volumes:
-            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
-            - ./fastapi/api:/usr/src/app/api
-            - ./logs:/exsclaim/logs
-            - ./output:/exsclaim/results
+                - PORT=${FASTAPI_PORT}
+                - UID=${UID}
+                - GID=${GID}
+                - UNAME=${UNAME}
+#        volumes:
+#            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
+#            - ./fastapi/api:/usr/src/app/api
+#            - ./logs:/exsclaim/logs
+#            - ./output:/exsclaim/results
         ports:
-            - "81:80"
+            - "127.0.0.1:81:80"
         networks:
             frontend:
                 aliases:
@@ -145,13 +134,13 @@ services:
         build:
             context: ./dashboard
             args:
-                - UID=${UID:-1000}
-                - GID=${GID:-1000}
-                - UNAME=${UNAME:-exsclaim}
+                - UID=${UID}
+                - GID=${GID}
+                - UNAME=${UNAME}
         env_file: .env
         image: exsclaim/ui/dashboard
         environment:
-            - POSTGRES_PORT="${POSTGRES_PORT-5078}"
+            - POSTGRES_PORT=${POSTGRES_PORT}
             - PORT=${FASTAPI_PORT}
         ports:
             - "3000:3000"

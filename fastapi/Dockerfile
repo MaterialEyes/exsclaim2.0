@@ -11,7 +11,7 @@ COPY ./requirements.txt ./
 RUN pip install -r requirements.txt
 USER root
 
-RUN mkdir mkdir -p /exsclaim/{logs,results}/
+RUN mkdir -p /exsclaim/{logs,results}/
 RUN chown -R $UNAME:$UNAME /exsclaim
 
 USER $UNAME

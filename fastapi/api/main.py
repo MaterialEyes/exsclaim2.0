@@ -7,6 +7,7 @@ from fastapi import FastAPI, Response, Path
 from json import dump, dumps
 from os import getenv
 from psycopg import connect, OperationalError
+from psycopg.errors import UndefinedTable
 from pydantic import BaseModel
 from subprocess import Popen
 from typing import Any, Annotated, Union, Literal
@@ -19,9 +20,10 @@ def get_database_connection_string() -> str:
 	password = getenv("POSTGRES_PASSWORD", "exsclaimtest!9700")
 	port = getenv("POSTGRES_PORT", "5432")
 	database_name = getenv("POSTGRES_DB", "exsclaim")
+	host = getenv("POSTGRES_HOST", "db")
 
 	# db is one of the aliases given through Docker Compose
-	url = f'postgres://{username}:{password}@db:{port}/{database_name}'
+	url = f'postgres://{username}:{password}@{host}:{port}/{database_name}'
 	return url
 
 
@@ -93,8 +95,30 @@ def read_root():
 
 
 @app.get("/healthcheck")
-def healthcheck():
-	return f"EXSCLAIM! version {exsclaim.__version__} is running fine."
+def healthcheck() -> Response:
+	db_url = get_database_connection_string()
+	try:
+		db = connect(db_url)
+		cursor = db.cursor()
+		cursor.execute("SELECT * FROM results;")
+		cursor.close()
+		db.close()
+		response = Response(f"EXSCLAIM! version {exsclaim.__version__} is running fine.",
+							status_code=200, media_type="text/plain")
+	except OperationalError as e:
+		logger.exception(f"Database URL: {db_url}. {e}")
+		response = Response("The API is running but cannot connect to the database.",
+							status_code=503, media_type="text/plain")
+	except UndefinedTable as e:
+		logger.exception(e)
+		response = Response("The API and database are both running, however, the database seems to empty. Please try again later.",
+							status_code=503, media_type="text/plain")
+	except Exception as e:
+		logger.exception(f"Database URL: {db_url}. {e}")
+		response = Response("A fundamental error has prevented the API from functioning.",
+							status_code=503, media_type="text/plain")
+
+	return response
 
 
 @app.post("/query")
@@ -182,7 +206,7 @@ def status(result_id: str | UUID) -> Response:
 					time_diff = dt.now() - start_time
 					response = Response(f"The query was started {time_diff} ago and is still currently running.", status_code=200, media_type="text/plain")
 				case "Finished":
-					response = Response(f"The query was finished execution at {end_time}.", status_code=200, media_type="text/plain")
+					response = Response(f"The query finished execution at {end_time}.", status_code=200, media_type="text/plain")
 				case "Closed due to an error":
 					response = Response(f"The query stopped running at {end_time} due to an error.", status_code=500, media_type="text/plain")
 				case _:

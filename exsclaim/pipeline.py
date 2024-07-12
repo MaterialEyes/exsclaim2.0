@@ -208,7 +208,6 @@ class Pipeline:
             # Save results as specified
             save_methods = self.query_dict.get("save_format", None)
             if save_methods is not None:
-                self.logger.info(f"The save methods are a {type(save_methods)} with value \"{save_methods}\".")
                 save_methods = SaveMethods.from_list(save_methods)
 
                 if SaveMethods.SUBFIGURES in save_methods:
