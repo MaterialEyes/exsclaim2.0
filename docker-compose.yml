@@ -103,6 +103,7 @@ services:
         environment:
             - OPENAI_API_KEY=${OPENAI_API_KEY}
             - PORT=${FASTAPI_PORT}
+            - POSTGRES_HOST=${POSTGRES_HOST}
         image: exsclaim/ui/api
         build:
             context: ./fastapi

@@ -1,3 +1,5 @@
+import fastapi.openapi.docs
+
 import exsclaim
 import logging
 
@@ -14,7 +16,7 @@ from psycopg import connect, OperationalError
 from psycopg.errors import UndefinedTable
 from pydantic import BaseModel
 from pytz import utc as UTC
-from shutil import make_archive, rmtree
+from shutil import make_archive, rmtree, _ARCHIVE_FORMATS
 from subprocess import Popen
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
@@ -39,7 +41,7 @@ def my_schema():
 		"description": "**EX**traction, **S**eparation, and **C**aption-based natural **L**anguage **A**nnotation of **IM**ages from scientific figures API",
 		# "termsOfService": "https://materialeyes.org/terms/",
 		"contact": {
-			"name": "Get Help with this API",
+			"name": "Developers",
 			# "url": "https://materialeyes.org/help",
 			"email": "developer@materialeyes.org"
 		},
@@ -69,7 +71,7 @@ logging.basicConfig(level=logging.INFO,
 					force=True)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Exsclaim API")
+app = FastAPI(title="Exsclaim API", docs_url=None)
 app.openapi = my_schema
 
 
@@ -115,9 +117,37 @@ class Query(BaseModel):
 	"""A list of NTFY links that will receive a notification when EXSCLAIM has finished running."""
 
 
-@app.get("/")
-def read_root():
-	return "Welcome to the EXSCLAIM! API."
+@app.get("/",
+		 responses={
+			 200: {
+				 "description": "Default Homepage.",
+				 "content": {
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": "The results are still being compiled.",
+					 }
+				 }
+			 }
+		 }
+	)
+def read_root() -> str:
+	return f"Welcome to the EXSCLAIM! API v{exsclaim.__version__}."
+
+
+@app.get("/docs", include_in_schema=False)
+async def dark_theme():
+	schema = app.openapi()
+	return fastapi.openapi.docs.get_swagger_ui_html(
+		openapi_url=app.openapi_url,
+		title=schema["info"]["title"],
+		# FIXME: The response for the CSS file fails due to net::ERR_BLOCKED_BY_ORB when going for the original CSS files through GitHub, but downloading it and putting it on another server makes it work
+		# swagger_css_url="https://raw.githubusercontent.com/jcphlux/swagger-ui-themes/main/docs/css/swagger-dark-modern-ui.css",
+		# swagger_css_url="https://raw.githubusercontent.com/Amoenus/SwaggerDark/master/SwaggerDark.css",
+		swagger_css_url="https://lenwashingtoniii.com/swagger-dark-modern-ui.css",
+		swagger_favicon_url="https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/exsclaim2_for_spin/dashboard/public/favicon.ico"
+	)
 
 
 @app.get("/healthcheck",
@@ -281,7 +311,7 @@ def ensure_uuid(uuid: str | UUID) -> UUID:
 							 "type": "object",
 							 "properties": {
 								 "status": {
-									 "type": "string"
+									 "type": "string",
 								 },
 								 "start_time": {
 									 "type": "string"
@@ -290,7 +320,8 @@ def ensure_uuid(uuid: str | UUID) -> UUID:
 									 "type": "string"
 								 },
 								 "run_time": {
-									 "type": "number"
+									 "type": "number",
+									 "format": "float"
 								 },
 							 }
 						 },
@@ -364,7 +395,8 @@ def ensure_uuid(uuid: str | UUID) -> UUID:
 									 "type": "string"
 								 },
 								 "run_time": {
-									 "type": "number"
+									 "type": "number",
+									 "format": "float"
 								 },
 							 }
 						 },
@@ -442,19 +474,7 @@ def status(result_id: str | UUID) -> JSONResponse:
 
 
 @app.get("/results/{result_id}",
-
 		 responses={
-			 102: {
-				 "description": "Query Currently Running.",
-				 "content": {
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": "The results are still being compiled.",
-					 }
-				 }
-			 },
 			 200: {
 				 "description": "Results Compressed and Included.",
 				 "content": {
@@ -463,6 +483,17 @@ def status(result_id: str | UUID) -> JSONResponse:
 							 "type": "string"
 						 },
 						 "example": ""
+					 }
+				 }
+			 },
+			 202: {
+				 "description": "Query Currently Running.",
+				 "content": {
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": "The results are still being compiled.",
 					 }
 				 }
 			 },
@@ -511,12 +542,30 @@ def status(result_id: str | UUID) -> JSONResponse:
 				 }
 			 },
 		 })
-def download(result_id:UUID, compression:str="zip", filename:Literal["name", "id"]="name") -> Response:
+def download(request:Request, result_id:UUID, compression:str="default", filename:Literal["name", "id"]="name") -> Response:
 	# Literal types for compression as defined by shutil.make_archive: Literal["zip", "tar", "gztar", "bztar", "xztar"]
 	try:
 		result_id = ensure_uuid(result_id)
 	except ValueError as e:
 		return Response(str(e), status_code=422, media_type="text/plain")
+
+	if compression != "default":
+		if compression not in _ARCHIVE_FORMATS.keys():
+			return Response(f"unknown archive format '{compression}'.", status_code=422, media_type="text/plain")
+
+	else: # compression == "default"
+		if request.headers.get("sec-ch-ua-platform", ""):
+			match request.headers.get("sec-ch-ua-platform", ""):
+				case "Linux":
+					compression = "gztar"
+				case "Android" | "Chrome OS" | "Chromium OS" | "iOS" | "macOS" | "Windows" | "Unknown" | _:
+					compression = "zip"
+		else:
+			os = request.headers.get("user-agent", "")
+			if "Linux" in os:
+				compression = "gztar"
+			else:
+				compression = "zip"
 
 	with connect(get_database_connection_string()) as db:
 		cursor = db.cursor()
@@ -527,7 +576,7 @@ def download(result_id:UUID, compression:str="zip", filename:Literal["name", "id
 
 	match results[0]:
 		case "Running":
-			return Response("The results are still being compiled.", status_code=102, media_type="text/plain")
+			return Response("The results are still being compiled.", status_code=202, media_type="text/plain")
 		case "Closed due to an error":
 			return Response("The results could not be compiled due to an error. Please submit your query again.",
 							status_code=500, media_type="text/plain")
@@ -544,15 +593,14 @@ def download(result_id:UUID, compression:str="zip", filename:Literal["name", "id
 							status_code=200)
 
 	tmp_dir = Path(TemporaryDirectory().name)
-	tmp_result_dir = tmp_dir / str(result_id)
 
 	with tar_open(results_file) as f:
 		f.extractall(tmp_dir)
 
-	name = [file for file in listdir(tmp_result_dir) if "." not in file][0]
+	name = [file for file in listdir(tmp_dir) if "." not in file][0]
 
 	try:
-		results_file = Path(make_archive(str(tmp_dir / str(result_id)), compression, root_dir=str(tmp_result_dir), base_dir=name))
+		results_file = Path(make_archive(str(tmp_dir / str(result_id)), compression, root_dir=str(tmp_dir), base_dir=name))
 
 		buffer = BytesIO()
 
@@ -569,3 +617,94 @@ def download(result_id:UUID, compression:str="zip", filename:Literal["name", "id
 		return Response(content=buffer.getvalue(), media_type="application/octet-stream", headers={"Content-Disposition": f"attachment; filename*=utf8''{filename}"})
 	except ValueError as e:
 		return Response(str(e), status_code=422, media_type="text/plain")
+
+
+@app.get("/compression_types",
+		 responses={
+			 200: {
+				 "description": "Possible Compression Algorithms/Extensions",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "compression_types": {
+									 "type": "object"
+								 }
+							 }
+						 },
+						 "example": {
+							 "compression_types": ["tar","gztar","zip","bztar","xztar"],
+						 }
+					 },
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": '["tar","gztar","zip","bztar","xztar"]'
+					 }
+				 }
+			 },
+			 202: {
+				 "description": "The given compression type is allowed.",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "allowed": {
+									 "type": "boolean"
+								 }
+							 }
+						 },
+						 "example": {
+							 "allowed": True,
+						 }
+					 },
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": "zip is an allowed value."
+					 }
+				 }
+			 },
+			 404: {
+				 "description": "The given compression type is not allowed.",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "allowed": {
+									 "type": "boolean"
+								 }
+							 }
+						 },
+						 "example": {
+							 "allowed": False,
+						 }
+					 },
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": "zip is NOT an allowed value."
+					 }
+				 }
+			 }
+		 })
+def get_possible_compressions(request:Request, compression_type:str = None) -> Response:
+	send_json = request.headers.get("accept", "") == "application/json"
+	if compression_type is None:
+		compression_types = list(_ARCHIVE_FORMATS.keys())
+		if send_json:
+			return JSONResponse({"compression_types": compression_types}, status_code=200, media_type="application/json")
+		return Response(str(compression_types), status_code=200, media_type="text/plain")
+
+	allowed = compression_type in _ARCHIVE_FORMATS.keys()
+	status_code = 202 if allowed else 404
+	if send_json:
+		return JSONResponse({"allowed": allowed}, status_code=status_code, media_type="application/json")
+
+	return Response(f"{compression_type} is {'NOT ' if not allowed else ''}an available compression type.", status_code=status_code, media_type="text/plain")
