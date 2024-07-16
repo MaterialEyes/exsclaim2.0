@@ -79,7 +79,7 @@ services:
             context: ./api
             args:
                 ENV: dev
-            target: prod
+            target: base
         command: >
             bash -c "./manage.py migrate &&
                  ./manage.py runserver 0.0.0.0:8000"
@@ -112,11 +112,11 @@ services:
                 - UID=${UID}
                 - GID=${GID}
                 - UNAME=${UNAME}
-#        volumes:
-#            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
-#            - ./fastapi/api:/usr/src/app/api
-#            - ./logs:/exsclaim/logs
-#            - ./output:/exsclaim/results
+        volumes:
+            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
+            - ./fastapi/api:/usr/src/app/api
+            - ./logs:/exsclaim/logs
+            - ./output:/exsclaim/results
         ports:
             - "127.0.0.1:81:80"
         networks:

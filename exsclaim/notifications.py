@@ -12,7 +12,7 @@ class Notifications(ABC):
 		self.logger = kwargs.get("logger", getLogger(self.__class__.__name__))
 
 	@abstractmethod
-	def notify(self, data: dict | str, exception: Exception = None):
+	def notify(self, data: dict | str, name:str, exception: Exception = None):
 		...
 
 	@classmethod
@@ -37,7 +37,7 @@ class NTFY(Notifications):
 		priority = json.get("priority", "3")
 		return cls(url, access_token, priority=priority)
 
-	def notify(self, data: dict | str, exception: Exception = None):
+	def notify(self, data: dict | str, name:str, exception: Exception = None):
 		from requests import post
 
 		if isinstance(data, dict):
@@ -50,7 +50,7 @@ class NTFY(Notifications):
 
 		headers = {
 			"Markdown": "yes",
-			"Title": "EXSCLAIM Notification",
+			"Title": f"EXSCLAIM: `{name}` Notification",
 			"Priority": self._priority,
 		}
 
@@ -78,7 +78,7 @@ class Email(Notifications):
 			recipients = json.get("recipients", tuple())
 		return cls(recipients)
 
-	def notify(self, data: dict | str, exception: Exception = None):
+	def notify(self, data: dict | str, name:str, exception: Exception = None):
 		self.logger.error(f"Setup notifications through email.")
 
 

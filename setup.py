@@ -49,6 +49,12 @@ def write_version():
 				'short_version = version.split("b")[0]')
 
 
+def write_sql_setup():
+	with open(here / "db" / "setup" / "exsclaim-setup.sql", 'r') as file1:
+		with open(here / "exsclaim" / "utilities" / "setup.sql", 'r') as file2:
+			file2.write(file1.read())
+
+
 with open(here / "README.md", "r") as fh:
 	long_description = fh.read()
 

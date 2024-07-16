@@ -8,6 +8,7 @@ from atexit import register
 from functools import wraps
 from json import load
 from os import getenv, system
+from os.path import splitext
 from pathlib import Path
 from tarfile import open as tar_open
 
@@ -45,7 +46,9 @@ def main(args=None):
 	subparser.add_argument("--journal_scraper", "-js", action="store_true")
 	subparser.add_argument("--figure_separator", "-fs", action="store_true")
 	subparser.add_argument("--html_scraper", "-hs", action="store_true")
-	subparser.add_argument("--compress", "-c", action="store", help="Compress the search results into a tar.gz file to save space. Deletes the original folder after compression.")
+	subparser.add_argument("--compress", "-c", choices=["zip", "tar", "gztar", "bztar", "xztar"], help="Compress the search results into a tar.gz file to save space. Deletes the original folder after compression.")
+	subparser.add_argument("--compress_location", "-cl", help="The location where the compressed search results will be stored.")
+	subparser.add_argument("--verbose", "-v", action="store_true")
 	args = vars(parser.parse_args(args))
 
 	if args["command"] == "install-deps":
@@ -63,20 +66,23 @@ def main(args=None):
 	with open(path, "r") as f:
 		search_query = load(f)
 
+	if args.get("verbose", False):
+		if not search_query.get("logging", None):
+			search_query["logging"] = ["print"]
+
+		if "print" not in search_query["logging"]:
+			search_query["logging"].append("print")
+
 	kwargs = {key: args.get(key, False) for key in {"caption_distributor", "journal_scraper", "figure_separator", "html_scraper"}}
 	pipeline = Pipeline(search_query)
 	results = pipeline.run(**kwargs)
 
-	if args.get("compress", False):
-		results_dir = pipeline.results_directory
-		with tar_open(args["compress"], "w:gz") as tar:
-			tar.add(results_dir, arcname=search_query["name"])
-		if Path(args["compress"]).exists():
-			from shutil import rmtree
-			print(f"Should be removing {results_dir}")
-			system("touch ~/removing")
-			rmtree(results_dir)
-			system("touch ~/removed")
+	compress = args.get("compress", "")
+	if compress:
+		from shutil import make_archive
+		name = search_query["name"]
+		save_location, _ = splitext(args.get("compress_location", str(pipeline.results_directory)))
+		make_archive(save_location, compress, root_dir=str(pipeline.results_directory.parent), base_dir=name)
 
 	return results
 

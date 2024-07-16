@@ -1,5 +1,3 @@
--r ./base.txt
-
 # Developer Tools
 ipdb==0.13.13
 ipython==8.25.0
@@ -10,7 +8,6 @@ flake8==7.0.0
 # Testing
 mock==5.1.0
 factory-boy==3.3.0
-django-nose==1.4.7
 coverage==7.5.3
 
 # Static and Media Storage

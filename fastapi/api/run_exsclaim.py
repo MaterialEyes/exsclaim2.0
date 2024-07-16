@@ -12,14 +12,15 @@ def main(_id:UUID, search_query_location:str):
 	db_result = "Closed due to an error"
 	try:
 		results = exsclaim_main(["query", search_query_location, "--caption_distributor",
-							 "--journal_scraper", "--figure_separator", "--compress", f"/exsclaim/results/{_id}.tar.gz"])
+								 "--journal_scraper", "--figure_separator", "--compress", "gztar",
+								 "--compress_location", f"/exsclaim/results/{_id}", "--verbose"])
 		db_result = "Finished"
 
 		results_dir = Path(search_query_location).parent
 		if results_dir.is_dir():
 			rmtree(results_dir)
 	except Exception as e:
-		logging.getLogger(f"run_exsclaim_{uuid}").exception(e)
+		logging.getLogger(f"run_exsclaim_{_id}").exception(e)
 		results = None
 
 	with connect(get_database_connection_string()) as db:

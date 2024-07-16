@@ -222,8 +222,8 @@ class Pipeline:
                         self.draw_bounding_boxes(figure)
 
                 if SaveMethods.POSTGRES in save_methods:
-                    self.to_csv()
-                    self.to_postgres()
+                    csv_dir = self.to_csv()
+                    self.to_postgres(csv_dir)
 
                 elif SaveMethods.CSV in save_methods and SaveMethods.POSTGRES not in save_methods:
                     self.to_csv()
@@ -249,7 +249,7 @@ class Pipeline:
             message = f"An error occurred at {dt.now():%Y-%m-%dT%H:%M%z} running{' the' if _id is None else ''} EXSCLAIM! query{f' `{_id}`' if _id is not None else ''}."
 
         for notifier in self.notifications:
-            notifier.notify(message)
+            notifier.notify(message, name=self.query_dict["name"])
 
         return self.exsclaim_dict
 
@@ -677,7 +677,9 @@ class Pipeline:
                 csv_writer = writer(file)
                 csv_writer.writerows(rows)
 
-    def to_postgres(self):
+        return csv_dir
+
+    def to_postgres(self, csv_dir):
         """Send csv files to a postgres database
 
         Modifies:
@@ -685,9 +687,7 @@ class Pipeline:
         """
         from .utilities.postgres import Database
 
-        csv_dir = self.results_directory / "csv"
         with Database("exsclaim") as db:
-            for table_name in ("article", "figure", "subfigure", "scalebar", "scalebarlabel", "subfigurelabel"):
-                table_name = "results_" + table_name
-                db.copy_from(csv_dir / f"{table_name}.csv", table_name)
+            for table_name in ("article", "figure", "subfigure", "scale", "scalelabel", "subfigurelabel"):
+                db.copy_from(csv_dir / f"{table_name}.csv", f"results.{table_name}")
                 db.commit()

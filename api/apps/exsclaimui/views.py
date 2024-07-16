@@ -106,7 +106,7 @@ class QueryViewSet(viewsets.ModelViewSet):
                 "openai_API": model_key,
                 "open": access,
                 "save_format": save_format,
-                "logging": ["exsclaim.log"],
+                "logging": ["print", "exsclaim.log"],
                 "results_dir": str(results_dir)
             }
 
@@ -117,21 +117,6 @@ class QueryViewSet(viewsets.ModelViewSet):
                 raise e
 
             print(results)
-
-            db_json = exsclaim_input.copy()
-            db_json["openai_API"] = "openai_API" in db_json.keys()
-            for unnecessary_key in ["notifications", "results_dir", "logging"]:
-                if unnecessary_key in db_json:
-                    db_json.pop(unnecessary_key)
-
-            cursor.execute("INSERT INTO results VALUES(%s, %s, %s);", (uuid, dumps(db_json), "tar.gz"))
-            db.commit()
-            cursor.close()
-
-        with tar_open(f"/results/{uuid}.tar.gz", "w:gz") as tar:
-            tar.add(results_dir / exsclaim_input["name"], arcname=exsclaim_input["name"])
-
-        system(f"rm -rf {results_dir}")
 
         queryset = Query.objects.all()
 
