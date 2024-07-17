@@ -1,16 +1,15 @@
-import fastapi.openapi.docs
-
 import exsclaim
 import logging
 
-from datetime import datetime as dt, timedelta as td
+from datetime import datetime as dt
 from exsclaim import get_database_connection_string
 from fastapi import FastAPI, Path as FastPath, Request
 from fastapi.responses import Response, FileResponse, JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from io import BytesIO
 from json import dump, dumps
-from os import getenv, listdir
+from os import listdir
 from pathlib import Path
 from psycopg import connect, OperationalError
 from psycopg.errors import UndefinedTable
@@ -20,8 +19,7 @@ from shutil import make_archive, rmtree, _ARCHIVE_FORMATS
 from subprocess import Popen
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
-from typing import Any, Annotated, Union, Literal
-from threading import Thread
+from typing import Annotated, Literal
 from uuid import UUID
 
 
@@ -38,7 +36,7 @@ def my_schema():
 	openapi_schema["info"] = {
 		"title": "EXSCLAIM API",
 		"version": exsclaim.__version__,
-		"description": "**EX**traction, **S**eparation, and **C**aption-based natural **L**anguage **A**nnotation of **IM**ages from scientific figures API",
+		"description": "**EX**traction, **S**eparation, and **C**aption-based natural **L**anguage **A**nnotation of **IM**ages from scientific figures API. Check out our paper at <a href=\"https://arxiv.org/abs/2103.10631\">https://arxiv.org/abs/2103.10631</a>.",
 		# "termsOfService": "https://materialeyes.org/terms/",
 		"contact": {
 			"name": "Developers",
@@ -47,6 +45,7 @@ def my_schema():
 		},
 		"license": {
 			"name": "MIT License",
+			"identifier": "MIT",
 			"url": "https://opensource.org/license/mit"
 		},
 	}
@@ -139,7 +138,7 @@ def read_root() -> str:
 @app.get("/docs", include_in_schema=False)
 async def dark_theme():
 	schema = app.openapi()
-	return fastapi.openapi.docs.get_swagger_ui_html(
+	return get_swagger_ui_html(
 		openapi_url=app.openapi_url,
 		title=schema["info"]["title"],
 		# FIXME: The response for the CSS file fails due to net::ERR_BLOCKED_BY_ORB when going for the original CSS files through GitHub, but downloading it and putting it on another server makes it work
@@ -551,7 +550,7 @@ def download(request:Request, result_id:UUID, compression:str="default", filenam
 
 	if compression != "default":
 		if compression not in _ARCHIVE_FORMATS.keys():
-			return Response(f"unknown archive format '{compression}'.", status_code=422, media_type="text/plain")
+			return Response(f"Unknown archive format '{compression}'. Check /compression_types to see what values are allowed.", status_code=422, media_type="text/plain")
 
 	else: # compression == "default"
 		if request.headers.get("sec-ch-ua-platform", ""):

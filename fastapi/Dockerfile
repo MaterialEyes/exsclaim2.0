@@ -18,7 +18,7 @@ USER $UNAME
 
 ENTRYPOINT ["fastapi"]
 CMD ["dev", "api/main.py", "--host", "0.0.0.0", "--port", "80", "--reload"]
-HEALTHCHECK --interval=15s --timeout=15s --start-period=20s --retries=4 CMD curl -f http://localhost/healthcheck || exit 1
+HEALTHCHECK --interval=30s --timeout=15s --start-period=20s --retries=4 CMD curl -f http://localhost/healthcheck || exit 1
 
 EXPOSE $PORT
 

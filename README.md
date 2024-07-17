@@ -31,14 +31,6 @@ To install directly from GitHub, run the following commands (it is recommended t
 pip install git+https://github.com/MaterialEyes/exsclaim2.0.git
 ```
 
-#### Scrapping data from dynamic journal webpages
-If scrapping data from Journals that use javascript (e.g. RSC, ACS) you need to set up chrome-driver and chrome and add their path to the `exsclaim/journal.py` file.
-```shell
-e.g. for a linux terminal you need the following:
-wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-wget https://chromedriver.storage.googleapis.com/90.0.4430.24/chromedriver_linux64.zip
-```
-
 If you run into errors, please check [Troubleshooting](https://github.com/MaterialEyes/exsclaim/wiki/Troubleshooting). If they persist, please open an issue.
 
 ### Using Exsclaim 2.0
@@ -52,7 +44,15 @@ results = Pipeline(search_query_json)
 where `search_query` is either a dictionary representing a valid JSON object, or a Pathlike string pointing towards a valid JSON file,
 or 
 ```shell
-python -m exsclaim {path to json file holding search query}
+python -m exsclaim query {path to json file holding search query}
+```
+
+### Using Docker Compose
+To use Docker Compose to host the service, run the following commands in the base directory:
+```shell
+docker compose build base
+docker compose build {service(s) here}
+docker compose up {service(s) here}
 ```
 
 ## Acknowledgements <a name="credits"></a>
