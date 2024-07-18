@@ -5,7 +5,7 @@ from datetime import datetime as dt
 from exsclaim import get_database_connection_string
 from fastapi import FastAPI, Path as FastPath, Request
 from fastapi.responses import Response, FileResponse, JSONResponse
-from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from io import BytesIO
 from json import dump, dumps
@@ -36,7 +36,9 @@ def my_schema():
 	openapi_schema["info"] = {
 		"title": "EXSCLAIM API",
 		"version": exsclaim.__version__,
-		"description": "**EX**traction, **S**eparation, and **C**aption-based natural **L**anguage **A**nnotation of **IM**ages from scientific figures API. Check out our paper at <a href=\"https://arxiv.org/abs/2103.10631\">https://arxiv.org/abs/2103.10631</a>.",
+		"description": "**EX**traction, **S**eparation, and **C**aption-based natural **L**anguage **A**nnotation of **IM**ages from scientific figures API.<br>"
+					   "Check out our paper at <a href=\"https://arxiv.org/abs/2103.10631\">https://arxiv.org/abs/2103.10631</a>.<br>"
+					   "Check out our GitHub at <a href=\"https://github.com/MaterialEyes/exsclaim2.0\">https://github.com/MaterialEyes/exsclaim2.0</a>.",
 		# "termsOfService": "https://materialeyes.org/terms/",
 		"contact": {
 			"name": "Developers",
@@ -70,7 +72,7 @@ logging.basicConfig(level=logging.INFO,
 					force=True)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Exsclaim API", docs_url=None)
+app = FastAPI(title="Exsclaim API", docs_url=None, redoc_url=None)
 app.openapi = my_schema
 
 
@@ -145,7 +147,16 @@ async def dark_theme():
 		# swagger_css_url="https://raw.githubusercontent.com/jcphlux/swagger-ui-themes/main/docs/css/swagger-dark-modern-ui.css",
 		# swagger_css_url="https://raw.githubusercontent.com/Amoenus/SwaggerDark/master/SwaggerDark.css",
 		swagger_css_url="https://lenwashingtoniii.com/swagger-dark-modern-ui.css",
-		swagger_favicon_url="https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/exsclaim2_for_spin/dashboard/public/favicon.ico"
+		swagger_favicon_url="https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico"
+	)
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc():
+	schema = app.openapi()
+	return get_redoc_html(
+		openapi_url=app.openapi_url,
+		title=schema["info"]["title"],
+		redoc_favicon_url="https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico"
 	)
 
 

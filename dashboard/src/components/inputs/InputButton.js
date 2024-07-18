@@ -24,7 +24,7 @@ const InputButton = (props) => {
     };
 
     // POST user input to API
-    fetch("http://localhost:8000/api/v1/query/", {
+    fetch(process.env.FAST_API_URL, {
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(inputData)

@@ -142,7 +142,8 @@ services:
         image: exsclaim/ui/dashboard
         environment:
             - POSTGRES_PORT=${POSTGRES_PORT}
-            - PORT=${FASTAPI_PORT}
+            # TODO: Add an ENV variable that tells the dashboard what the API url is
+            - FAST_API_URL=http://api:${FASTAPI_PORT}
         ports:
             - "3000:3000"
         networks:
