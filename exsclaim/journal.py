@@ -187,6 +187,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
             with open(articles_file, "r") as f:
                 articles_visited = {a.strip() for a in f.readlines()}
         self.articles_visited = articles_visited
+        self.include_hidden_figures = kwargs.get("include_hidden_figures", False)
 
     # Helper Methods for retrieving relevant article URLS
 
@@ -286,7 +287,10 @@ class JournalFamily(ABC, ExsclaimBrowser):
             #       fix_hairline=True,
             #       )
             page.goto(url)
-            figures = [a for a in page.locator("figure").all() if self.extra_key in str(a)]
+            # figures = (a for a in page.locator("figure").all() if self.extra_key in str(a))
+            figures = filter(lambda a: self.extra_key in str(a), page.locator("figure").all())
+            if not self.include_hidden_figures:
+                figures = filter(lambda figure: figure.is_visible(), figures)
             return [BeautifulSoup(figure.inner_html(), "html.parser") for figure in figures]
 
         return self.temporary_browser(get_figure_list_from_playwright) # div.c-article-section__figure-description

@@ -254,7 +254,7 @@ class Pipeline:
         return self.exsclaim_dict
 
     @staticmethod
-    def assign_captions(figure) -> tuple[list[dict], dict]:
+    def assign_captions(figure:dict) -> tuple[list[dict], dict]:
         """Assigns all captions to master_images JSONs for single figure
 
         Args:
@@ -282,7 +282,7 @@ class Pipeline:
                 processed_caption_label = sub(r"[().,]", "", caption_label["label"])
 
                 # check if caption label and subfigure label match and caption label has not already been matched
-                if (processed_caption_label.lower() != processed_label.lower() or processed_caption_label.lower() not in [a.lower() for a in not_assigned]):
+                if processed_caption_label.lower() != processed_label.lower() or processed_caption_label.lower() not in [a.lower() for a in not_assigned]:
                     continue
 
                 print(f"Caption_label: {caption_label['description']}")
@@ -310,14 +310,15 @@ class Pipeline:
             masters.append(master_image)
 
         # update unassigned captions
-        unassigned["captions"] = [caption_label for caption_label in captions if caption_label["label"] in not_assigned]
+        # unassigned["captions"] = [caption_label for caption_label in captions if caption_label["label"] in not_assigned]
+        unassigned["captions"] = list(filter(lambda caption_label: caption_label["label"] in not_assigned, not_assigned))
 
         return masters, unassigned
 
     def group_objects(self):
         """Pair captions with subfigures for each figure in exsclaim json"""
         self.display_info("Matching Image Objects to Caption Text\n")
-        figures = +len(self.exsclaim_dict)
+        figures = len(self.exsclaim_dict)
         for counter, figure in enumerate(self.exsclaim_dict, start=1):
             self.display_info(f">>> ({counter:,} of {figures:,}) Matching objects from figure: {figure}")
 

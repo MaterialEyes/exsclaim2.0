@@ -109,10 +109,6 @@ class ExsclaimTool(ABC):
 		exsclaim_dict.update(article_dict)
 		return exsclaim_dict
 
-	@abstractmethod
-	def _load_model(self):
-		pass
-
 	def _start_timer(self):
 		self._t0 = timer()
 
@@ -205,9 +201,6 @@ class JournalScraper(ExsclaimTool):
 		super().__init__(search_query, **kwargs)
 		self.new_articles_visited = set()
 
-	def _load_model(self):
-		pass
-
 	def _appendJSON(self, exsclaim_json):
 		"""Commit updates to exsclaim json and update list of scraped articles
 
@@ -234,7 +227,8 @@ class JournalScraper(ExsclaimTool):
 		journal_family_name = search_query["journal_family"]
 		if journal_family_name not in journals:
 			raise NameError(f"Journal family {journal_family_name} is not defined.")
-		journal = journals[journal_family_name](search_query)
+		journal = journals[journal_family_name](search_query,
+												scrape_hidden_articles=search_query.get("scrape_hidden_articles", False))
 
 		if exsclaim_json is None:
 			exsclaim_json = dict()
@@ -682,9 +676,6 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 						shutil.copyfileobj(response.raw, out_file)
 		return article_json
 
-	def _load_model(self):
-		pass
-
 	def get_journal(self, filename):
 		keywords = ['acs', 'nature', 'wiley', 'rsc']
 		category = None
@@ -803,8 +794,6 @@ class CaptionDistributor(ExsclaimTool):
 		# return caption.load_models(self.model_path) # TODO: Find out where load_models comes from
 
 	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter, caption_dict):
-		from . import caption
-
 		llm = search_query["llm"]
 		api = search_query["openai_API"]
 		exsclaim_dict[figure_name]["caption_delimiter"] = delimiter

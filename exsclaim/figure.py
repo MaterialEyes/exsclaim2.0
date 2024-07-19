@@ -584,10 +584,10 @@ class FigureSeparator(ExsclaimTool):
         convert_to_nm = {
             "a": 0.1,
             "nm": 1.0,
-            "um": 1000.0,
-            "mm": 1000000.0,
-            "cm": 10000000.0,
-            "m": 1000000000.0,
+            "um": 1_000.0,
+            "mm": 1_000_000.0,
+            "cm": 10_000_000.0,
+            "m": 1_000_000_000.0,
         }
         unassigned = figure_json.get("unassigned", {})
         unassigned_scale_labels = unassigned.get("scale_bar_labels", [])
