@@ -1,7 +1,9 @@
 import logging
 
 from main import get_database_connection_string
+
 from exsclaim.__main__ import main as exsclaim_main
+from os import getenv
 from pathlib import Path
 from psycopg import connect
 from shutil import rmtree
@@ -11,9 +13,12 @@ from uuid import UUID
 def main(_id:UUID, search_query_location:str):
 	db_result = "Closed due to an error"
 	try:
-		results = exsclaim_main(["query", search_query_location, "--caption_distributor",
-								 "--journal_scraper", "--figure_separator", "--compress", "gztar",
-								 "--compress_location", f"/exsclaim/results/{_id}", "--verbose"])
+		args = ["query", search_query_location, "--caption_distributor",
+				"--journal_scraper", "--figure_separator", "--compress", "gztar",
+				"--compress_location", f"/exsclaim/results/{_id}"]
+		if getenv("EXSCLAIM_DEBUG", "").lower() == "true":
+			args.append("--verbose")
+		results = exsclaim_main(args)
 		db_result = "Finished"
 
 		results_dir = Path(search_query_location).parent

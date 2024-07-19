@@ -285,7 +285,6 @@ class Pipeline:
                 if processed_caption_label.lower() != processed_label.lower() or processed_caption_label.lower() not in [a.lower() for a in not_assigned]:
                     continue
 
-                print(f"Caption_label: {caption_label['description']}")
                 master_image |= {
                     "caption": caption_label["description"], # .replace("\n", " ").strip()
                     "keywords": caption_label["keywords"],
@@ -310,8 +309,8 @@ class Pipeline:
             masters.append(master_image)
 
         # update unassigned captions
-        # unassigned["captions"] = [caption_label for caption_label in captions if caption_label["label"] in not_assigned]
-        unassigned["captions"] = list(filter(lambda caption_label: caption_label["label"] in not_assigned, not_assigned))
+        unassigned["captions"] = [caption_label for caption_label in captions if caption_label["label"] in not_assigned]
+        # unassigned["captions"] = list(filter(lambda caption_label: caption_label["label"] in not_assigned, not_assigned))
 
         return masters, unassigned
 

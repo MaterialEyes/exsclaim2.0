@@ -2,6 +2,7 @@ FROM exsclaim/base AS dev
 
 ENV PORT=80
 ARG UNAME=exsclaim
+ENV EXSCLAIM_DEBUG=true
 
 WORKDIR /usr/src/app
 
@@ -24,3 +25,4 @@ EXPOSE $PORT
 
 FROM dev AS prod
 CMD ["run", "api/main.py", "--host", "0.0.0.0", "--port", "80"]
+ENV EXSCLAIM_DEBUG=false
