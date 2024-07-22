@@ -33,7 +33,7 @@ class SaveMethods(Flag):
     @classmethod
     def from_str(cls, string:str):
         match(string):
-            case "save_subfigures":
+            case "save_subfigures" | "subfigures":
                 return cls.SUBFIGURES
             case "visualization" | "visualize":
                 return cls.VISUALIZATION
@@ -253,7 +253,7 @@ class Pipeline:
             try:
                 notifier.notify(message, name=self.query_dict["name"])
             except CouldNotNotifyException:
-                self.logger.exception(f"Could not send notification regarding the completion of {self.search_query['name']}.")
+                self.logger.exception(f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".")
 
         return self.exsclaim_dict
 

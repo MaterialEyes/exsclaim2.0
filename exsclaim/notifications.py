@@ -1,13 +1,13 @@
 from abc import ABC, abstractmethod
 from logging import getLogger
-from requests import post, ConnectTimeout
+from requests import post, ConnectionError
 from typing import Type
 
 
 __all__ = ["Notifications", "NTFY", "Email", "notifiers", "CouldNotNotifyException"]
 
 
-class CouldNotNotifyException(Exception):
+class CouldNotNotifyException(BaseException):
 	pass
 
 
@@ -63,8 +63,8 @@ class NTFY(Notifications):
 		try:
 			post(self._ntfy_url, data,
 				 headers=headers)
-		except ConnectTimeout as e:
-			raise CouldNotNotifyException() from e
+		except ConnectionError as e:
+			raise CouldNotNotifyException(e)
 
 	@property
 	def url(self) -> str:

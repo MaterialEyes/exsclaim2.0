@@ -186,9 +186,20 @@ def favicon() -> Response:
 
 
 @app.get("/swagger-dark-ui.css", include_in_schema=False)
-def get_dark_ui() -> Response:
+def get_dark_css() -> Response:
+	return get_dark_ui(False)
+
+
+@app.get("/swagger-dark-ui.css.map", include_in_schema=False)
+def get_dark_css() -> Response:
+	return get_dark_ui(True)
+
+
+def get_dark_ui(map_file:bool=False) -> Response:
 	"""An endpoint to get around an error retrieving the Dark UI CSS file from jcphlux on GitHub."""
 	dark_ui = "https://raw.githubusercontent.com/jcphlux/swagger-ui-themes/main/docs/css/swagger-dark-ui.css"
+	if map_file:
+		dark_ui += ".map"
 	response = get(dark_ui)
 	if not response.ok:
 		return Response(status_code=301, headers={"Location": dark_ui})
@@ -607,7 +618,7 @@ def download(request:Request, result_id:UUID, compression:str="default", filenam
 	else: # compression == "default"
 		if request.headers.get("sec-ch-ua-platform", ""):
 			match request.headers.get("sec-ch-ua-platform", ""):
-				case "Linux":
+				case "\"Linux\"":
 					compression = "gztar"
 				case "Android" | "Chrome OS" | "Chromium OS" | "iOS" | "macOS" | "Windows" | "Unknown" | _:
 					compression = "zip"
