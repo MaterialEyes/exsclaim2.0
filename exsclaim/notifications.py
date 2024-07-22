@@ -1,9 +1,14 @@
 from abc import ABC, abstractmethod
 from logging import getLogger
+from requests import post, ConnectTimeout
 from typing import Type
 
 
-__all__ = ["Notifications", "NTFY", "Email", "notifiers"]
+__all__ = ["Notifications", "NTFY", "Email", "notifiers", "CouldNotNotifyException"]
+
+
+class CouldNotNotifyException(Exception):
+	pass
 
 
 class Notifications(ABC):
@@ -38,8 +43,6 @@ class NTFY(Notifications):
 		return cls(url, access_token, priority=priority)
 
 	def notify(self, data: dict | str, name:str, exception: Exception = None):
-		from requests import post
-
 		if isinstance(data, dict):
 			from json import dumps
 			data = dumps(data)
@@ -57,8 +60,11 @@ class NTFY(Notifications):
 		if self._access_token is not None:
 			headers["Authorization"] = f"Bearer {self._access_token}"
 
-		post(self._ntfy_url, data,
-			 headers=headers)
+		try:
+			post(self._ntfy_url, data,
+				 headers=headers)
+		except ConnectTimeout as e:
+			raise CouldNotNotifyException() from e
 
 	@property
 	def url(self) -> str:

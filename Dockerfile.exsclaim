@@ -31,6 +31,7 @@ ARG UNAME=exsclaim
 
 RUN groupadd -g $GID -o $UNAME
 RUN useradd -u $UID -g $GID -o -m -s /bin/bash $UNAME
+RUN usermod -aG root $UNAME
 
 # region Configures the timezone
 RUN apt install -yq tzdata && \

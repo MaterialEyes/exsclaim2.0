@@ -23,7 +23,7 @@ def main(_id:UUID, search_query_location:str):
 
 		results_dir = Path(search_query_location).parent
 		if results_dir.is_dir():
-			rmtree(results_dir)
+			rmtree(results_dir.absolute())
 	except Exception as e:
 		logging.getLogger(f"run_exsclaim_{_id}").exception(e)
 		results = None

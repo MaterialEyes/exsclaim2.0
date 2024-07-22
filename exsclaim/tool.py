@@ -164,7 +164,7 @@ class ExsclaimTool(ABC):
 
 			# Save to file every N iterations (to accommodate restart scenarios)
 			if counter % N == 0:
-				self._appendJSON(self.exsclaim_json, data=new_separated, filename=append_file)
+				self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 				new_separated = set()
 
 		self._end_timer(f"{counter-1:,} figures")

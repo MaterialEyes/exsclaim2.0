@@ -9,12 +9,13 @@ from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from io import BytesIO
 from json import dump, dumps
-from os import listdir
+from os import listdir, mkdir
 from pathlib import Path
 from psycopg import connect, OperationalError
 from psycopg.errors import UndefinedTable
 from pydantic import BaseModel
 from pytz import utc as UTC
+from requests import get
 from shutil import make_archive, rmtree, _ARCHIVE_FORMATS
 from subprocess import Popen
 from tarfile import open as tar_open
@@ -62,18 +63,30 @@ def date_to_json(date:dt | None) -> str | None:
 	return UTC.localize(date).isoformat()
 
 
-printer_handler = logging.StreamHandler()
-printer_handler.setFormatter(exsclaim.PrinterFormatter())
-file_handler = logging.FileHandler("/exsclaim/logs/exsclaim-api.log", "a")
-file_handler.setFormatter(exsclaim.ExsclaimFormatter())
+def get_logger():
+	from os import mkdir
+	printer_handler = logging.StreamHandler()
+	printer_handler.setFormatter(exsclaim.PrinterFormatter())
+	file_handler = logging.FileHandler("/exsclaim/logs/exsclaim-api.log", "a")
+	file_handler.setFormatter(exsclaim.ExsclaimFormatter())
 
-logging.basicConfig(level=logging.INFO,
-					handlers=(printer_handler, file_handler),
-					force=True)
-logger = logging.getLogger(__name__)
+	logging.basicConfig(level=logging.INFO,
+						handlers=(printer_handler, file_handler),
+						force=True)
+	return logging.getLogger(__name__)
 
-app = FastAPI(title="Exsclaim API", docs_url=None, redoc_url=None)
+
+def flush_logger():
+	for handler in logger.handlers:
+		handler.flush()
+
+
+app = FastAPI(title="Exsclaim API", docs_url=None, redoc_url=None, on_shutdown=[flush_logger])
 app.openapi = my_schema
+for _dir in ("results", "logs"):
+	path = Path("/exsclaim") / _dir
+	path.mkdir(exist_ok=True, parents=True)
+logger = get_logger()
 
 
 class NTFY(BaseModel):
@@ -143,12 +156,10 @@ async def dark_theme():
 	return get_swagger_ui_html(
 		openapi_url=app.openapi_url,
 		title=schema["info"]["title"],
-		# FIXME: The response for the CSS file fails due to net::ERR_BLOCKED_BY_ORB when going for the original CSS files through GitHub, but downloading it and putting it on another server makes it work
-		# swagger_css_url="https://raw.githubusercontent.com/jcphlux/swagger-ui-themes/main/docs/css/swagger-dark-modern-ui.css",
-		# swagger_css_url="https://raw.githubusercontent.com/Amoenus/SwaggerDark/master/SwaggerDark.css",
-		swagger_css_url="https://lenwashingtoniii.com/swagger-dark-modern-ui.css",
-		swagger_favicon_url="https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico"
+		swagger_css_url="/swagger-dark-ui.css",
+		swagger_favicon_url="/favicon.ico"
 	)
+
 
 @app.get("/redoc", include_in_schema=False)
 async def redoc():
@@ -158,6 +169,31 @@ async def redoc():
 		title=schema["info"]["title"],
 		redoc_favicon_url="https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico"
 	)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+	if hasattr(app, "favicon"):
+		return Response(app.favicon, media_type="image/x-icon", status_code=200)
+
+	favicon_link = "https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico"
+	response = get(favicon_link)
+	if not response.ok:
+		return Response(status_code=301, headers={"Location": favicon_link})
+
+	app.favicon = response.content
+	return Response(app.favicon, media_type="image/x-icon", status_code=200)
+
+
+@app.get("/swagger-dark-ui.css", include_in_schema=False)
+def get_dark_ui() -> Response:
+	"""An endpoint to get around an error retrieving the Dark UI CSS file from jcphlux on GitHub."""
+	dark_ui = "https://raw.githubusercontent.com/jcphlux/swagger-ui-themes/main/docs/css/swagger-dark-ui.css"
+	response = get(dark_ui)
+	if not response.ok:
+		return Response(status_code=301, headers={"Location": dark_ui})
+
+	return Response(response.content, media_type="text/css", status_code=200, headers={"Location": dark_ui})
 
 
 @app.get("/healthcheck",
@@ -237,6 +273,7 @@ def healthcheck(request:Request) -> Response:
 	if request.headers.get("Accept") == "application/json":
 		response = JSONResponse({"message": response.body.decode(response.charset)}, status_code=response.status_code, media_type="application/json")
 
+	flush_logger()
 	return response
 
 
@@ -290,15 +327,18 @@ def query(search_query: Query) -> Response:
 			db.commit()
 			cursor.close()
 
-		return Response(f"Thank you, your request is currently being processed, and the results can be found using id: {uuid}.",
+		response = Response(f"Thank you, your request is currently being processed, and the results can be found using id: {uuid}.",
 					status_code=200, media_type="text/plain")
 	except OperationalError as e:
 		logger.exception(e)
-		return Response("An error occurred connecting to the database. Please try again later.", status_code=500,
+		response = Response("An error occurred connecting to the database. Please try again later.", status_code=500,
 						media_type="text/plain")
 	except Exception as e:
 		logger.exception(e)
-		return Response("An unknown error occurred within the EXSCLAIM! API. Please try again later.", status_code=503, media_type="text/plain")
+		response = Response("An unknown error occurred within the EXSCLAIM! API. Please try again later.", status_code=503, media_type="text/plain")
+
+	flush_logger()
+	return response
 
 
 def ensure_uuid(uuid: str | UUID) -> UUID:
@@ -480,6 +520,7 @@ def status(result_id: str | UUID) -> JSONResponse:
 		response = JSONResponse({"status": "Unknown", "message": "An unknown error has occurred within the database. Please try again later."},
 								status_code=503, media_type="application/json")
 
+	flush_logger()
 	return response
 
 

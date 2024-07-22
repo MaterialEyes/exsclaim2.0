@@ -204,6 +204,7 @@ class Pipeline:
 
             # group unassigned objects
             self.group_objects()
+            # self.exsclaim_dict["subfigures"] = sum(map(lambda x: len(x["master_images"]), self.exsclaim_dict.values()))
 
             # Save results as specified
             save_methods = self.query_dict.get("save_format", None)
@@ -249,7 +250,10 @@ class Pipeline:
             message = f"An error occurred at {dt.now():%Y-%m-%dT%H:%M%z} running{' the' if _id is None else ''} EXSCLAIM! query{f' `{_id}`' if _id is not None else ''}."
 
         for notifier in self.notifications:
-            notifier.notify(message, name=self.query_dict["name"])
+            try:
+                notifier.notify(message, name=self.query_dict["name"])
+            except CouldNotNotifyException:
+                self.logger.exception(f"Could not send notification regarding the completion of {self.search_query['name']}.")
 
         return self.exsclaim_dict
 
@@ -481,7 +485,7 @@ class Pipeline:
         del draw
         labeled_image.save(self.results_directory / "extractions" / figure_name)
 
-    def draw_bounding_boxes(self, figure_name:str, draw_scale=True, draw_labels=False, draw_subfigures=False):
+    def draw_bounding_boxes(self, figure_name:str, draw_scale=False, draw_labels=False, draw_subfigures=True):
         """Save figures with bounding boxes drawn
 
         Args:
