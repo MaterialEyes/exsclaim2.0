@@ -77,6 +77,9 @@ def main(args=None):
 	pipeline = Pipeline(search_query)
 	results = pipeline.run(**kwargs)
 
+	for handler in pipeline.logger.handlers:
+		handler.flush()
+
 	compress = args.get("compress", "")
 	if compress:
 		from shutil import make_archive

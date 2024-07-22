@@ -61,10 +61,9 @@ class NTFY(Notifications):
 			headers["Authorization"] = f"Bearer {self._access_token}"
 
 		try:
-			post(self._ntfy_url, data,
-				 headers=headers)
+			post(self._ntfy_url, data, headers=headers)
 		except ConnectionError as e:
-			raise CouldNotNotifyException(e)
+			raise CouldNotNotifyException(str(e))
 
 	@property
 	def url(self) -> str:

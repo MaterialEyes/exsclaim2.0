@@ -167,7 +167,7 @@ class ExsclaimTool(ABC):
 				self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 				new_separated = set()
 
-		self._end_timer(f"{counter-1:,} figures")
+		self._end_timer(f"{counter:,} figures")
 		self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 		return exsclaim_dict
 
@@ -253,7 +253,7 @@ class JournalScraper(ExsclaimTool):
 			if counter % 1_000 == 0:
 				self._appendJSON(exsclaim_json)
 
-		self._end_timer(f"{counter-1:,} articles")
+		self._end_timer(f"{counter:,} articles")
 
 		self._appendJSON(exsclaim_json)
 		return exsclaim_json
@@ -762,7 +762,7 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 			if counter % 1000 == 0:
 				self._appendJSON(exsclaim_json)
 
-		self._end_timer(f"{counter-1:,} articles")
+		self._end_timer(f"{counter:,} articles")
 		self._appendJSON(exsclaim_json)
 		return exsclaim_json
 

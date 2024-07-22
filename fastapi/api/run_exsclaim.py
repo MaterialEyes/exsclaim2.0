@@ -13,7 +13,7 @@ from uuid import UUID
 def main(_id:UUID, search_query_location:str):
 	db_result = "Closed due to an error"
 	try:
-		args = ["query", search_query_location, #"--caption_distributor",
+		args = ["query", search_query_location, "--caption_distributor",
 				"--journal_scraper", "--figure_separator", "--compress", "gztar",
 				"--compress_location", f"/exsclaim/results/{_id}"]
 		if getenv("EXSCLAIM_DEBUG", "").lower() == "true":

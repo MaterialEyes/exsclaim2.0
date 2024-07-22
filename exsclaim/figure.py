@@ -185,6 +185,9 @@ class FigureSeparator(ExsclaimTool):
         img = Variable(img.type(self.dtype))
 
         with Image.open(figure_path).convert("RGB") as img_raw:
+            icc_profile = img_raw.info.get("icc_profile", None)
+            if icc_profile is not None:
+                self.logger.info(f"The icc profile of: {figure_path} seems to be incorrect.")
             width, height = img_raw.size
 
         # Run model on figure
