@@ -84,7 +84,7 @@ class Pipeline:
 
         # Set up file structure
         base_results_dir = paths.initialize_results_dir(self.query_dict.get("results_dir", None))
-        
+
         self.results_directory = base_results_dir / self.query_dict["name"]
         self.results_directory.mkdir(exist_ok=True)
 

@@ -30,7 +30,7 @@ def initialize_results_dir(results_dir:str=None) -> Path:
         # current_file = Path(__file__).resolve(strict=True)
         # base_dir = current_file.parent.parent.parent
         base_dir = Path.home()
-        results_dir = base_dir / "exsclaim_output"
+        results_dir = base_dir / ".exsclaim"
 
     results_dir.mkdir(parents=True, exist_ok=True)
     return results_dir

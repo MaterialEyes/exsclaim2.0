@@ -242,7 +242,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
         return (False, "unknown")
 
     # @abstractmethod
-    def is_link_to_open_article(self, tag: Locator) -> bool:
+    def is_link_to_open_article(self, tag: Page | Locator) -> bool:
         """Checks if link is to an open access article
         Args:
             tag (bs4.tag): A tag containing an href attribute that
@@ -424,6 +424,12 @@ class JournalFamily(ABC, ExsclaimBrowser):
         def get_articles_search_url_from_playwright(page:Page, **kwargs):
             search_url = kwargs["search_url"]
             page.goto(search_url)
+
+            browser = kwargs.get("browser")
+            page2 = browser.new_page()
+            self.set_extra_page_headers(page2)
+            page2.goto(search_url)
+
             wait_time = randint(0, 50)
             sleep(wait_time / 10.0)
 
@@ -437,27 +443,19 @@ class JournalFamily(ABC, ExsclaimBrowser):
                     return article_paths
                 raise e
 
-            # raise NameError("journal family {0} is not defined")
-            for page_number in range(start_page, stop_page + 1): # TODO: Convert all of the soups to Playwright locators
-
-                # print(soup.find_all("a", href=True))
+            for page_number in range(start_page, stop_page + 1):
                 for article in page.locator("article.u-full-height.c-card.c-card--flush").all():
                     tag = article.locator("a[href]")
                     url = tag.get_attribute("href").split('?page=search')[0]
+                    # TODO: Find a way to get the actual domain from the article Locator
+                    page2.goto(self.domain + url)
 
-                    # self.logger.debug("Candidate Article: {}".format(url))
-                    # if (
-                    #    self.articles_path not in url
-                    #    or url.count("/") != self.articles_path_length
-                    # ):
-                    #    # The url does not point to an article
-                    #    continue
                     if url.split("/")[-1] in self.articles_visited or (
-                            self.open and not self.is_link_to_open_article(tag)
+                            self.open and not self.is_link_to_open_article(page2)
                     ):
                         # It is an article but we are not interested
                         continue
-                    # self.logger.debug("Candidate Article: PASS")
+
                     article_paths.add(url)
                     if len(article_paths) >= max_scraped:
                         return article_paths
@@ -466,6 +464,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
                 search_url = self.turn_page(search_url, page_number + 1)
                 # print('new search url', search_url)
             # print(article_paths)
+            page2.close()
             return article_paths
 
         return self.temporary_browser(get_articles_search_url_from_playwright, search_url=search_url)
@@ -1000,15 +999,27 @@ class Nature(JournalFamily):
             _license = "unknown"
         return is_open, _license
 
-    def is_link_to_open_article(self, locator:Locator) -> bool:
-        locator.click(force=True)
+    def is_link_to_open_article(self, locator:Page | Locator) -> bool:
+        if isinstance(locator, Locator):
+            url = locator.page.url
+        elif isinstance(locator, Page):
+            url = locator.url
+        else:
+            raise TypeError(f"Nature.is_link_to_open_article only takes Playwright pages and locators, not {type(locator).__name__}.")
 
-        url = locator.page.url
-        if not url.startswith(self.domain):
-            print(f"The link led to a website outside of {self.domain}, so there is no way to know if it is open access or not: {url}.")
+        if not url.startswith(self.domain) and not url.startswith("/"):
+            self.logger.error(f"The link \"{url}\" led to a website outside of {self.domain}, so there is no way to know if it is open access or not: {url}.")
             return False
 
-        return self.get_license(locator.page)[0]
+        if isinstance(locator, Locator):
+            return self.get_license(locator.page)[0]
+        return self.get_license(locator)[0]
+
+    def get_license_from_url(self, url:str):
+        def get_license(page:Page, url:str, **kwargs):
+            page.goto(url)
+            return self.get_license(page)
+        return self.temporary_browser(get_license, url=url)
 
 
 class RSC(JournalFamilyDynamic):

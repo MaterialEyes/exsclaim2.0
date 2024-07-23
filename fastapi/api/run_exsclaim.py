@@ -1,7 +1,6 @@
 import logging
 
-from main import get_database_connection_string
-
+from exsclaim import get_database_connection_string
 from exsclaim.__main__ import main as exsclaim_main
 from os import getenv
 from pathlib import Path

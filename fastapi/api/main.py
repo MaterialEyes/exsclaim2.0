@@ -131,32 +131,13 @@ class Query(BaseModel):
 	"""A list of NTFY links that will receive a notification when EXSCLAIM has finished running."""
 
 
-@app.get("/",
-		 responses={
-			 200: {
-				 "description": "Default Homepage.",
-				 "content": {
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": "The results are still being compiled.",
-					 }
-				 }
-			 }
-		 }
-	)
-def read_root() -> str:
-	return f"Welcome to the EXSCLAIM! API v{exsclaim.__version__}."
-
-
-@app.get("/docs", include_in_schema=False)
-async def dark_theme():
+@app.get("/", include_in_schema=False)
+async def dark_theme(light_mode:bool=False):
 	schema = app.openapi()
 	return get_swagger_ui_html(
 		openapi_url=app.openapi_url,
 		title=schema["info"]["title"],
-		swagger_css_url="/swagger-dark-ui.css",
+		swagger_css_url="/swagger-dark-ui.css" if not light_mode else "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css",
 		swagger_favicon_url="/favicon.ico"
 	)
 
@@ -300,7 +281,7 @@ def query(search_query: Query) -> Response:
 			results_dir.mkdir(exist_ok=True, parents=True)
 
 			exsclaim_input = {
-				"name": search_query.name,
+				"name": search_query.name if search_query else "exsclaim_results",
 				"journal_family": search_query.journal_family.lower(),
 				"maximum_scraped": search_query.maximum_scraped,
 				"sortby": search_query.sortby,
