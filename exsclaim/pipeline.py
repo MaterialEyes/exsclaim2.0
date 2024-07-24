@@ -19,7 +19,12 @@ from re import sub
 from textwrap import wrap
 from typing import Callable
 
-__all__ = ["Pipeline", "SaveMethods"]
+
+__all__ = ["Pipeline", "SaveMethods", "PipelineInterruptionException"]
+
+
+class PipelineInterruptionException(BaseException):
+    ...
 
 
 class SaveMethods(Flag):
@@ -154,6 +159,17 @@ class Pipeline:
             exsclaim_dict (dict): an exsclaim json
         Modifies:
             self.exsclaim_dict
+        Raises:
+            PipelineInterruptionException: Raises if another exception stops the pipeline from properly completing
+        Examples:
+            >>> from exsclaim import Pipeline, PipelineInterruptionException
+            >>> pipeline = Pipeline({})
+            >>> try:
+            >>>     results = pipeline.run(journal_scraper=True, figure_separator=True, caption_distributor=True)
+            >>>     print(f"{results=}.")
+            >>> except PipelineInterruptionException as e:
+            >>>     print(f"The EXSCLAIM! pipeline could not finish due to the following issue: {e}.")
+            >>>     print(f"The only results are: {results}.")
         """
         exsclaim_art = """
         @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -248,14 +264,15 @@ class Pipeline:
         except Exception as e:
             self.logger.exception(e)
             message = f"An error occurred at {dt.now():%Y-%m-%dT%H:%M%z} running{' the' if _id is None else ''} EXSCLAIM! query{f' `{_id}`' if _id is not None else ''}."
+            raise PipelineInterruptionException(str(e))
+        finally:
+            for notifier in self.notifications:
+                try:
+                    notifier.notify(message, name=self.query_dict["name"])
+                except CouldNotNotifyException:
+                    self.logger.exception(f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".")
 
-        for notifier in self.notifications:
-            try:
-                notifier.notify(message, name=self.query_dict["name"])
-            except CouldNotNotifyException:
-                self.logger.exception(f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".")
-
-        return self.exsclaim_dict
+            return self.exsclaim_dict
 
     @staticmethod
     def assign_captions(figure:dict) -> tuple[list[dict], dict]:

@@ -87,6 +87,7 @@ for _dir in ("results", "logs"):
 	path = Path("/exsclaim") / _dir
 	path.mkdir(exist_ok=True, parents=True)
 logger = get_logger()
+_EXAMPLE_UUID = UUID("875be91d-97d9-445b-b281-db9b4997abbb")
 
 
 class NTFY(BaseModel):
@@ -140,6 +141,11 @@ async def dark_theme(light_mode:bool=False):
 		swagger_css_url="/swagger-dark-ui.css" if not light_mode else "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css",
 		swagger_favicon_url="/favicon.ico"
 	)
+
+
+@app.get("/docs", include_in_schema=False)
+def docs_redirect() -> Response:
+	return Response(status_code=301, headers={"Location": "/"})
 
 
 @app.get("/redoc", include_in_schema=False)
@@ -269,8 +275,87 @@ def healthcheck(request:Request) -> Response:
 	return response
 
 
-@app.post("/query")
-def query(search_query: Query) -> Response:
+@app.post("/query", responses={
+	200: {
+		"description": "Query successfully submitted.",
+		"content": {
+			"application/json": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"message": {
+							"type": "string",
+						},
+						"result_id": {
+							"type": "string",
+							"format": "uuid"
+						},
+					}
+				},
+				"example": {
+					"message": "Thank you, your request is currently being processed.",
+					"result_id": str(_EXAMPLE_UUID)
+				}
+			},
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": f"Thank you, your request is currently being processed, and the results can be found using id: {_EXAMPLE_UUID}."
+			}
+		}
+	},
+	500: {
+		"description": "An internal database error stopped the query from being submitted.",
+		"content": {
+			"application/json": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"message": {
+							"type": "string",
+						},
+					}
+				},
+				"example": {
+					"message": "An error occurred connecting to the database. Please try again later.",
+				}
+			},
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": "An error occurred connecting to the database. Please try again later."
+			}
+		}
+	},
+	503: {
+		"description": "An internal error stopped the query from being submitted.",
+		"content": {
+			"application/json": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"message": {
+							"type": "string",
+						},
+					}
+				},
+				"example": {
+					"message": "An unknown error occurred within the EXSCLAIM! API. Please try again later.",
+				}
+			},
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": "An unknown error occurred within the EXSCLAIM! API. Please try again later."
+			}
+		}
+	}
+})
+def query(request:Request, search_query: Query) -> Response:
+	send_json = request.headers.get("accept", "") == "application/json"
 	try:
 		with connect(get_database_connection_string()) as db:
 			cursor = db.cursor()
@@ -319,15 +404,27 @@ def query(search_query: Query) -> Response:
 			db.commit()
 			cursor.close()
 
-		response = Response(f"Thank you, your request is currently being processed, and the results can be found using id: {uuid}.",
-					status_code=200, media_type="text/plain")
+		if send_json:
+			response = JSONResponse({"message": "Thank you, your request is currently being processed.", "result_id": str(uuid)},
+									status_code=200, media_type="application/json")
+		else:
+			response = Response(f"Thank you, your request is currently being processed, and the results can be found using id: {uuid}.",
+						status_code=200, media_type="text/plain")
 	except OperationalError as e:
 		logger.exception(e)
-		response = Response("An error occurred connecting to the database. Please try again later.", status_code=500,
-						media_type="text/plain")
+		message = "An error occurred connecting to the database. Please try again later."
+		if send_json:
+			response = JSONResponse({"message": message}, status_code=500, media_type="application/json")
+		else:
+			response = Response(message, status_code=500,
+								media_type="text/plain")
 	except Exception as e:
 		logger.exception(e)
-		response = Response("An unknown error occurred within the EXSCLAIM! API. Please try again later.", status_code=503, media_type="text/plain")
+		message = "An unknown error occurred within the EXSCLAIM! API. Please try again later."
+		if send_json:
+			response = JSONResponse({"message": message}, status_code=503, media_type="application/json")
+		else:
+			response = Response(message, status_code=503, media_type="text/plain")
 
 	flush_logger()
 	return response
@@ -393,7 +490,7 @@ def ensure_uuid(uuid: str | UUID) -> UUID:
 						 },
 						 "example": {
 							 "status": "Finished",
-							 "message": "There is no query recorded in our database with id: \"875be91d-97d9-445b-b281-db9b4997abbb\".",
+							 "message": f"There is no query recorded in our database with id: \"{_EXAMPLE_UUID}\".",
 						 }
 					 }
 				 }
@@ -415,7 +512,7 @@ def ensure_uuid(uuid: str | UUID) -> UUID:
 						 },
 						 "example": {
 							 "status": None,
-							 "message": "\"875be91d-97d9-445b-b281-db9b4997abbb\" is not a valid UUID.",
+							 "message": f"\"{_EXAMPLE_UUID}\"is not a valid UUID.",
 						 }
 					 }
 				 }
@@ -547,7 +644,7 @@ def status(result_id: str | UUID) -> JSONResponse:
 						 "schema": {
 							 "type": "string"
 						 },
-						 "example": "There is no query recorded in our database with id: \"875be91d-97d9-445b-b281-db9b4997abbb\"."
+						 "example": f"There is no query recorded in our database with id: \"{_EXAMPLE_UUID}\"."
 					 }
 				 }
 			 },
@@ -580,13 +677,13 @@ def status(result_id: str | UUID) -> JSONResponse:
 						 "schema": {
 							 "type": "string",
 						 },
-						 "example": "The database has an unknown status for id \"875be91d-97d9-445b-b281-db9b4997abbb\" and cannot send the results at this time."
+						 "example": f"The database has an unknown status for id \"{_EXAMPLE_UUID}\" and cannot send the results at this time."
 					 }
 				 }
 			 },
 		 })
-def download(request:Request, result_id:UUID, compression:str="default", filename:Literal["name", "id"]="name") -> Response:
-	# Literal types for compression as defined by shutil.make_archive: Literal["zip", "tar", "gztar", "bztar", "xztar"]
+def download(request:Request, result_id:UUID, compression:str="default", filename:Literal["name", "id"]="id") -> Response:
+	# Set the filename to be id by default
 	try:
 		result_id = ensure_uuid(result_id)
 	except ValueError as e:
@@ -598,8 +695,8 @@ def download(request:Request, result_id:UUID, compression:str="default", filenam
 
 	else: # compression == "default"
 		if request.headers.get("sec-ch-ua-platform", ""):
-			match request.headers.get("sec-ch-ua-platform", ""):
-				case "\"Linux\"":
+			match request.headers.get("sec-ch-ua-platform", "").replace('"', ""):
+				case "Linux":
 					compression = "gztar"
 				case "Android" | "Chrome OS" | "Chromium OS" | "iOS" | "macOS" | "Windows" | "Unknown" | _:
 					compression = "zip"

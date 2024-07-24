@@ -1,4 +1,5 @@
-from . import Pipeline
+from . import Pipeline, PipelineInterruptionException
+
 try:
 	from . import __version__
 except ImportError:
@@ -74,21 +75,28 @@ def main(args=None):
 			search_query["logging"].append("print")
 
 	kwargs = {key: args.get(key, False) for key in {"caption_distributor", "journal_scraper", "figure_separator", "html_scraper"}}
+
 	pipeline = Pipeline(search_query)
-	results = pipeline.run(**kwargs)
+	try:
+		results = pipeline.run(**kwargs)
 
-	for handler in pipeline.logger.handlers:
-		handler.flush()
+		for handler in pipeline.logger.handlers:
+			handler.flush()
 
-	compress = args.get("compress", "")
-	if compress:
-		from shutil import make_archive
-		name = search_query["name"]
-		save_location, _ = splitext(args.get("compress_location", str(pipeline.results_directory)))
-		make_archive(save_location, compress, root_dir=str(pipeline.results_directory.parent), base_dir=name)
+		compress = args.get("compress", "")
+		if compress:
+			from shutil import make_archive
+			name = search_query["name"]
+			save_location, _ = splitext(args.get("compress_location", str(pipeline.results_directory)))
+			make_archive(save_location, compress, root_dir=str(pipeline.results_directory.parent), base_dir=name)
+	except PipelineInterruptionException as e:
+		pipeline.logger.exception("The pipeline could not successfully finish running.")
+		if hasattr(e, "errno"):
+			return e.errno
+		return -1
 
-	return results
+	return 0
 
 
 if __name__ == "__main__":
-	main()
+	exit(main())
