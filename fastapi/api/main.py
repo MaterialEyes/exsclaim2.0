@@ -87,7 +87,7 @@ for _dir in ("results", "logs"):
 	path = Path("/exsclaim") / _dir
 	path.mkdir(exist_ok=True, parents=True)
 logger = get_logger()
-_EXAMPLE_UUID = UUID("875be91d-97d9-445b-b281-db9b4997abbb")
+_EXAMPLE_UUID = UUID("fd70dd4b-1043-4650-aa11-9f55dc2e2c2b")
 
 
 class NTFY(BaseModel):
@@ -754,7 +754,7 @@ def download(request:Request, result_id:UUID, compression:str="default", filenam
 		elif filename == "id":
 			filename = results_file.name
 
-		return Response(content=buffer.getvalue(), media_type="application/octet-stream", headers={"Content-Disposition": f"attachment; filename*=utf8''{filename}"})
+		return Response(content=buffer.getvalue(), media_type="application/octet-stream", headers={"Content-Disposition": f"inline ; filename = \"{filename}\""})
 	except ValueError as e:
 		return Response(str(e), status_code=422, media_type="text/plain")
 
