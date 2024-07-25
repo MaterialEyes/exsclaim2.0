@@ -17,12 +17,11 @@ RUN chown -R $UNAME:$UNAME /exsclaim
 
 USER $UNAME
 
-ENTRYPOINT ["fastapi"]
-CMD ["dev", "api/main.py", "--host", "0.0.0.0", "--port", "80", "--reload"]
+ENTRYPOINT fastapi dev api/main.py --port $PORT
 HEALTHCHECK --interval=30s --timeout=15s --start-period=20s --retries=4 CMD curl -f http://localhost/healthcheck || exit 1
 
 EXPOSE $PORT
 
 FROM dev AS prod
-CMD ["run", "api/main.py", "--host", "0.0.0.0", "--port", "80"]
+ENTRYPOINT fastapi run api/main.py --port $PORT
 ENV EXSCLAIM_DEBUG=false
