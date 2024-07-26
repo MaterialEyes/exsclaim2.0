@@ -1,8 +1,6 @@
 FROM exsclaim/base AS base
 
-USER root
-RUN playwright install-deps && playwright install chromium
-USER $UNAME
+ENV PORT=8000
 
 # Allows docker to cache installed dependencies between builds
 WORKDIR /code
@@ -20,13 +18,10 @@ COPY ./apps ./apps
 COPY ./config ./config
 COPY ./docs ./docs
 
-EXPOSE 8000
-HEALTHCHECK --interval=15s --timeout=15s --start-period=20s --retries=4 CMD curl -f http://localhost:8000 || exit 1
-#ENTRYPOINT ["./manage.py", "migrate", "&&", "./manage.py", "runserver", "0.0.0.0:8000"]
+EXPOSE $PORT
+HEALTHCHECK --interval=15s --timeout=15s --start-period=20s --retries=4 CMD curl -f http://localhost:$PORT || exit 1
+ENTRYPOINT ./manage.py migrate && ./manage.py runserver 0.0.0.0:$PORT
 
-#COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-#COPY --from=base /usr/local/bin/playwright /usr/local/bin/playwright
-#COPY --from=base /usr/local/bin/exsclaim /usr/local/bin/exsclaim
 
 FROM base AS dev
 RUN pip install -r requirements/dev.txt

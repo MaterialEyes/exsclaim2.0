@@ -1,0 +1,6 @@
+dash==2.9.1
+pandas==2.2.2
+dash_bootstrap_components==1.6.0
+sd_material_ui==4.6.0
+dash-material-components==2.0.3
+cookiecutter==2.6.0

@@ -1,7 +1,7 @@
 from .models import *
 from .serializers import *
 from json import dumps
-from exsclaim.pipeline import Pipeline
+from exsclaim import Pipeline, get_database_connection_string
 from os import getenv, system
 from pathlib import Path
 from psycopg import connect
@@ -11,18 +11,6 @@ from tarfile import open as tar_open
 
 __all__ = ["ArticleViewSet", "FigureViewSet", "SubfigureViewSet", "ScaleBarViewSet", "ScaleBarLabelViewSet",
            "SubfigureLabelViewSet", "QueryViewSet"]
-
-
-def get_database_connection_string() -> str:
-    from psycopg import connect, OperationalError
-    username = getenv("POSTGRES_USER", "exsclaim")
-    password = getenv("POSTGRES_PASSWORD", "exsclaimtest!9700")
-    port = getenv("POSTGRES_PORT", "5432")
-    database_name = getenv("POSTGRES_DB", "exsclaim")
-
-    # db is one of the aliases given through Docker Compose
-    url = f'postgres://{username}:{password}@db:{port}/{database_name}'
-    return url
 
 
 class ArticleViewSet(viewsets.ModelViewSet):

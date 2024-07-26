@@ -39,7 +39,6 @@ def get_database_connection_string(configuration_file:PathLike[str]=None, sectio
     return url
 
 
-
 def initialize_database(db_connection_string:str) -> None:
     with connect(db_connection_string, autocommit=True) as conn:
         cursor = conn.cursor()

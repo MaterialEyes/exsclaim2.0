@@ -1,5 +1,6 @@
 // some functions to get data from the API
 const baseUrl = "http://localhost:8000/api/v1";
+// const baseUrl = process.env.FAST_API_URL;
 
 export const fetchArticles = async () => {
     const res = await fetch(`${baseUrl}/articles/`)
@@ -24,3 +25,5 @@ export const fetchSubFigures = async (num) => {
     const data = await res.json()
     return data
 }
+
+export default {fetchArticles, fetchArticle, fetchFigures, fetchSubFigures};

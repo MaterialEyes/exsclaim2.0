@@ -73,23 +73,21 @@ services:
         env_file: .env
         environment:
             - DJANGO_SECRET_KEY=local
-            - OPENAI_API_KEY=${OPENAI_API_KEY}
+            - POSTGRES_HOST=db
+            - PORT=${DJANGO_PORT}
         image: exsclaim/ui/django-api
         build:
             context: ./api
             args:
                 ENV: dev
             target: base
-        command: >
-            bash -c "./manage.py migrate &&
-                 ./manage.py runserver 0.0.0.0:8000"
         volumes:
             - ./api/apps:/code/apps
             - ./api/config:/code/config
             - ./api/docs:/code/docs
             - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
         ports:
-            - "8000:8000"
+            - "$DJANGO_PORT:$DJANGO_PORT"
         networks:
             - frontend
             - backend
@@ -119,7 +117,7 @@ services:
             - ./logs:/exsclaim/logs
             - ./output:/exsclaim/results
         ports:
-            - "81:80"
+            - "80:${FASTAPI_PORT}"
         networks:
             frontend:
                 aliases:
@@ -134,6 +132,8 @@ services:
     dashboard:
         build:
             context: ./dashboard
+#            target: node-base
+            target: py-prod
             args:
                 - UID=${UID}
                 - GID=${GID}
@@ -141,19 +141,26 @@ services:
         env_file: .env
         image: exsclaim/ui/dashboard
         environment:
+            - PORT=3000
             - POSTGRES_PORT=${POSTGRES_PORT}
-            # TODO: Add an ENV variable that tells the dashboard what the API url is
             - FAST_API_URL=http://api:${FASTAPI_PORT}
         ports:
             - "3000:3000"
         networks:
             - frontend
             - backend
-        volumes:
-            - "./dashboard:/app"
-        depends_on:
-            fastapi:
-                condition: service_healthy
+##        volumes:
+##            - "./dashboard:/usr/src/app"
+#        depends_on:
+#            fastapi:
+#                condition: service_healthy
+#            api:
+#                condition: service_healthy
+
+
+    pycharm:
+        build:
+            dockerfile: Dockerfile.pycharm
 
 networks:
     frontend:
@@ -177,3 +184,4 @@ volumes:
         driver_opts:
             type: bind
             device: /usr/src/app/query
+

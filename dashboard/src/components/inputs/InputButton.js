@@ -17,16 +17,19 @@ const InputButton = (props) => {
       "sortby" : props.sort,
       "term" : props.term,
       "synonyms" : props.synonyms,
-      "save_format" : "postgres",
+      "save_format" : ["postgres"],
       "access" : props.access,
       "llm" : props.model,
       "model_key" : props.modelKey
     };
 
     // POST user input to API
-    fetch(process.env.FAST_API_URL, {
+    fetch(`${process.env.FAST_API_URL}/query`, {
       method: 'POST', 
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        "Accept": "application/json"
+      },
       body: JSON.stringify(inputData)
     });
 

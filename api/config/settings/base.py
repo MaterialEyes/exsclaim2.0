@@ -1,21 +1,12 @@
+from exsclaim import get_database_connection_string
 from os import getenv
 from os.path import join, dirname, abspath, normpath
 from distutils.util import strtobool
 import dj_database_url
 from configurations import Configuration
+
+
 BASE_DIR = dirname(dirname(abspath(__file__)))
-
-
-def get_database_connection_string() -> str:
-    from psycopg import connect, OperationalError
-    username = getenv("POSTGRES_USER", "exsclaim")
-    password = getenv("POSTGRES_PASSWORD", "exsclaimtest!9700")
-    port = getenv("POSTGRES_PORT", "5432")
-    database_name = getenv("POSTGRES_DB", "exsclaim")
-
-    # db is one of the aliases given through Docker Compose
-    url = f'postgres://{username}:{password}@db:{port}/{database_name}'
-    return url
 
 
 class BaseConfig(Configuration):

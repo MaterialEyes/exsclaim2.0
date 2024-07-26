@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Stack, Typography, TextField } from '@mui/material';
+import PropTypes from "prop-types";
 
 // Gets the number of articles EXSCLAIM will parse through
 
@@ -9,8 +10,8 @@ const NumArticles = (props) => {
   const numArticlesChange = (event) => {
     var value = parseInt(event.target.value, 10);
 
-    if (value < 1) {value = 1}; // set user's query of a minimum of 1
-    if (!value) {value = 0}; // if user leaves value text box blank, set value to 0 (in the API, if value is 0, then assume user wants all articles)
+    if (value < 1) {value = 1;} // set user's query of a minimum of 1
+    if (!value) {value = 0;} // if user leaves value text box blank, set value to 0 (in the API, if value is 0, then assume user wants all articles)
 
     props.setNumArticles(value);
   }
@@ -34,5 +35,9 @@ const NumArticles = (props) => {
     </Box>
   )
 }
-      
+
+NumArticles.propTypes = {
+  props: PropTypes.number
+}
+
 export default NumArticles;
