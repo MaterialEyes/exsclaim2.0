@@ -6,12 +6,14 @@ from collections import defaultdict
 
 import numpy as np
 import pycocotools.mask as mask_util
-import torch
-import torch._six
+from torch import stack
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
-from . import utils
+from .utils import all_gather
+
+
+__all__ = ["CocoEvaluator", "convert_to_xywh", "merge", "create_common_coco_eval", "createIndex", "loadRes", "evaluate"]
 
 
 class CocoEvaluator(object):
@@ -135,11 +137,9 @@ class CocoEvaluator(object):
             if len(prediction) == 0:
                 continue
 
-            scores = prediction["scores"]
-            labels = prediction["labels"]
-            masks = prediction["masks"]
-
-            masks = masks > 0.5
+            # scores = prediction["scores"]
+            # labels = prediction["labels"]
+            masks = prediction["masks"] > 0.5
 
             scores = prediction["scores"].tolist()
             labels = prediction["labels"].tolist()
@@ -166,41 +166,34 @@ class CocoEvaluator(object):
             )
         return coco_results
 
-    def prepare_for_coco_keypoint(self, predictions):
-        coco_results = []
-        for original_id, prediction in predictions.items():
+    def prepare_for_coco_keypoint(self, predictions:dict):
+        coco_results = [None for _ in len(predictions.keys())]
+        for idx, (original_id, prediction) in enumerate(predictions.items()):
             if len(prediction) == 0:
                 continue
 
-            boxes = prediction["boxes"]
-            boxes = convert_to_xywh(boxes).tolist()
+            # boxes = convert_to_xywh(prediction["boxes"]).tolist()
             scores = prediction["scores"].tolist()
             labels = prediction["labels"].tolist()
             keypoints = prediction["keypoints"]
             keypoints = keypoints.flatten(start_dim=1).tolist()
 
-            coco_results.extend(
-                [
-                    {
-                        "image_id": original_id,
-                        "category_id": labels[k],
-                        "keypoints": keypoint,
-                        "score": scores[k],
-                    }
-                    for k, keypoint in enumerate(keypoints)
-                ]
-            )
+            coco_results[idx] = [
+                {"image_id": original_id, "category_id": labels[k], "keypoints": keypoint, "score": scores[k]}
+                for k, keypoint in enumerate(keypoints)
+            ]
+
         return coco_results
 
 
 def convert_to_xywh(boxes):
     xmin, ymin, xmax, ymax = boxes.unbind(1)
-    return torch.stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
+    return stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
 
 
 def merge(img_ids, eval_imgs):
-    all_img_ids = utils.all_gather(img_ids)
-    all_eval_imgs = utils.all_gather(eval_imgs)
+    all_img_ids = all_gather(img_ids)
+    all_eval_imgs = all_gather(eval_imgs)
 
     merged_img_ids = []
     for p in all_img_ids:
@@ -274,24 +267,25 @@ def createIndex(self):
 maskUtils = mask_util
 
 
-def loadRes(self, resFile):
+def loadRes(self, resFile:str):
     """
     Load result file and return a result api object.
-    :param   resFile (str)     : file name of result file
-    :return: res (obj)         : result api object
+    :param   self       :
+    :param   resFile    : file name of result file
+    :return: res (obj)  : result api object
     """
     res = COCO()
     res.dataset["images"] = [img for img in self.dataset["images"]]
 
     # print('Loading and preparing results...')
     # tic = time.time()
-    if isinstance(resFile, torch._six.string_classes):
+    if isinstance(resFile, str): # FIXME torch._six.string_classes was removed, figure out what its proper successor is
         anns = json.load(open(resFile))
-    elif type(resFile) == np.ndarray:
+    elif isinstance(resFile, np.ndarray):
         anns = self.loadNumpyAnnotations(resFile)
     else:
         anns = resFile
-    assert type(anns) == list, "results in not an array of objects"
+    assert isinstance(anns, list), "results in not an array of objects"
     annsImgIds = [ann["image_id"] for ann in anns]
     assert set(annsImgIds) == (
         set(annsImgIds) & set(self.getImgIds())
@@ -303,36 +297,36 @@ def loadRes(self, resFile):
         res.dataset["images"] = [
             img for img in res.dataset["images"] if img["id"] in imgIds
         ]
-        for id, ann in enumerate(anns):
-            ann["id"] = id + 1
+        for _id, ann in enumerate(anns):
+            ann["id"] = _id + 1
     elif "bbox" in anns[0] and not anns[0]["bbox"] == []:
         res.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
-        for id, ann in enumerate(anns):
+        for _id, ann in enumerate(anns):
             bb = ann["bbox"]
             x1, x2, y1, y2 = [bb[0], bb[0] + bb[2], bb[1], bb[1] + bb[3]]
             if "segmentation" not in ann:
                 ann["segmentation"] = [[x1, y1, x1, y2, x2, y2, x2, y1]]
             ann["area"] = bb[2] * bb[3]
-            ann["id"] = id + 1
+            ann["id"] = _id + 1
             ann["iscrowd"] = 0
     elif "segmentation" in anns[0]:
         res.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
-        for id, ann in enumerate(anns):
-            # now only support compressed RLE format as segmentation results
+        for _id, ann in enumerate(anns):
+            # now only support compressed RLE formats as segmentation results
             ann["area"] = maskUtils.area(ann["segmentation"])
             if "bbox" not in ann:
                 ann["bbox"] = maskUtils.toBbox(ann["segmentation"])
-            ann["id"] = id + 1
+            ann["id"] = _id + 1
             ann["iscrowd"] = 0
     elif "keypoints" in anns[0]:
         res.dataset["categories"] = copy.deepcopy(self.dataset["categories"])
-        for id, ann in enumerate(anns):
+        for _id, ann in enumerate(anns):
             s = ann["keypoints"]
             x = s[0::3]
             y = s[1::3]
             x1, x2, y1, y2 = np.min(x), np.max(x), np.min(y), np.max(y)
             ann["area"] = (x2 - x1) * (y2 - y1)
-            ann["id"] = id + 1
+            ann["id"] = _id + 1
             ann["bbox"] = [x1, y1, x2 - x1, y2 - y1]
     # print('DONE (t={:0.2f}s)'.format(time.time()- tic))
 
@@ -350,10 +344,8 @@ def evaluate(self):
     # add backward compatibility if useSegm is specified in params
     if p.useSegm is not None:
         p.iouType = "segm" if p.useSegm == 1 else "bbox"
-        print(
-            "useSegm (deprecated) is not None. Running {} evaluation".format(p.iouType)
-        )
-    # print('Evaluate annotation type *{}*'.format(p.iouType))
+        print(f"useSegm (deprecated) is not None. Running {p.iouType} evaluation")
+    # print(f"Evaluate annotation type *{p.iouType}*")
     p.imgIds = list(np.unique(p.imgIds))
     if p.useCats:
         p.catIds = list(np.unique(p.catIds))

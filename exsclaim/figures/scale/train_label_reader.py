@@ -10,6 +10,7 @@ from torchvision import transforms
 from ..models.crnn import CRNN
 from .ctc import ctcBeamSearch
 from .dataset import ScaleLabelDataset
+from .engine import get_epoch
 
 
 def convert_to_rgb(image):
@@ -188,15 +189,7 @@ def train_crnn(
     optimizer = optimizers[optimizer]
     best_checkpoint = get_model(checkpoint_directory, model_name)
     if best_checkpoint is not None:
-        cuda = torch.cuda.is_available()
-        if cuda:
-            checkpoint = torch.load(best_checkpoint)
-            model = model.cuda()
-        else:
-            checkpoint = torch.load(best_checkpoint, map_location="cpu")
-        model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        current_epoch = checkpoint["epoch"]
+        current_epoch = get_epoch(model, best_checkpoint)
         best_loss = checkpoint["best_loss"]
     else:
         current_epoch = 0
@@ -318,7 +311,7 @@ def path_to_word(path, idx_to_class):
     for i in range(len(word)):
         if not is_number(word[: i + 1]):
             break
-    return str(float(word[:i])) + " " + word[i:].lower()
+    return f"{word[:i]:.f} {word[i:].lower()}"
 
 
 def postprocess_ctc(results):
@@ -399,7 +392,7 @@ def score_candidate(path, is_final=False):
     return score
 
 
-def valid_next_char(path, sequence_length):
+def valid_next_char(path, sequence_length=8):
     path_length = len(path)
     spots_left = sequence_length - path_length + 1
     if path_length == 1:
@@ -410,7 +403,7 @@ def valid_next_char(path, sequence_length):
     digits = 0
     decimals = 0
 
-    for label, logp in path:
+    for label, _ in path:
         if label in [1, 2, 3, 4, 5, 6, 7, 8, 9]:
             nonzero_digits += 1
             digits += 1
@@ -464,54 +457,10 @@ def valid_next_char(path, sequence_length):
             return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 19, 18, 21]
     # last spot is blank, can be followed by anything
     if decimals == 1:
-        return [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            15,
-            16,
-            17,
-            18,
-            20,
-            21,
-        ]
+        # 0 through 21 inclusive without 19
+        return list(filter(lambda x: x != 19, range(22)))
     else:
-        return [
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            15,
-            16,
-            17,
-            18,
-            19,
-            20,
-            21,
-        ]
+        return list(range(22))
 
 
 def create_rules():
@@ -529,29 +478,6 @@ def create_rules():
     for i in range(10, 18):
         legal_next_chars[i] = [10, 11, 18, 21]
     # a blanks can be followed by all
-    legal_next_chars[21] = [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        17,
-        18,
-        19,
-        20,
-        21,
-    ]
+    legal_next_chars[21] = list(range(22))
     legal_next_chars[22] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 18, 21]
     return legal_next_chars

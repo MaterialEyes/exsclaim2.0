@@ -1,14 +1,15 @@
 """Code for loading models from checkpoints saved in GoogleDrive
 
 Model names are mapped to googleids in model_names_to_google_ids."""
-import os
-import pathlib
+from .download import download_file_from_google_drive
+from torch import load
+from pathlib import Path
 
-import torch
 
-from exsclaim.utilities import download
+__all__ = ["load_model_from_checkpoint", "model_names_to_googleids"]
 
-# stores the google drive file IDs of default neural network checkpoints
+
+# stores the Google Drive file IDs of default neural network checkpoints
 # replace these if you wish to change a model
 model_names_to_googleids = {
     "classifier_model.pt": "16BxXXGJyHfMtzhDEufIwMkcDoBftZosh",
@@ -21,17 +22,20 @@ model_names_to_googleids = {
 
 def load_model_from_checkpoint(model, model_name, cuda, device):
     """load checkpoint weights into model"""
-    checkpoints_path = pathlib.Path(__file__).parent.parent / "figures" / "checkpoints"
+    checkpoints_path = Path(__file__).parent.parent / "figures" / "checkpoints"
     checkpoint = checkpoints_path / model_name
     model.to(device)
+
     # download the model if isn't already
-    if not os.path.isfile(checkpoint):
-        os.makedirs(checkpoints_path, exist_ok=True)
+    if not checkpoint.is_file():
+        checkpoints_path.mkdir(exist_ok=True)
         file_id = model_names_to_googleids[model_name]
-        download.download_file_from_google_drive(file_id, checkpoint)
+        download_file_from_google_drive(file_id, checkpoint)
+
     if cuda:
-        model.load_state_dict(torch.load(checkpoint))
+        model.load_state_dict(load(checkpoint))
         model = model.cuda()
     else:
-        model.load_state_dict(torch.load(checkpoint, map_location="cpu"))
+        model.load_state_dict(load(checkpoint, map_location="cpu"))
+
     return model

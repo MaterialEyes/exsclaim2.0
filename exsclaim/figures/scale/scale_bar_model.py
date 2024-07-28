@@ -1,20 +1,23 @@
 import argparse
 import os
-import pathlib
 import random
 
 import cv2
 import numpy as np
 import torch
 import torchvision
-import torchvision.transforms as T
+from pathlib import Path
 from PIL import Image, ImageDraw
 from torch import optim
+from torchvision import transforms
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 from . import utils
 from .dataset import ScaleBarDataset
-from .engine import evaluate, train_one_epoch
+from .engine import evaluate, train_one_epoch, get_epoch
+
+
+__all__ = ["random_gaussian_blur", "get_transform", "get_model", "train_object_detector", "run"]
 
 
 def random_gaussian_blur(image):
@@ -28,11 +31,11 @@ def random_gaussian_blur(image):
 
 
 def get_transform(train):
-    transforms = []
+    _transforms = []
     if train:
-        transforms.append(T.Lambda(random_gaussian_blur))
-    transforms.append(T.ToTensor())
-    return T.Compose(transforms)
+        _transforms.append(transforms.Lambda(random_gaussian_blur))
+    _transforms.append(transforms.ToTensor())
+    return transforms.Compose(_transforms)
 
 
 def get_model(train_status):
@@ -45,7 +48,7 @@ def get_model(train_status):
 
     # load an object detection model pre-trained on COCO
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(
-        pretrained=faster, pretrained_backbone=resnet
+        weights=faster, pretrained_backbone=resnet
     )
     # get the number of input features for the classifier
     in_features = model.roi_heads.box_predictor.cls_score.in_features
@@ -61,7 +64,7 @@ def get_model(train_status):
     # lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 40, 60])
     lr_scheduler = None
     # find if there is a previous checkpoint
-    current_path = pathlib.Path(__file__).resolve(strict=True)
+    current_path = Path(__file__).resolve(strict=True)
     checkpoints = current_path.parent / "checkpoints"
     largest = -1
     best_checkpoint = None
@@ -80,17 +83,7 @@ def get_model(train_status):
         return model, lr_scheduler, optimizer, 0
 
     best_checkpoint = checkpoints / best_checkpoint
-    cuda = torch.cuda.is_available()  # and (gpu_id >= 0)
-    if cuda:
-        checkpoint = torch.load(best_checkpoint)
-        model = model.cuda()
-    else:
-        checkpoint = torch.load(best_checkpoint, map_location="cpu")
-
-    model.load_state_dict(checkpoint["model_state_dict"])
-    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-    # lr_scheduler.load_state_dict(checkpoint["lr_state_dict"])
-    epoch = checkpoint["epoch"]
+    epoch = get_epoch(model, best_checkpoint)
 
     return model, lr_scheduler, optimizer, epoch
 
@@ -99,7 +92,7 @@ def train_object_detector(train_status):
     # train on the GPU or on the CPU, if a GPU is not available
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-    current_path = pathlib.Path(__file__).resolve(strict=True)
+    current_path = Path(__file__).resolve(strict=True)
     checkpoints = current_path.parent / "checkpoints"
     root_directory = current_path.parent.parent.parent / "tests" / "data"
     # use our dataset and defined transformations

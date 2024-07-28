@@ -1,8 +1,15 @@
+sql-data
+test.html
+dep_checker.py
+**/error.html
+conda/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
+**/exsclaim/figures/checkpoints/
+output/
 # C extensions
 *.so
 

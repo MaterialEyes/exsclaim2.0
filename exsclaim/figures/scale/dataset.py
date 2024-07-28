@@ -1,7 +1,7 @@
-import json
+from json import load
 import os
-import pathlib
-import random
+from pathlib import Path
+from random import randint, sample, choice
 
 import cv2 as cv
 import numpy as np
@@ -9,40 +9,46 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 from torchvision import transforms
 
-from exsclaim.utilities.boxes import convert_labelbox_to_coords
+from ...utilities import convert_labelbox_to_coords
+
+__all__ = ["ScaleLabelDataset", "ScaleBarDataset", "draw_text_on_image", "get_unit", "get_number", "no_pattern", "find_color"]
 
 
-def draw_text_on_image(image, text):
+def draw_text_on_image(image:Image, text:str) -> Image:
     """generates an image with text and a txt file with text's coordinates"""
     width, height = image.size
 
     # system_fonts = font_manager.findSystemFonts(fontpaths=None, fontext='ttf')
-    current_dir = pathlib.Path(__file__).resolve(strict=True).parent
-    font_directory = (
-        current_dir.parent.parent.parent.parent / "dejavu-fonts-ttf-2.37" / "ttf"
-    )
-    font_type = random.choice(os.listdir(font_directory))
+    current_dir = Path(__file__).resolve(strict=True).parent
+
+    font_directory = current_dir.parent.parent.parent.parent / "dejavu-fonts-ttf-2.37" / "ttf"
+    font_type = choice(os.listdir(font_directory))
     font_path = font_directory / font_type
+
     max_width = int((1.5 * width) / len(text))
     max_font_size = min(height, 24, max_width)
-    font_size = random.randint(min(max_font_size - 1, 9), max_font_size)
+
+    font_size = randint(min(max_font_size - 1, 9), max_font_size)
     font = ImageFont.truetype(str(font_path), font_size, encoding="unic")
+
     text_width, text_height = font.getsize(text)
-    startX = random.randint(0, max(1, width - text_width))
-    startY = random.randint(0, max(1, height - text_height))
+
+    startX = randint(0, max(1, width - text_width))
+    startY = randint(0, max(1, height - text_height))
     box = (startX, startY, startX + text_width, startY + text_height)
     # draw text on image
+
     draw = ImageDraw.Draw(image)
     color = find_color(image, box)
 
     draw.text((startX, startY), text, fill=color, font=font)
 
     # add random buffers to bounding box edges
-    move_up, move_left = random.randint(0, 5), random.randint(0, 5)
+    move_up, move_left = randint(0, 5), randint(0, 5)
     crop_y1 = max(0, startY - move_up)
-    crop_y2 = min(height, startY + text_height + random.randint(1, 5))
+    crop_y2 = min(height, startY + text_height + randint(1, 5))
     crop_x1 = max(0, startX - move_left)
-    crop_x2 = min(width, startX + text_width + random.randint(1, 5))
+    crop_x2 = min(width, startX + text_width + randint(1, 5))
 
     # save the image
     image = image.crop((crop_x1, crop_y1, crop_x2, crop_y2))
@@ -52,10 +58,10 @@ def draw_text_on_image(image, text):
 
 def get_unit():
     units = ["u", "U", "\u03bc", "m", "M", "c", "C", "n", "N", "A", "\u212b"]
-    unit1 = random.choice(units)
-    unit2 = random.choice(units)
+    unit1 = choice(units)
+    unit2 = choice(units)
     text = unit1 + unit2
-    if random.randint(0, 2) == 0:
+    if randint(0, 2) == 0:
         text = unit1
     label = ""
     for character in text:
@@ -73,21 +79,21 @@ def get_number(length):
     nonzero = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
     digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
     if length <= 2:
-        text = random.choice(nonzero)
-        text += random.choice(digits)
+        text = choice(nonzero)
+        text += choice(digits)
         return text[:length]
 
     digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
-    first = random.choice(digits)
+    first = choice(digits)
 
     for i in range(length - 2):
         if first == "0":
             first += "."
         elif "." in first:
-            first += random.choice(digits)
+            first += choice(digits)
         else:
-            first += random.choice(digits + ["."])
-    first += random.choice(digits)
+            first += choice(digits + ["."])
+    first += choice(digits)
     return first
 
 
@@ -96,7 +102,7 @@ def no_pattern(length):
     characters += ["u", "U", "\u03bc", "m", "M", "c", "C", "n", "N", "A", "\u212b"]
     text = ""
     for i in range(length - 1):
-        text += random.choice(characters)
+        text += choice(characters)
 
     label = ""
     for character in text:
@@ -110,7 +116,7 @@ def no_pattern(length):
     return text, label
 
 
-def find_color(image, box):
+def find_color(image:np.ndarray, box):
     """finds color for text to contrast background
 
     Args:
@@ -128,11 +134,11 @@ def find_color(image, box):
         grayscale = image_array
     new_image = grayscale[startY:endY, startX:endX]
     mean = np.mean(new_image)
-    low_nums = random.randint(0, 15)
+    low_nums = randint(0, 15)
     if mean < 120:
         return (254 - low_nums, 254 - low_nums, 254 - low_nums)
     elif mean < 135:
-        return random.choice(
+        return choice(
             [
                 (254, low_nums, low_nums),
                 (low_nums, 254, low_nums),
@@ -145,8 +151,8 @@ def find_color(image, box):
 
 class ScaleLabelDataset:
     """Dataset used to train CRNN to read scale bar labels"""
-
-    def make_encoding(self, label):
+    @staticmethod
+    def make_encoding(label):
         max_length = 32
         char_to_int = {
             "0": 0,
@@ -181,39 +187,40 @@ class ScaleLabelDataset:
     def __init__(self, transforms, text="random_separate"):
         self.text = text
         self.transforms = transforms
-        current_dir = pathlib.Path(__file__).resolve(strict=True).parent
+        current_dir = Path(__file__).resolve(strict=True).parent
         self.background_images = current_dir / "background"
 
     def __getitem__(self, idx):
         # constants
-        SYNTH_BACKGOUND = 2  # out of 10
+        SYNTH_BACKGROUND = 2  # out of 10
         # select background image
         # generate a random number create synthetic image
-        random_number = random.randint(0, 9)
-        if random_number < SYNTH_BACKGOUND:
+        random_number = randint(0, 9)
+        if random_number < SYNTH_BACKGROUND:
             # generate an image with solid background
             color = (
-                random.randint(0, 255),
-                random.randint(0, 255),
-                random.randint(0, 255),
+                randint(0, 255),
+                randint(0, 255),
+                randint(0, 255),
             )
             background_image = Image.new("RGB", (200, 200), color=color)
         # use a natural background
         else:
-            background_image_name = random.choice(os.listdir(self.background_images))
+            background_image_name = choice(os.listdir(self.background_images))
             background_image_path = self.background_images / background_image_name
             background_image = Image.open(background_image_path).convert("RGB")
 
+        text = ""
         if self.text == "random_separate":
             # select text to write on background
-            length = random.randint(1, 5)
+            length = randint(1, 5)
             number = get_number(length)
             unit, label = get_unit()
-            space = random.choice(["", " ", "  "])
+            space = choice(["", " ", "  "])
             text = number + space + unit
             label = number + " " + label
         elif self.text == "complete_random":
-            length = random.randint(3, 8)
+            length = randint(3, 8)
             text, label = no_pattern(length)
         # draw text and crop
         cropped_image = draw_text_on_image(background_image, text)
@@ -242,7 +249,7 @@ class ScaleBarDataset:
 
         self.test = test
         with open(scale_bar_dataset, "r") as f:
-            self.data = json.load(f)
+            self.data = load(f)
         all_figures = os.path.join(root, "images", "labeled_data")
         self.images = [
             figure
@@ -250,7 +257,7 @@ class ScaleBarDataset:
             if os.path.isfile(os.path.join(all_figures, figure))
         ]
         if size is not None:
-            self.images = random.sample(self.images, size)
+            self.images = sample(self.images, size)
 
     def __getitem__(self, idx):
         image_path = os.path.join(self.root, "images", "labeled_data", self.images[idx])
@@ -275,12 +282,13 @@ class ScaleBarDataset:
             # suppose all instances are not crowd
             iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
-            target = {}
-            target["boxes"] = boxes
-            target["labels"] = labels
-            target["image_id"] = image_id
-            target["area"] = area
-            target["iscrowd"] = iscrowd
+            target = {
+                "boxes": boxes,
+                "labels": labels,
+                "image_id": image_id,
+                "area": area,
+                "iscrowd": iscrowd
+            }
 
             if self.transforms is not None:
                 new_image = self.transforms(image)

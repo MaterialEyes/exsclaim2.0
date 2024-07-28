@@ -8,21 +8,21 @@ import cv2
 import numpy as np
 import torch
 import torchvision
-import torchvision.transforms as T
+from os import path, PathLike, listdir
 from PIL import Image
 from torchvision import transforms
+from torchvision.transforms import ToTensor
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
-import exsclaim.utilities.boxes as boxes
-from exsclaim.figures.models.crnn import CRNN
-from exsclaim.figures.scale.ctc import ctcBeamSearch
-from exsclaim.figures.scale.lm import LanguageModel
-from exsclaim.figures.scale.process import non_max_suppression_malisiewicz
-from exsclaim.utilities.models import load_model_from_checkpoint
+from .ctc import ctcBeamSearch, postprocess_ctc
+from .lm import LanguageModel
+from .process import non_max_suppression_malisiewicz
+from ...utilities import boxes
+from ...utilities.models import load_model_from_checkpoint
 
 
-def convert_to_rgb(image):
-    return image.convert("RGB")
+__all__ = ["create_scale_bar_objects", "detect_scale_objects", "determine_scale", "match_scale_bars", "super_resolution",
+           "read_scale_bar_label", "split_label", "test_label_reading"]
 
 
 def create_scale_bar_objects(scale_bar_lines, scale_bar_labels):
@@ -33,7 +33,7 @@ def create_scale_bar_objects(scale_bar_lines, scale_bar_labels):
             representing predicted scale bars with 'geometry', 'length',
             and 'confidence' attributes.
         scale_bar_labels (list of dicts): A list of dictionaries
-            representing predicted scale bar labesl with 'geometry',
+            representing predicted scale bar labels with 'geometry',
             'text', 'confidence', 'box_confidence', 'nm' attributes.
     Returns:
         scale_bar_jsons (list of Scale Bar JSONS): Scale Bar JSONS that
@@ -84,7 +84,7 @@ def detect_scale_objects(image, scale_bar_detection_checkpoint):
     Returns:
         scale_bar_info (list): A list of lists with the following
             pattern: [[x1,y1,x2,y2, confidence, label],...] where
-            label is 1 for scale bars and 2 for scale bar labelss
+            label is 1 for scale bars and 2 for scale bar labels
     """
     scale_bar_detection_model = torchvision.models.detection.fasterrcnn_resnet50_fpn(
         pretrained=True
@@ -124,33 +124,6 @@ def detect_scale_objects(image, scale_bar_detection_checkpoint):
     return scale_bar_info
 
 
-def postprocess_ctc(results):
-    classes = "0123456789mMcCuUnN .A"
-    idx_to_class = classes + "-"
-    for result, confidence in results:
-        confidence = float(confidence)
-        word = ""
-        for step in result:
-            word += idx_to_class[step]
-        word = word.strip()
-        word = "".join(word.split("-"))
-        print(word)
-        try:
-            number, unit = word.split()
-            number = float(number)
-            if unit.lower() == "n":
-                unit = "nm"
-            elif unit.lower() == "c":
-                unit = "cm"
-            elif unit.lower() == "u":
-                unit = "um"
-            if unit.lower() in ["nm", "mm", "cm", "um", "a"]:
-                return number, unit, confidence
-        except Exception:
-            continue
-    return -1, "m", 0
-
-
 def determine_scale(
     figure_path, detection_checkpoint, recognition_checkpoint, figure_json=None
 ):
@@ -166,16 +139,17 @@ def determine_scale(
     """
     if figure_json is None:
         figure_json = {}
+
     convert_to_nm = {
         "a": 0.1,
         "nm": 1.0,
-        "um": 1000.0,
-        "mm": 1000000.0,
-        "cm": 10000000.0,
-        "m": 1000000000.0,
+        "um": 1_000.0,
+        "mm": 1_000_000.0,
+        "cm": 10_000_000.0,
+        "m": 1_000_000_000.0,
     }
     image = Image.open(figure_path).convert("RGB")
-    tensor_image = T.ToTensor()(image)
+    tensor_image = ToTensor()(image)
     # Detect scale bar objects
     scale_bar_info = detect_scale_objects(tensor_image, detection_checkpoint)
     label_names = ["background", "scale bar", "scale label"]
@@ -260,7 +234,7 @@ def match_scale_bars(correct, predicted):
 def super_resolution(image):
     current_file = pathlib.Path(__file__).resolve(strict=True)
     model = "LapSRN_x8.pb"
-    modelName = model.split(os.path.sep)[-1].split("_")[0].lower()
+    modelName = model.split(path.sep)[-1].split("_")[0].lower()
     modelScale = model.split("_x")[-1]
     modelScale = int(modelScale[: modelScale.find(".")])
 
@@ -289,12 +263,12 @@ def read_scale_bar_label(scale_bar_model, scale_bar_label_image):
         scale_label_recognition_model, "scale_label_recognition_model.pt", cuda
     )
     # preprocess
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if cuda else "cpu")
     # scale_bar_label_image = super_resolution(scale_bar_label_image)
     resize_transform = transforms.Compose(
         [
             transforms.Resize((128, 512)),
-            transforms.Lambda(convert_to_rgb),
+            transforms.Lambda(lambda image: image.convert("RGB")),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
@@ -344,11 +318,11 @@ def split_label(text):
     return 0, None
 
 
-def test_label_reading(model_name, epoch=None):
+def test_label_reading(model_name:PathLike[str], epoch=None):
     """Run test training set on the specified model and checkpoint
 
     Args:
-        model_name (str): Name of model
+        model_name (str or pathlib.Path): Name of model
         epoch (int): Epoch number or None to use highest epoch checkpoint
     """
     # load test images and test image labels
@@ -361,16 +335,16 @@ def test_label_reading(model_name, epoch=None):
     # load scale bar model
     checkpoint_directory = exsclaim_root / "training" / "checkpoints"
     if epoch is None:
-        epoch = sorted(
-            [
-                int(file.split("-")[-1].split(".")[0])
-                for file in os.listdir(checkpoint_directory)
-                if file.split("-")[0] == model_name
-            ]
-        )[-1]
-    scale_bar_label_checkpoint = checkpoint_directory / (
-        model_name + "-" + str(epoch) + ".pt"
-    )
+        # epoch = sorted(
+        #     [
+        #         int(file.split("-")[-1].split(".")[0])
+        #         for file in listdir(checkpoint_directory)
+        #         if file.split("-")[0] == model_name
+        #     ]
+        # )[-1]
+        epoch = sorted(map(lambda file: int(file.split("-")[-1].split(".")[0]), filter(lambda file: file.split('-')[0], listdir(checkpoint_directory))))[-1]
+
+    scale_bar_label_checkpoint = checkpoint_directory / f"{model_name}-{epoch}.pt"
     try:
         all_configurations_path = exsclaim_root / "training" / "scale_label_reader.json"
         with open(all_configurations_path, "r") as f:
@@ -463,7 +437,7 @@ def test_label_reading(model_name, epoch=None):
         # if k > 50:
         #     break
     # print(incorrect / len(cunits))
-    with open(str(model_name) + "-" + str(epoch) + "nosrn_newlm.json", "w+") as f:
+    with open(f"{model_name}-{epoch}nosrn_newlm.json", "w+") as f:
         results = {
             "correct_nms": correct_nms,
             "predicted_nms": predicted_nms,

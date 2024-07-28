@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Diagram>
+  <ID>DATABASE</ID>
+  <OriginalElement>44c19176-777b-4b12-bbb1-ee836db181f7</OriginalElement>
+  <nodes>
+    <node x="-553.77352297593" y="158.74288840262585">44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.article</node>
+    <node x="-77.308533916849" y="949.6094091903719">44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.subfigurelabel</node>
+    <node x="-553.77352297593" y="936.6094091903718">44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.scale</node>
+    <node x="-120.8807439824945" y="170.74288840262585">44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.figure</node>
+    <node x="-334.0503282275711" y="444.2396061269146">44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.subfigure</node>
+    <node x="27.6542669584245" y="1359.6980306345733">44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.public.results</node>
+    <node x="-468.33916849015316" y="1332.9792122538295">44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.scalelabel</node>
+  </nodes>
+  <notes />
+  <edges>
+    <edge source="44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.scale" target="44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.subfigure" relationship="REFERENCES">
+      <point x="-4.770240700509021E-4" y="-128.5004091903719" />
+      <point x="-448.774" y="867.0" />
+      <point x="-231.55" y="867.0" />
+      <point x="3.282275710603244E-4" y="176.5003938730854" />
+    </edge>
+    <edge source="44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.figure" target="44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.article" relationship="REFERENCES">
+      <point x="0.0" y="-92.49999999999994" />
+      <point x="-14.880743982494494" y="405.99124726477027" />
+      <point x="-471.77352297592995" y="405.99124726477027" />
+      <point x="0.0" y="104.5" />
+    </edge>
+    <edge source="44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.scalelabel" target="44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.scale" relationship="REFERENCES">
+      <point x="-37.70021881838068" y="-127.5" />
+      <point x="-383.53938730853383" y="1246.4912472647702" />
+      <point x="-519.9726477024069" y="1246.4912472647702" />
+      <point x="-71.19912472647701" y="128.5" />
+    </edge>
+    <edge source="44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.subfigure" target="44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.figure" relationship="REFERENCES">
+      <point x="102.5" y="0.0" />
+      <point x="0.1192560175055064" y="620.7396061269146" />
+      <point x="15.0" y="92.5" />
+    </edge>
+    <edge source="44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.subfigurelabel" target="44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.subfigure" relationship="REFERENCES">
+      <point x="-4.6608315099661013E-4" y="-115.5004091903719" />
+      <point x="45.191" y="867.0" />
+      <point x="-231.55" y="867.0" />
+      <point x="3.282275710603244E-4" y="176.5003938730854" />
+    </edge>
+  </edges>
+  <settings layout="Hierarchic Compact" zoom="0.6303448275862069" showDependencies="false" x="-152.0" y="883.0" />
+  <SelectedNodes>
+    <node>44c19176-777b-4b12-bbb1-ee836db181f7.TABLE:exsclaim.results.subfigure</node>
+  </SelectedNodes>
+  <Categories>
+    <Category>Columns</Category>
+    <Category>Comments</Category>
+    <Category>Key columns</Category>
+    <Category>Virtual foreign keys</Category>
+  </Categories>
+</Diagram>
+

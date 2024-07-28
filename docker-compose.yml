@@ -1,0 +1,187 @@
+name: exsclaim2
+
+services:
+    base:
+        build:
+            dockerfile: Dockerfile.exsclaim
+            args:
+                - EXSCLAIM_GITHUB_REVISION=exsclaim2_for_spin
+                - UID=${UID}
+                - GID=${GID}
+                - UNAME=${UNAME}
+                - TZ=${TZ}
+        image: exsclaim/base
+        env_file: .env
+
+    python:
+        build:
+            target: "prod"
+            args:
+                - UID=${UID}
+                - GID=${GID}
+                - UNAME=${UNAME}
+        image: exsclaim/core
+        env_file: .env
+        environment:
+            - OPENAI_API_KEY=${OPENAI_API_KEY}
+        networks:
+            - backend
+        volumes:
+#            # This was added for when the exsclaim module was being edited while a container already existed.
+#            # Can be removed if no work is being done to exsclaim since pip already locally installed it.
+            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
+            - ./query:/usr/src/app/query
+            - ./output:/usr/src/app/output
+
+    jupyter:
+        build:
+            target: "jupyter"
+            args:
+                - UID=${UID}
+                - GID=${GID}
+                - UNAME=${UNAME}
+        image: exsclaim/jupyter
+        env_file: .env
+        environment:
+            - HF_TOKEN=${HF_TOKEN}
+            - OPENAI_API_KEY=${OPENAI_API_KEY}
+        networks:
+            - backend
+        volumes:
+            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
+            - ./query:/usr/src/app/query
+            - ./notebooks:/usr/src/app/notebooks
+        ports:
+            - "8888:8888"
+
+    postgres:
+        image: exsclaim/db
+        build: ./db
+        env_file: .env
+        ports:
+            - "6543:$POSTGRES_PORT"
+        networks:
+            backend:
+                aliases:
+                    - db
+                    - postgresql
+        volumes:
+            - ./sql-data:/var/lib/postgresql/data:Z
+
+    api:
+        restart: always
+        env_file: .env
+        environment:
+            - DJANGO_SECRET_KEY=local
+            - POSTGRES_HOST=db
+            - PORT=${DJANGO_PORT}
+        image: exsclaim/ui/django-api
+        build:
+            context: ./api
+            args:
+                ENV: dev
+            target: base
+        volumes:
+            - ./api/apps:/code/apps
+            - ./api/config:/code/config
+            - ./api/docs:/code/docs
+            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
+        ports:
+            - "$DJANGO_PORT:$DJANGO_PORT"
+        networks:
+            - frontend
+            - backend
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    fastapi:
+        restart: always
+        env_file: .env
+        environment:
+            - OPENAI_API_KEY=${OPENAI_API_KEY}
+            - PORT=${FASTAPI_PORT}
+            - POSTGRES_HOST=${POSTGRES_HOST}
+        image: exsclaim/ui/api
+        build:
+            context: ./fastapi
+            target: dev
+            args:
+                - PORT=${FASTAPI_PORT}
+                - UID=${UID}
+                - GID=${GID}
+                - UNAME=${UNAME}
+        volumes:
+            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
+            - ./fastapi/api:/usr/src/app/api
+            - ./logs:/exsclaim/logs
+            - ./output:/exsclaim/results
+        ports:
+            - "80:${FASTAPI_PORT}"
+        networks:
+            frontend:
+                aliases:
+                    - api
+            backend:
+                aliases:
+                    - api
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    dashboard:
+        build:
+            context: ./dashboard
+#            target: node-base
+            target: py-prod
+            args:
+                - UID=${UID}
+                - GID=${GID}
+                - UNAME=${UNAME}
+        env_file: .env
+        image: exsclaim/ui/dashboard
+        environment:
+            - PORT=3000
+            - POSTGRES_PORT=${POSTGRES_PORT}
+            - FAST_API_URL=http://api:${FASTAPI_PORT}
+        ports:
+            - "3000:3000"
+        networks:
+            - frontend
+            - backend
+##        volumes:
+##            - "./dashboard:/usr/src/app"
+#        depends_on:
+#            fastapi:
+#                condition: service_healthy
+#            api:
+#                condition: service_healthy
+
+
+    pycharm:
+        build:
+            dockerfile: Dockerfile.pycharm
+
+networks:
+    frontend:
+    backend:
+
+volumes:
+    exsclaim_module:
+        driver: local
+        driver_opts:
+            type: bind
+            device: /usr/src/app/exsclaim
+
+    notebooks:
+        driver: local
+        driver_opts:
+            type: bind
+            device: /usr/src/app/notebooks
+
+    query:
+        driver: local
+        driver_opts:
+            type: bind
+            device: /usr/src/app/query
+

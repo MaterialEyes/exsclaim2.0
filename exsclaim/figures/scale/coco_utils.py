@@ -1,13 +1,17 @@
 # Acquired from https://github.com/pytorch/vision/tree/master/references/detection
-import copy
+from copy import deepcopy
 import os
 
 import torch
 import torch.utils.data
-import torchvision
-import torchvision.transforms as T
+from torchvision.datasets import CocoDetection
+from torchvision.transforms import Compose
 from pycocotools import mask as coco_mask
 from pycocotools.coco import COCO
+
+
+__all__ = ["FilterAndRemapCocoCategories", "ConvertCocoPolysToMask", "CocoDetection", "convert_coco_poly_to_mask",
+           "_coco_remove_images_without_annotations", "convert_to_coco_api", "get_coco_api_from_dataset", "get_coco", "get_coco_kp"]
 
 
 class FilterAndRemapCocoCategories(object):
@@ -81,22 +85,22 @@ class ConvertCocoPolysToMask(object):
         boxes = boxes[keep]
         classes = classes[keep]
         masks = masks[keep]
+
+        target = {
+            "boxes": boxes,
+            "labels": classes,
+            "masks": masks,
+            "image_id": image_id,
+        }
+
         if keypoints is not None:
             keypoints = keypoints[keep]
-
-        target = {}
-        target["boxes"] = boxes
-        target["labels"] = classes
-        target["masks"] = masks
-        target["image_id"] = image_id
-        if keypoints is not None:
             target["keypoints"] = keypoints
 
         # for conversion to coco api
         area = torch.tensor([obj["area"] for obj in anno])
         iscrowd = torch.tensor([obj["iscrowd"] for obj in anno])
-        target["area"] = area
-        target["iscrowd"] = iscrowd
+        target |= {"area": area, "iscrowd": iscrowd}
 
         return image, target
 
@@ -117,7 +121,7 @@ def _coco_remove_images_without_annotations(dataset, cat_list=None):
         # if all boxes have close to zero area, there is no annotation
         if _has_only_empty_bbox(anno):
             return False
-        # keypoints task have a slight different critera for considering
+        # keypoints task have a slight different criteria for considering
         # if an annotation is valid
         if "keypoints" not in anno[0]:
             return True
@@ -127,7 +131,7 @@ def _coco_remove_images_without_annotations(dataset, cat_list=None):
             return True
         return False
 
-    assert isinstance(dataset, torchvision.datasets.CocoDetection)
+    assert isinstance(dataset, CocoDetection)
     ids = []
     for ds_idx, img_id in enumerate(dataset.ids):
         ann_ids = dataset.coco.getAnnIds(imgIds=img_id, iscrowd=None)
@@ -152,10 +156,10 @@ def convert_to_coco_api(ds):
         # targets = ds.get_annotations(img_idx)
         img, targets = ds[img_idx]
         image_id = targets["image_id"].item()
-        img_dict = {}
-        img_dict["id"] = image_id
-        img_dict["height"] = img.shape[-2]
-        img_dict["width"] = img.shape[-1]
+        img_dict = {"id": image_id,
+                    "height": img.shape[-2],
+                    "width": img.shape[-1]}
+
         dataset["images"].append(img_dict)
         bboxes = targets["boxes"]
         bboxes[:, 2:] -= bboxes[:, :2]
@@ -172,14 +176,17 @@ def convert_to_coco_api(ds):
             keypoints = keypoints.reshape(keypoints.shape[0], -1).tolist()
         num_objs = len(bboxes)
         for i in range(num_objs):
-            ann = {}
-            ann["image_id"] = image_id
-            ann["bbox"] = bboxes[i]
-            ann["category_id"] = labels[i]
+            ann = {
+                "image_id": image_id,
+                "bbox": bboxes[i],
+                "category_id": labels[i],
+                "area": areas[i],
+                "iscrowd": iscrowd[i],
+                "id": ann_id,
+            }
+
             categories.add(labels[i])
-            ann["area"] = areas[i]
-            ann["iscrowd"] = iscrowd[i]
-            ann["id"] = ann_id
+
             if "masks" in targets:
                 ann["segmentation"] = coco_mask.encode(masks[i].numpy())
             if "keypoints" in targets:
@@ -195,16 +202,16 @@ def convert_to_coco_api(ds):
 
 def get_coco_api_from_dataset(dataset):
     for _ in range(10):
-        if isinstance(dataset, torchvision.datasets.CocoDetection):
+        if isinstance(dataset, CocoDetection):
             break
         if isinstance(dataset, torch.utils.data.Subset):
             dataset = dataset.dataset
-    if isinstance(dataset, torchvision.datasets.CocoDetection):
+    if isinstance(dataset, CocoDetection):
         return dataset.coco
     return convert_to_coco_api(dataset)
 
 
-class CocoDetection(torchvision.datasets.CocoDetection):
+class CocoDetection(CocoDetection):
     def __init__(self, img_folder, ann_file, transforms):
         super(CocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
@@ -235,7 +242,7 @@ def get_coco(root, image_set, transforms, mode="instances"):
 
     if transforms is not None:
         t.append(transforms)
-    transforms = T.Compose(t)
+    transforms = Compose(t)
 
     img_folder, ann_file = PATHS[image_set]
     img_folder = os.path.join(root, img_folder)

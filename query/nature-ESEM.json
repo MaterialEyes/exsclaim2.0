@@ -1,29 +1,27 @@
 {
     "name": "nature_ESEM",
-
     "journal_family": "nature",
-
-    "maximum_scraped": 500,
-
+    "maximum_scraped": 5,
     "sortby": "relevant",
-
     "query":
     {
         "search_field_1":
         {
-            "term":"ESEM",  
+            "term":"ESEM",
             "synonyms":["Environmental SEM", "Environmental Scanning Electron Microscope"]
         }
     },
-
     "llm": "gpt-3.5-turbo",
-
-    "openai_API": YOUR_API_KEY,
-
-
     "open": false,
-
     "save_format": ["boxes", "save_subfigures", "csv"],
-
-    "logging": ["print", "exsclaim.log"]
+    "logging": ["print", "exsclaim.log"],
+    "notifications": {
+        "ntfy": [
+            {"url": "https://ntfy.lenwashingtoniii.com/exsclaim"}
+        ],
+        "email": [
+            "lwashington3@hawk.iit.edu"
+        ]
+    },
+    "results_dir": "../output"
 }
