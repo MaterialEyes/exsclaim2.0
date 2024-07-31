@@ -1,13 +1,13 @@
 from dash import Dash, html, Input, Output, callback, dcc
 import sd_material_ui as mui
 import dash_bootstrap_components as dbc
-import dash_material_components as dmc
+# import dash_material_components as dmc
 import exsclaim_ui_components as ui
 
 app = Dash("EXSCLAIM Dashboard", external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME])
 
 app.layout = html.Div(
-	[
+	[	# TODO: Read the favicon https://dash.plotly.com/external-resources
 		ui.Header(EXSCLAIM_LOGO_SRC="/assets/ExsclaimLogo.png"),
 		html.Div(
 			"Div without n_clicks event listener",
