@@ -4,14 +4,11 @@ try:
 	from . import __version__
 except ImportError:
 	__version__ = None
-from argparse import ArgumentParser, BooleanOptionalAction
+from argparse import ArgumentParser
 from atexit import register
-from functools import wraps
 from json import load
-from os import getenv, system
 from os.path import splitext
 from pathlib import Path
-from tarfile import open as tar_open
 
 
 @register

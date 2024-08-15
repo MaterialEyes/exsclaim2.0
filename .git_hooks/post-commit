@@ -6,3 +6,7 @@ read -r -d '' VERSION <  "$VERSION_FILE"
 VERSION=$(echo "$VERSION" | sed 's/version = //g' | sed 's/"//g')
 
 git tag -a "$VERSION" -m "Automated tag for version $VERSION."
+
+cd "$GIT_DIR" || exit 1
+python3 -m build
+python3 -m twine upload "dist/exsclaim-$VERSION*" -u __token__ -p "$PYPI_TOKEN" && echo "Uploaded EXSCLAIM! version $VERSION to PyPI." || echo "Couldn't upload EXSCLAIM! version $VERSION to PyPI."

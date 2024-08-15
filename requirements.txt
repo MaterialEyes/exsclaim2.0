@@ -122,7 +122,6 @@ parso==0.8.4
 pexpect==4.9.0
 pickleshare==0.7.5
 Pillow==10.3.0
-pip==24.1.1
 playwright==1.44.0
 posthog==3.1.0
 preshed==3.0.9

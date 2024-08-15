@@ -5,7 +5,7 @@ WORKDIR /usr/src/requirements
 
 COPY requirements.txt .
 COPY jupyter_requirements.txt .
-COPY dash/requirements.txt ./dash_requirements.txt
+COPY dashboard/requirements.txt ./dash_requirements.txt
 COPY fastapi/requirements.txt ./fastapi_requirements.txt
 
 #RUN for file in /usr/src/requirements/*; \
