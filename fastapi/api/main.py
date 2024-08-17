@@ -1,27 +1,33 @@
 import exsclaim
 import logging
 
+from .models import *
+
 from datetime import datetime as dt
-from exsclaim import get_database_connection_string
-from fastapi import FastAPI, Path as FastPath, Request
+from exsclaim import get_database_connection_string, PipelineInterruptionException
+from exsclaim.__main__ import main as exsclaim_main
+from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import Response, FileResponse, JSONResponse
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from io import BytesIO
 from json import dump, dumps
-from os import listdir, mkdir
+from os import listdir, mkdir, getenv
 from pathlib import Path
 from psycopg import connect, OperationalError
 from psycopg.errors import UndefinedTable
-from pydantic import BaseModel
+from psycopg.rows import dict_row, class_row
 from pytz import utc as UTC
 from requests import get
 from shutil import make_archive, rmtree, _ARCHIVE_FORMATS
 from subprocess import Popen
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
-from typing import Annotated, Literal
+from typing import Literal, Type
 from uuid import UUID
+
+
+DJANGO_COMPATIBILITY = "Django API Backwards Compatibility"
 
 
 def my_schema():
@@ -90,48 +96,6 @@ logger = get_logger()
 _EXAMPLE_UUID = UUID("fd70dd4b-1043-4650-aa11-9f55dc2e2c2b")
 
 
-class NTFY(BaseModel):
-	"""A base model representing the necessary info to send an NTFY notification."""
-	link: str
-	access_token: str = None
-	"""The access token that may be needed to send the NTFY notification as stated in https://docs.ntfy.sh/publish/#access-tokens"""
-	priority: Annotated[int, FastPath(title="The priority of the message", ge=1, le=5)] = 3
-	"""The priority of the message as stated in https://docs.ntfy.sh/publish/#message-priority"""
-
-	def to_json(self):
-		return {
-			"url": self.link,
-			"access_token": self.access_token,
-			"priority": str(self.priority),
-		}
-
-
-class Query(BaseModel):
-	name: str
-	journal_family: exsclaim.COMPATIBLE_JOURNALS = "Nature"
-	"""The Journal Family that EXSCLAIM should look through."""
-	maximum_scraped: int = 5
-	"""The maximum number of articles that EXSCLAIM should scrape. \
-	Maximum does not specify how many articles will be scraped before the process ends, only what the upper limit is."""
-	sortby: Literal["relevant", "recent"] = "relevant"
-	"""How the search feature should sort the articles, by the relevancy or the recent publish date."""
-	term: str
-	"""The term or phrase that you want searched."""
-	synonyms: list[str] = []
-	"""Any synonyms that you're term might be related to."""
-	save_format: list[Literal["subfigures", "visualization", "boxes", "postgres", "csv", "mongo"]] = ["boxes"]
-	open_access: bool = False
-	"""Determines if EXSCLAIM only uses open-access articles (True)."""
-	llm: exsclaim.COMPATIBLE_LLMS = "gpt-3.5-turbo"
-	"""The Large Language Model (LLM) that is used to separate captions and generate keywords for articles and figures."""
-	model_key: str = ""
-	"""The API key that might be needed depending on the specified llm."""
-	emails: list[str] = []
-	"""The email address that will receive a notification when EXSCLAIM has finished running."""
-	ntfy: list[NTFY] = []
-	"""A list of NTFY links that will receive a notification when EXSCLAIM has finished running."""
-
-
 @app.get("/", include_in_schema=False)
 async def dark_theme(light_mode:bool=False):
 	schema = app.openapi()
@@ -154,7 +118,7 @@ async def redoc():
 	return get_redoc_html(
 		openapi_url=app.openapi_url,
 		title=schema["info"]["title"],
-		redoc_favicon_url="https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico"
+		redoc_favicon_url="https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico",
 	)
 
 
@@ -194,7 +158,7 @@ def get_dark_ui(map_file:bool=False) -> Response:
 	return Response(response.content, media_type="text/css", status_code=200, headers={"Location": dark_ui})
 
 
-@app.get("/healthcheck",
+@app.get("/healthcheck", tags=["System Check"],
 		 responses={
 			 200: {
 				 "description": "API is Healthy.",
@@ -256,7 +220,7 @@ def healthcheck(request:Request) -> Response:
 		response = Response(f"EXSCLAIM! version {exsclaim.__version__} is running fine.",
 							status_code=200, media_type="text/plain")
 	except OperationalError as e:
-		logger.exception(f"Database URL: {db_url}. {e}")
+		logger.exception(f"An error occurred trying to connect to the database during a healthcheck.")
 		response = Response("The API is running but cannot connect to the database.",
 							status_code=503, media_type="text/plain")
 	except UndefinedTable as e:
@@ -264,7 +228,7 @@ def healthcheck(request:Request) -> Response:
 		response = Response("The API and database are both running, however, the database seems to empty. Please try again later.",
 							status_code=503, media_type="text/plain")
 	except Exception as e:
-		logger.exception(f"Database URL: {db_url}. {e}")
+		logger.exception(f"An error occurred during the healthcheck.")
 		response = Response("A fundamental error has prevented the API from functioning.",
 							status_code=503, media_type="text/plain")
 
@@ -273,6 +237,34 @@ def healthcheck(request:Request) -> Response:
 
 	flush_logger()
 	return response
+
+
+def run_exsclaim(_id:UUID, search_query_location:Path):
+	db_result = "Closed due to an error"
+	result_code = -1
+	try:
+		args = ["query", str(search_query_location), "--caption_distributor",
+				"--journal_scraper", "--figure_separator", "--compress", "gztar",
+				"--compress_location", f"/exsclaim/results/{_id}"]
+		if getenv("EXSCLAIM_DEBUG", "").lower() == "true":
+			args.append("--verbose")
+		result_code = exsclaim_main(args)
+		if result_code == 0:
+			db_result = "Finished"
+
+		results_dir = search_query_location.parent
+		if results_dir.is_dir():
+			rmtree(results_dir.absolute())
+	except Exception as e:
+		logging.getLogger(f"run_exsclaim_{_id}").exception(e)
+
+	with connect(get_database_connection_string()) as db:
+		cursor = db.cursor()
+		cursor.execute("UPDATE results SET status = %s, end_time = NOW() WHERE id = %s", (db_result, _id))
+		db.commit()
+		cursor.close()
+
+	return result_code
 
 
 @app.post("/query", responses={
@@ -353,16 +345,17 @@ def healthcheck(request:Request) -> Response:
 			}
 		}
 	}
-})
-def query(request:Request, search_query: Query) -> Response:
+}, tags=["Queries/Runs"])
+def query(request:Request, search_query: Query, background_tasks:BackgroundTasks) -> Response:
 	send_json = request.headers.get("accept", "") == "application/json"
 	try:
 		with connect(get_database_connection_string()) as db:
 			cursor = db.cursor()
 			cursor.execute("SELECT uuid_generate_v4() AS uuid;")
-			uuid = str(cursor.fetchone()[0])
+			uuid = cursor.fetchone()[0]
+			str_uuid = str(uuid)
 
-			results_dir = Path("/exsclaim") / "results" / uuid
+			results_dir = Path("/exsclaim") / "results" / str_uuid
 			results_dir.mkdir(exist_ok=True, parents=True)
 
 			exsclaim_input = {
@@ -390,9 +383,7 @@ def query(request:Request, search_query: Query) -> Response:
 
 			with open(results_dir / "search_query.json", "w") as f:
 				dump(exsclaim_input, f)
-			Popen(["python3", str(Path(__file__).parent / "run_exsclaim.py"), uuid, str(results_dir / "search_query.json")],
-				  start_new_session=True,
-			)
+			background_tasks.add_task(run_exsclaim, uuid, results_dir / "search_query.json")
 
 			db_json = exsclaim_input.copy()
 			db_json["openai_API"] = "openai_API" in db_json.keys()
@@ -405,10 +396,10 @@ def query(request:Request, search_query: Query) -> Response:
 			cursor.close()
 
 		if send_json:
-			response = JSONResponse({"message": "Thank you, your request is currently being processed.", "result_id": str(uuid)},
+			response = JSONResponse({"message": "Thank you, your request is currently being processed.", "result_id": str_uuid},
 									status_code=200, media_type="application/json")
 		else:
-			response = Response(f"Thank you, your request is currently being processed, and the results can be found using id: {uuid}.",
+			response = Response(f"Thank you, your request is currently being processed, and the results can be found using id: {str_uuid}.",
 						status_code=200, media_type="text/plain")
 	except OperationalError as e:
 		logger.exception(e)
@@ -440,7 +431,7 @@ def ensure_uuid(uuid: str | UUID) -> UUID:
 		raise ValueError(f"\"{uuid}\" is not a valid UUID.")
 
 
-@app.get("/status/{result_id}",
+@app.get("/status/{result_id}", tags=["Queries/Runs"],
 		 responses={
 			 200: {
 				 "description": "Known Status Found.",
@@ -453,10 +444,12 @@ def ensure_uuid(uuid: str | UUID) -> UUID:
 									 "type": "string",
 								 },
 								 "start_time": {
-									 "type": "string"
+									 "type": "string",
+									 "format": "date-time"
 								 },
 								 "end_time": {
-									 "type": "string"
+									 "type": "string",
+									 "format": "date-time"
 								 },
 								 "run_time": {
 									 "type": "number",
@@ -613,7 +606,7 @@ def status(result_id: str | UUID) -> JSONResponse:
 	return response
 
 
-@app.get("/results/{result_id}",
+@app.get("/results/{result_id}", tags=["Queries/Runs"],
 		 responses={
 			 200: {
 				 "description": "Results Compressed and Included.",
@@ -759,7 +752,7 @@ def download(request:Request, result_id:UUID, compression:str="default", filenam
 		return Response(str(e), status_code=422, media_type="text/plain")
 
 
-@app.get("/compression_types",
+@app.get("/compression_types", tags=["Queries/Runs"],
 		 responses={
 			 200: {
 				 "description": "Possible Compression Algorithms/Extensions",
@@ -848,3 +841,138 @@ def get_possible_compressions(request:Request, compression_type:str = None) -> R
 		return JSONResponse({"allowed": allowed}, status_code=status_code, media_type="application/json")
 
 	return Response(f"{compression_type} is {'NOT ' if not allowed else ''}an available compression type.", status_code=status_code, media_type="text/plain")
+
+
+def get_items_responses(_type:str, description_word:str, example):
+	return {
+		200: {
+			"description": f"All saved {description_word}.",
+			"content": {
+				"application/json": {
+					"schema": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"$ref": f"#/components/schemas/{_type}",
+						},
+					},
+					"example": example
+				},
+			}
+		}
+	}
+
+
+def get_items(_type:Type[BaseModel], table:str, header_str:str) -> JSONResponse:
+	with connect(get_database_connection_string()) as db:
+		cursor = db.cursor(row_factory=class_row(_type))
+		cursor.execute(f"SELECT * FROM results.{table}")
+		results = cursor.fetchall()
+		article_count = cursor.rowcount
+
+	results = [dict(article) for article in results]
+
+	return JSONResponse(results, status_code=200, media_type="application/json",
+						headers={f"{header_str}-Count": str(article_count)})
+
+
+@app.get("/articles", tags=[DJANGO_COMPATIBILITY], response_model=list[Article],
+		 responses=get_items_responses("Article", "articles", [
+			 {
+				 "id": "s41467-024-50040-6",
+				 "title": "Offshore wind and wave energy can reduce total installed capacity required in zero-emissions grids | Nature Communications",
+				 "url": "https://www.nature.com/articles/s41467-024-50040-6",
+				 "license": "http://creativecommons.org/licenses/by/4.0/",
+				 "open": "true",
+				 "authors": "null",
+				 "abstract": "null"
+			 },
+			 {
+				 "id": "s41560-024-01492-z",
+				 "title": "Impact of global heterogeneity of renewable energy supply on heavy industrial production and green value chains | Nature Energy",
+				 "url": "https://www.nature.com/articles/s41560-024-01492-z",
+				 "license": "http://creativecommons.org/licenses/by/4.0/",
+				 "open": "true",
+				 "authors": "null",
+				 "abstract": "null"
+			 },
+			 {
+				 "id": "s41560-024-01518-6",
+				 "title": "Estimation of useful-stage energy returns on investment for fossil fuels and implications for renewable energy systems | Nature Energy",
+				 "url": "https://www.nature.com/articles/s41560-024-01518-6",
+				 "license": "http://creativecommons.org/licenses/by/4.0/",
+				 "open": "true",
+				 "authors": "null",
+				 "abstract": "null"
+			 }
+		 ]))
+def articles() -> JSONResponse:
+	return get_items(Article, "article", "Article")
+
+
+@app.get("/articles/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Article,
+		 responses={
+			 200: {
+				"description": "The article was found and sent to the user.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"type": "object",
+							"$ref": "#/components/schemas/Article",
+						},
+						"example":
+						{
+							"id": "s41467-024-50040-6",
+							"title": "Offshore wind and wave energy can reduce total installed capacity required in zero-emissions grids | Nature Communications",
+							"url": "https://www.nature.com/articles/s41467-024-50040-6",
+							"license": "http://creativecommons.org/licenses/by/4.0/",
+							"open": True,
+							"authors": "Natalia Gonzalez, Paul Serna-Torre, Pedro A. Sánchez-Pérez, Ryan Davidson, Bryan Murray, Martin Staadecker, Julia Szinai, Rachel Wei, Daniel M. Kammen, Deborah A. Sunter, Patricia Hidalgo-Gonzalez ",
+							"abstract": "As the world races to decarbonize power systems to mitigate climate change, the body of research analyzing paths to zero emissions electricity grids has substantially grown. Although studies typically include commercially available technologies, few of them consider offshore wind and wave energy as contenders in future zero-emissions grids. Here, we model with high geographic resolution both offshore wind and wave energy as independent technologies with the possibility of collocation in a power system capacity expansion model of the Western Interconnection with zero emissions by 2050. In this work, we identify cost targets for offshore wind and wave energy to become cost effective, calculate a 17% reduction in total installed capacity by 2050 when offshore wind and wave energy are fully deployed, and show how curtailment, generation, and transmission change as offshore wind and wave energy deployment increase."
+						}
+					},
+				}
+			 },
+			 404: {
+				 "description": "ID Not Found.",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "message": {
+									 "type": "string"
+								 }
+							 }
+
+						 },
+						 "example": {
+							 "message": f"No article with id: s41467-024-50040-61."
+						 }
+					 }
+				 }
+			 },
+		 })
+def article(id:str):
+	with connect(get_database_connection_string()) as db:
+		cursor = db.cursor(row_factory=class_row(Article))
+		cursor.execute("SELECT * FROM results.article WHERE id = %s", (id,))
+		result = cursor.fetchone()
+		article_count = cursor.rowcount
+
+	if article_count:
+		return JSONResponse(dict(result), status_code=200, media_type="application/json")
+	else:
+		return JSONResponse({"message": f"No article with id: {id}."}, status_code=404, media_type="application/json")
+
+
+@app.get("/figures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Figure],
+		 responses=get_items_responses("Figure", "figures", []))
+def figures(page=None) -> JSONResponse:
+	return get_items(Figure, "subfigure", "Figure")
+
+
+@app.get("/subfigures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Subfigure],
+		 responses=get_items_responses("Subfigure", "subfigures", []))
+def figures(page=None) -> JSONResponse:
+	return get_items(Subfigure, "figure", "Figure")

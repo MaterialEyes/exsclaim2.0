@@ -18,6 +18,11 @@ COPY ./apps ./apps
 COPY ./config ./config
 COPY ./docs ./docs
 
+USER root
+RUN mkdir -p /exsclaim/{logs,results}/
+RUN chown -R $UNAME:$UNAME /exsclaim
+USER $UNAME
+
 EXPOSE $PORT
 HEALTHCHECK --interval=15s --timeout=15s --start-period=20s --retries=4 CMD curl -f http://localhost:$PORT || exit 1
 ENTRYPOINT ./manage.py migrate && ./manage.py runserver 0.0.0.0:$PORT
