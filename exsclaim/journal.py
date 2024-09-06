@@ -518,6 +518,9 @@ class JournalFamily(ABC, ExsclaimBrowser):
         # add all results
         return figure_json, image_url
 
+    def get_authors(self, url:str) -> set:
+        return ""
+
     def get_article_figures(self, url: str) -> dict:
         """Get all figures from an article
         Args:
@@ -540,6 +543,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
             return is_open, _license, page.title()
 
         is_open, _license, title = self.temporary_browser(get_article_figures_from_playwright)
+        authors = self.get_authors(url)
         figure_subtrees = self.get_figure_list(url)
 
         self.logger.info(f"Number of subfigures: {len(figure_subtrees):,}.")
@@ -559,6 +563,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
 
             figure_json = {
                 "title": title,
+                "authors": authors,
                 "article_url": url,
                 "license": _license,
                 "open": is_open,
@@ -1020,6 +1025,17 @@ class Nature(JournalFamily):
             page.goto(url)
             return self.get_license(page)
         return self.temporary_browser(get_license, url=url)
+
+    def get_authors(self, url:str) -> set:
+        def get_authors_from_playwright(page:Path, url:str, **kwargs):
+            page.goto(url)
+            locators = page.locator("li.c-article-author-list__item")
+            authors = ""
+            for author in locators:
+                authors += f"{author.inner_text.strip()}, "
+            return authors.rstrip(", ")
+
+        return self.temporary_browser(get_authors_from_playwright, url=url)
 
 
 class RSC(JournalFamilyDynamic):

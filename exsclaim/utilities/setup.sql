@@ -85,6 +85,11 @@ CREATE TABLE IF NOT EXISTS results.subfigurelabel(
 );
 
 
+CREATE VIEW exsclaimui_article AS SELECT * FROM results.article;
+CREATE VIEW exsclaimui_figure AS SELECT * FROM results.figure;
+CREATE VIEW exsclaimui_subfigure AS SELECT * FROM results.subfigure;
+
+
 INSERT INTO classification_codes VALUES('microscopy', 'MC');
 INSERT INTO classification_codes VALUES('diffraction', 'DF');
 INSERT INTO classification_codes VALUES('graph', 'GR');
