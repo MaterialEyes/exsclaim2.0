@@ -49,6 +49,9 @@ class CustomBuildCommand(_build_py):
 		with open(here / "exsclaim" / "version.py", 'w', encoding="utf-8") as f:
 			f.write(original_version)
 
+		# TODO: Set up code to build exsclaim_ui_components
+		# Maybe use the dashboard dockerfile to build, it should be compatible
+
 
 class CustomInstallCommand(_install):
 	def run(self):

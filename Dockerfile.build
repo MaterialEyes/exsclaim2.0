@@ -1,0 +1,22 @@
+FROM python:3.11.9 AS base
+
+WORKDIR /usr/src/app
+
+SHELL ["/bin/bash", "-c"]
+
+COPY . /usr/src/app
+COPY --from=exsclaim/ui/dashboard /usr/src/app/exsclaim_ui_components/exsclaim_ui_components /usr/src/app/exsclaim_ui_components
+32
+RUN echo -en """ \n\
+recursive-include exsclaim_ui_components *.py\n\
+recursive-include exsclaim_ui_components *.js\n\
+recursive-include exsclaim_ui_components *.json\n\
+recursive-include exsclaim_ui_components *.map\n\
+recursive-include exsclaim_ui_components *.txt\n\
+""" >> MANIFEST.in
+
+RUN pip install --upgrade build
+RUN python -m build
+RUN chown -R 1000:1000 dist/
+
+CMD ["cp", "-avru", "/usr/src/app/dist", "/usr/src"]

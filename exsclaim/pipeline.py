@@ -126,7 +126,7 @@ class Pipeline:
         # region Set up notifications
         exsclaim_notifications = self.query_dict.get("notifications", {})
         notifications = (_class.from_json(json)
-                         for key, _class in notifiers.items()
+                         for key, _class in Notifications.notifiers().items()
                          for json in exsclaim_notifications.get(key, []))
         self.notifications:tuple[Notifications] = tuple(notifications)
         # endregion

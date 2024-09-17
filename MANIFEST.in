@@ -3,6 +3,12 @@ include exsclaim/README.md
 recursive-include exsclaim *.py
 recursive-include exsclaim *.pyi
 
+recursive-include fastapi/api *.py
+recursive-include fastapi/api *.pyi
+
+recursive-include dashboard/dashboard *.py
+recursive-include dashboard/dashboard *.pyi
+
 include exsclaim/figures/config/yolov3_default_master.cfg
 include exsclaim/figures/config/yolov3_default_subfig.cfg
 include exsclaim/figures/config/scale_label_reader.json
@@ -17,3 +23,6 @@ include exsclaim/tests/data/nature_search.html
 include exsclaim/tests/data/images/scale_bar_test_images/*
 include exsclaim/tests/data/images/scale_label_test_images/*
 include exsclaim/tests/data/nature_closed_expected.json
+
+include dashboard/dashboard/assets/*.png
+include dashboard/dashboard/assets/*.ico

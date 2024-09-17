@@ -4,7 +4,7 @@ from requests import post, ConnectionError
 from typing import Type
 
 
-__all__ = ["Notifications", "NTFY", "Email", "notifiers", "CouldNotNotifyException"]
+__all__ = ["Notifications", "NTFY", "Email", "CouldNotNotifyException"]
 
 
 class CouldNotNotifyException(BaseException):
@@ -16,14 +16,23 @@ class Notifications(ABC):
 	def __init__(self, **kwargs):
 		self.logger = kwargs.get("logger", getLogger(self.__class__.__name__))
 
+	@staticmethod
+	@abstractmethod
+	def json_name() -> str:
+		...
+
 	@abstractmethod
 	def notify(self, data: dict | str, name:str, exception: Exception = None):
 		...
 
 	@classmethod
 	@abstractmethod
-	def from_json(cls, json:dict):
+	def from_json(cls, json:dict) -> "Notifications":
 		...
+
+	@staticmethod
+	def notifiers() -> dict[str, Type["Notifications"]]:
+		return {notifier.json_name(): notifier for notifier in Notifications.__subclasses__()}
 
 
 class NTFY(Notifications):
@@ -32,6 +41,10 @@ class NTFY(Notifications):
 		self._ntfy_url = url
 		self._access_token = access_token
 		self._priority = kwargs.get("priority", "3")
+
+	@staticmethod
+	def json_name() -> str:
+		return "ntfy"
 
 	@classmethod
 	def from_json(cls, json: dict):
@@ -75,6 +88,10 @@ class Email(Notifications):
 		super().__init__(**kwargs)
 		self._recipients = recipients
 
+	@staticmethod
+	def json_name() -> str:
+		return "email"
+
 	@classmethod
 	def from_json(cls, json:dict):
 		if isinstance(json, str):
@@ -85,9 +102,3 @@ class Email(Notifications):
 
 	def notify(self, data: dict | str, name:str, exception: Exception = None):
 		self.logger.error(f"Setup notifications through email.")
-
-
-notifiers:dict[str, Type[Notifications]] = {
-	"ntfy": NTFY,
-	"email": Email
-}

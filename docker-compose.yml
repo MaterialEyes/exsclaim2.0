@@ -157,6 +157,13 @@ services:
 #            api:
 #                condition: service_healthy
 
+    build_package:
+        build:
+            dockerfile: Dockerfile.build
+        image: exsclaim/build
+        volumes:
+            -   ./dist:/usr/src/dist
+
 
     pycharm:
         build:
