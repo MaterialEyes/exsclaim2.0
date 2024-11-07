@@ -139,7 +139,7 @@ class Pipeline:
         """
         self.logger.info(info)
 
-    def run(self, tools:list[ExsclaimTool]=None, figure_separator=True, caption_distributor=True, journal_scraper=True, html_scraper=True) -> dict:
+    async def run(self, tools:list[ExsclaimTool]=None, figure_separator=True, caption_distributor=True, journal_scraper=True, html_scraper=True) -> dict:
         """Run EXSCLAIM pipeline on Pipeline instance's query path
 
         Args:
@@ -216,7 +216,7 @@ class Pipeline:
 
             # run each ExsclaimTool on search query
             for tool in tools:
-                self.exsclaim_dict = tool.run(self.query_dict, self.exsclaim_dict)
+                self.exsclaim_dict = await tool.run(self.query_dict, self.exsclaim_dict)
 
             # group unassigned objects
             self.group_objects()

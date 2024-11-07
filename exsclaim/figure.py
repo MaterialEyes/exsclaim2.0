@@ -131,10 +131,10 @@ class FigureSeparator(ExsclaimTool):
         new_separated.add(figure.name)
         return exsclaim_json
 
-    def run(self, search_query, exsclaim_dict):
+    async def run(self, search_query, exsclaim_dict):
         """Run the models relevant to manipulating article figures"""
         self.exsclaim_json = exsclaim_dict
-        return self._run(search_query,
+        return await self._run(search_query,
                          exsclaim_dict,
                          "Figure Separator",
                          "_figures",

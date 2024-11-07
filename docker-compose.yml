@@ -164,11 +164,6 @@ services:
         volumes:
             -   ./dist:/usr/src/dist
 
-
-    pycharm:
-        build:
-            dockerfile: Dockerfile.pycharm
-
 networks:
     frontend:
     backend:

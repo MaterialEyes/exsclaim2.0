@@ -5,6 +5,7 @@ try:
 except ImportError:
 	__version__ = None
 from argparse import ArgumentParser
+from asyncio import run
 from atexit import register
 from json import load
 from os.path import splitext
@@ -75,7 +76,7 @@ def main(args=None):
 
 	pipeline = Pipeline(search_query)
 	try:
-		results = pipeline.run(**kwargs)
+		results = run(pipeline.run(**kwargs))
 
 		for handler in pipeline.logger.handlers:
 			handler.flush()

@@ -13,7 +13,7 @@
     },
     "llm": "gpt-3.5-turbo",
     "open": false,
-    "save_format": ["boxes", "save_subfigures", "postgres"],
+    "save_format": ["boxes", "save_subfigures"],
     "logging": ["print", "exsclaim.log"],
     "results_dir": "/opt/project/output"
 }

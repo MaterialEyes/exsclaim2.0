@@ -40,3 +40,47 @@ RUN ls -la /root/.nvm && \
     \. /root/.nvm/bash_completion && \
     nvm install v20.15.0 && \
     jupyter lab build
+
+FROM python:3.11.9-slim AS pycharm
+LABEL authors="Len Washington III"
+
+WORKDIR /usr/src/requirements
+
+COPY requirements.txt .
+COPY jupyter_requirements.txt .
+COPY dashboard/requirements.txt ./dash_requirements.txt
+COPY fastapi/requirements.txt ./fastapi_requirements.txt
+
+RUN apt update && apt install -y build-essential x11vnc xauth && \
+    touch ~/.xinitrc && chmod +x ~/.xinitrc && \
+    pip install pip==24.1 --root-user-action ignore --cache-dir /tmp/pip
+RUN --mount=type=cache,target=/tmp/pip \
+    pip install -r requirements.txt -r jupyter_requirements.txt -r dash_requirements.txt -r fastapi_requirements.txt \
+    --root-user-action ignore --cache-dir /tmp/pip
+ADD https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth /root/.cache/torch/hub/checkpoints/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth
+RUN playwright install-deps && playwright install chromium
+
+ENTRYPOINT ["xvfb-run", "python3"]
+
+FROM python:3.11.9-slim AS build
+
+WORKDIR /usr/src/app
+
+SHELL ["/bin/bash", "-c"]
+
+COPY . /usr/src/app
+COPY --from=exsclaim/ui/dashboard /usr/src/app/exsclaim_ui_components/exsclaim_ui_components /usr/src/app/exsclaim_ui_components
+
+RUN echo -en """ \n\
+recursive-include exsclaim_ui_components *.py\n\
+recursive-include exsclaim_ui_components *.js\n\
+recursive-include exsclaim_ui_components *.json\n\
+recursive-include exsclaim_ui_components *.map\n\
+recursive-include exsclaim_ui_components *.txt\n\
+""" >> MANIFEST.in
+
+RUN pip install --upgrade build
+RUN python -m build
+RUN chown -R 1000:1000 dist/
+
+CMD ["cp", "-avru", "/usr/src/app/dist", "/usr/src"]
