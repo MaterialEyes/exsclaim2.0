@@ -11,7 +11,7 @@ interchangeable.
 from .browser import ExsclaimBrowser
 from .caption import get_context, get_keywords, separate_captions
 from .figures import apply_mask
-from .journal import journals
+from .journal import journals, JournalFamily
 from .utilities import initialize_results_dir, PrinterFormatter
 
 from abc import ABC, abstractmethod
@@ -26,19 +26,37 @@ from pathlib import Path
 from PIL import Image
 from playwright.sync_api import Browser
 from re import search
-from time import time_ns as timer, time, sleep
-from typing import Iterable
+from time import perf_counter_ns as timer, time, sleep
+from typing import Callable, Iterable
 
+import asyncio
 import json
 import os
 import requests
-import shutil
 import shutil
 import cv2
 import numpy as np
 
 
 __all__ = ["ExsclaimTool", "JournalScraper", "HTMLScraper", "CaptionDistributor"]
+
+
+class ExsclaimLock(asyncio.Lock):
+	def __init__(self, output:Callable[[int], None]):
+		super().__init__()
+		self._counter = 0
+		self._output = output
+
+	def __len__(self):
+		return self._counter
+
+	async def __aenter__(self):
+		await super().__aenter__()
+
+	async def __aexit__(self, *args, **kwargs):
+		self._counter += 1
+		self._output(self._counter)
+		return await super().__aexit__(*args, **kwargs)
 
 
 class ExsclaimTool(ABC):
@@ -84,7 +102,7 @@ class ExsclaimTool(ABC):
 		if exsclaim_filename is None:
 			exsclaim_filename = self.results_directory / "exsclaim.json"
 		with open(exsclaim_filename, 'w', encoding="utf-8") as f:
-			dump(exsclaim_json, f, indent=3)
+			dump(exsclaim_json, f, indent=4)
 
 		if data is None and filename is None:
 			return
@@ -172,7 +190,7 @@ class ExsclaimTool(ABC):
 		return exsclaim_dict
 
 	@abstractmethod
-	def run(self, search_query:dict, exsclaim_json:dict):
+	async def run(self, search_query:dict, exsclaim_json:dict):
 		pass
 
 	def display_info(self, info):
@@ -227,9 +245,9 @@ class JournalScraper(ExsclaimTool):
 		journal_family_name = search_query["journal_family"]
 		if journal_family_name not in journals:
 			raise NameError(f"Journal family {journal_family_name} is not defined.")
-		async with journals[journal_family_name](search_query,
-												scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
-
+		async with journals[journal_family_name](
+				search_query, scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)
+		) as journal:
 			if exsclaim_json is None:
 				exsclaim_json = dict()
 
@@ -239,24 +257,26 @@ class JournalScraper(ExsclaimTool):
 
 			articles = await journal.get_article_extensions()
 			self.display_info(f"{articles=}")
+			lock = ExsclaimLock(lambda count: self.display_info(f">>> Articles scraped: ({count:,} of {len(articles):,})."))
 			# Extract figures, captions, and metadata from each article
-			counter = 1
-			for counter, article in enumerate(articles, start=1):
-				self.display_info(f">>> ({counter:,} of {len(articles):,}) Extracting figures from: {article.split('/')[-1]}")
-				try:
-					article_dict = await journal.get_article_figures(journal.domain + article)
-					exsclaim_json = self._update_exsclaim(exsclaim_json, article_dict)
-					self.new_articles_visited.add(article)
-				except Exception as e:
-					self.display_exception(e, article)
-				# Save to file every N iterations (to accommodate restart scenarios)
-				if counter % 1_000 == 0:
-					self._appendJSON(exsclaim_json)
+			coroutines = [self._get_article(journal, lock, article, exsclaim_json) for article in articles]
+			await asyncio.gather(*coroutines)
 
-			self._end_timer(f"{counter:,} articles")
+			self._end_timer(f"{len(articles):,} articles")
 
 			self._appendJSON(exsclaim_json)
 		return exsclaim_json
+
+	async def _get_article(self, journal:JournalFamily, lock:ExsclaimLock, article:str, exsclaim_json:dict):
+		self.display_info(f">>> Extracting figures from: {article.split('/')[-1]}")
+		try:
+			article_dict = await journal.get_article_figures(journal.domain + article)
+			# exsclaim_json = self._update_exsclaim(exsclaim_json, article_dict)
+			async with lock:
+				exsclaim_json.update(article_dict)
+				self.new_articles_visited.add(article)
+		except Exception as e:
+			self.display_exception(e, article)
 
 
 class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
@@ -268,10 +288,10 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 	None
 	"""
 
-	def __init__(self, search_query, browser:Browser=None, **kwargs): # provide the location with the folder with the html files
+	def __init__(self, search_query, **kwargs): # provide the location with the folder with the html files
 		kwargs.setdefault("logger_name", __name__ + ".HTMLScraper")
 		super().__init__(search_query, **kwargs)
-		ExsclaimBrowser.__init__(self, browser=browser)
+		ExsclaimBrowser.__init__(self)
 		# self.new_articles_visited = set()
 		self.search_query = search_query
 		self.open = search_query.get("open", False)
