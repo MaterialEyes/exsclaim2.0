@@ -12,7 +12,7 @@ from shutil import copy
 __all__ = ["initialize_database", "modify_database_configuration", "get_database_connection_string", "Database"]
 
 
-def get_database_connection_string(configuration_file:PathLike[str]=None, section:str= "Postgres") -> str:
+def get_database_connection_string(configuration_file:PathLike[str] = None, section:str = "Postgres") -> str:
     def get_value(environment_name:str, default_value:str, ini_params:dict[str, str], ini_name:str=None) -> str:
         value = getenv(environment_name, default_value)
         value = ini_params.get(ini_name, value)

@@ -4,6 +4,10 @@ import dash_bootstrap_components as dbc
 # import dash_material_components as dmc
 import exsclaim_ui_components as ui
 
+
+__all__ = ["app"]
+
+
 app = Dash("EXSCLAIM Dashboard", external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME])
 
 app.layout = html.Div(

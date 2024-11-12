@@ -2,8 +2,9 @@ name: exsclaim2
 
 services:
     base:
+        pull_policy: build
         build:
-            dockerfile: Dockerfile.exsclaim
+            context: .
             args:
                 - EXSCLAIM_GITHUB_REVISION=exsclaim2_for_spin
                 - UID=${UID}
@@ -55,8 +56,7 @@ services:
             - "8888:8888"
 
     postgres:
-        image: exsclaim/db
-        build: ./db
+        image: postgres:16.4-alpine
         env_file: .env
         ports:
             - "6543:$POSTGRES_PORT"
@@ -65,8 +65,23 @@ services:
                 aliases:
                     - db
                     - postgresql
+        environment:
+            - POSTGRES_USER=${POSTGRES_USER:-exsclaim}
+            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-exsclaimtest!9700}
+            - POSTGRES_DB=${POSTGRES_DB:-exsclaim}
+            - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+            - TZ=${TZ:-America/Chicago}
+            - PGTZ=${TZ}
         volumes:
             - ./sql-data:/var/lib/postgresql/data:Z
+            - ./db/setup:/docker-entrypoint-initdb.d:ro
+            - /etc/localtime:/etc/localtime:ro
+        healthcheck:
+            test: CMD /usr/bin/pg_isready -d $POSTGRES_DB -U $POSTGRES_USER -p $POSTGRES_PORT
+            interval: 5s
+            timeout: 60s
+            start_period: 10s
+            retries: 12
 
     api:
         restart: always
@@ -125,19 +140,19 @@ services:
             backend:
                 aliases:
                     - api
-        depends_on:
-            postgres:
-                condition: service_healthy
+#        depends_on:
+#            postgres:
+#                condition: service_healthy
 
     dashboard:
         build:
             context: ./dashboard
-#            target: node-base
             target: py-prod
             args:
                 - UID=${UID}
                 - GID=${GID}
                 - UNAME=${UNAME}
+        pull_policy: build
         env_file: .env
         image: exsclaim/ui/dashboard
         environment:
@@ -159,10 +174,12 @@ services:
 
     build_package:
         build:
-            dockerfile: Dockerfile.build
+            context: .
+            target: build
         image: exsclaim/build
         volumes:
             -   ./dist:/usr/src/dist
+
 
 networks:
     frontend:

@@ -1,44 +1,9 @@
-## Pull official image
-#FROM node:current-alpine AS appbuild
-#
-## set the working direction
-#WORKDIR /app
-#
-## install app dependencies
-#COPY package.json ./
-#COPY package-lock.json ./
-#
-#RUN npm install
-#
-#COPY . ./
-#
-#RUN npx browserslist@latest --update-db
-#RUN npm run build
-## The echo bypasses an error so the build doesn't stop
-#RUN npm audit fix || echo
-#
-#FROM node:current-alpine AS prod
-#
-#WORKDIR /app
-#
-#ENV PATH /app/node_modules/.bin:$PATH
-#
-#COPY package.json ./
-#RUN npm install
-#
-#CMD ["npm", "start"]
-#
-#COPY --from=appbuild /app/build ./build
-#COPY --from=appbuild /app/node_modules ./node_modules
-
 FROM python:3.11.9 AS py-base
-
 LABEL authors="Len Washington III"
 
 WORKDIR /usr/src/app
 
-COPY requirements.txt ./
-COPY ./dashboard/main.py ./
+COPY requirements.txt ./dashboard/__init__.py ./dashboard/__main__.py ./
 
 RUN pip install -r requirements.txt
 RUN python3 -m cookiecutter https://github.com/plotly/dash-component-boilerplate.git --no-input \
@@ -75,7 +40,7 @@ RUN npm install react-docgen
 RUN dash-generate-components ./src/lib/components exsclaim_ui_components -p package-info.json
 RUN npm run build:js
 
-FROM python:3.11.9 AS py-prod
+FROM python:3.11.9-slim AS py-prod
 
 ENV PORT=8080
 ENV DEBUG=true

@@ -5,3 +5,5 @@ out
 gen
 
 *.html
+
+**/exsclaim.egg-info

@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import Response, FileResponse, JSONResponse
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
+from gunicorn.app.base import BaseApplication
 from io import BytesIO
 from json import dump, dumps
 from os import listdir, mkdir, getenv
@@ -25,6 +26,9 @@ from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
 from typing import Literal, Type
 from uuid import UUID
+
+
+__all__ = ["app", "StandaloneApplication"]
 
 
 DJANGO_COMPATIBILITY = "Django API Backwards Compatibility"
@@ -89,11 +93,24 @@ def flush_logger():
 
 app = FastAPI(title="Exsclaim API", docs_url=None, redoc_url=None, on_shutdown=[flush_logger])
 app.openapi = my_schema
+app.configuration_ini = None
 for _dir in ("results", "logs"):
 	path = Path("/exsclaim") / _dir
 	path.mkdir(exist_ok=True, parents=True)
 logger = get_logger()
 _EXAMPLE_UUID = UUID("fd70dd4b-1043-4650-aa11-9f55dc2e2c2b")
+
+
+class StandaloneApplication(BaseApplication):
+	def __init__(self, application, **kwargs):
+		self.application = application
+		super().__init__()
+		self.config = kwargs
+
+	def load_config(self):
+		for key, value in self.config.items():
+			if key in self.cfg.settings and value is not None:
+				self.cfg.set(key.lower(), value)
 
 
 @app.get("/", include_in_schema=False)
@@ -210,7 +227,7 @@ def get_dark_ui(map_file:bool=False) -> Response:
 			 },
 		 })
 def healthcheck(request:Request) -> Response:
-	db_url = get_database_connection_string()
+	db_url = get_database_connection_string(app.configuration_ini)
 	try:
 		db = connect(db_url)
 		cursor = db.cursor()
@@ -258,7 +275,7 @@ def run_exsclaim(_id:UUID, search_query_location:Path):
 	except Exception as e:
 		logging.getLogger(f"run_exsclaim_{_id}").exception(e)
 
-	with connect(get_database_connection_string()) as db:
+	with connect(get_database_connection_string(app.configuration_ini)) as db:
 		cursor = db.cursor()
 		cursor.execute("UPDATE results SET status = %s, end_time = NOW() WHERE id = %s", (db_result, _id))
 		db.commit()
@@ -349,7 +366,7 @@ def run_exsclaim(_id:UUID, search_query_location:Path):
 def query(request:Request, search_query: Query, background_tasks:BackgroundTasks) -> Response:
 	send_json = request.headers.get("accept", "") == "application/json"
 	try:
-		with connect(get_database_connection_string()) as db:
+		with connect(get_database_connection_string(app.configuration_ini)) as db:
 			cursor = db.cursor()
 			cursor.execute("SELECT uuid_generate_v4() AS uuid;")
 			uuid = cursor.fetchone()[0]
@@ -571,7 +588,7 @@ def status(result_id: str | UUID) -> JSONResponse:
 		return JSONResponse({"status": None, "message": str(e)}, status_code=422, media_type="application/json")
 
 	try:
-		with connect(get_database_connection_string()) as db:
+		with connect(get_database_connection_string(app.configuration_ini)) as db:
 			cursor = db.cursor()
 			cursor.execute("SELECT status, start_time, end_time FROM results WHERE id = %s", (result_id,))
 			results = cursor.fetchone()
@@ -700,7 +717,7 @@ def download(request:Request, result_id:UUID, compression:str="default", filenam
 			else:
 				compression = "zip"
 
-	with connect(get_database_connection_string()) as db:
+	with connect(get_database_connection_string(app.configuration_ini)) as db:
 		cursor = db.cursor()
 		cursor.execute("SELECT status FROM results WHERE id = %s", (result_id,))
 		results = cursor.fetchone()
@@ -864,7 +881,7 @@ def get_items_responses(_type:str, description_word:str, example):
 
 
 def get_items(_type:Type[BaseModel], table:str, header_str:str) -> JSONResponse:
-	with connect(get_database_connection_string()) as db:
+	with connect(get_database_connection_string(app.configuration_ini)) as db:
 		cursor = db.cursor(row_factory=class_row(_type))
 		cursor.execute(f"SELECT * FROM results.{table}")
 		results = cursor.fetchall()
@@ -954,7 +971,7 @@ def articles() -> JSONResponse:
 			 },
 		 })
 def article(id:str):
-	with connect(get_database_connection_string()) as db:
+	with connect(get_database_connection_string(app.configuration_ini)) as db:
 		cursor = db.cursor(row_factory=class_row(Article))
 		cursor.execute("SELECT * FROM results.article WHERE id = %s", (id,))
 		result = cursor.fetchone()
