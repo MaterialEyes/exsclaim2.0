@@ -1,6 +1,6 @@
 [project]
 name = "exsclaim"
-version = "2.1.1b4"
+version = "2.2.0b1"
 description = "EXSCLAIM! is a library for the automatic EXtraction, Separation, and Caption-based natural Language Annotation of IMages from scientific figures."
 authors = [
     { name = "Eric Schwenker, Trevor Spreadbury, Weixin Jiang, Maria Chan, Len Washington III", email = "developer@materialeyes.org" }
@@ -46,8 +46,3 @@ include-package-data = true
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt", "fastapi/requirements.txt", "dashboard/requirements.txt"] }
-
-#[tool.setuptools.packages.find]
-#include = [
-
-#]

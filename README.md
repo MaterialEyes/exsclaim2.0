@@ -23,6 +23,7 @@ We provide several tutorials demonstrating how to use EXSCLAIM2.0:
 
 ## Installation
 The guides to install EXSCLAIM through Pip, Git and Docker can be found within the [wiki](https://github.com/MaterialEyes/exsclaim2.0/wiki/Installation).
+The guides include installing pre-compiled versions as well as building from the source code and then installing.
 
 ### Using Exsclaim 2.0
 ```python
