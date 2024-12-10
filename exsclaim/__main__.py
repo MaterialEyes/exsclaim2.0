@@ -133,7 +133,7 @@ def main(args=None):
 		case "query":
 			run_pipeline(**args)
 		case "view":
-			dashboard(args)
+			dashboard(**args)
 		case "train":
 			...
 

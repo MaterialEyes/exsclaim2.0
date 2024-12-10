@@ -13,7 +13,9 @@ build/venv: create_directory
 build/exsclaim: create_directory
 	cp -avru exsclaim build/exsclaim
 	cp -avru requirements.txt setup.py pyproject.toml LICENSE README.md MANIFEST.in build
-
+	cp -avru fastapi/requirements.txt build/fastapi_requirements.txt
+	cp -avru dashboard/requirements.txt build/dashboard_requirements.txt
+	printf "\ninclude requirements.txt\ninclude fastapi_requirements.txt\ninclude dashboard_requirements.txt\n" >> MANIFEST.in
 	cp -avru fastapi/api build/exsclaim/api
 
 
@@ -26,10 +28,10 @@ build/exsclaim_ui_components: build/exsclaim build/venv
                  author_email=developer@materialeyes.org \
                  github_org=MaterialEyes \
                  description="A UI for EXSCLAIM" \
-                 use_async=False \
+                 use_async=True \
                  license="MIT License" \
-                 publish_on_npm=false \
-                 install_dependencies=true
+                 publish_on_npm=False \
+                 install_dependencies=False
 	cp -avru dashboard/package.json build/exsclaim_ui_components
 	npm install ./build/exsclaim_ui_components
 	mkdir -p build/exsclaim_ui_components/src/lib
@@ -38,22 +40,25 @@ build/exsclaim_ui_components: build/exsclaim build/venv
 	cp -avru dashboard/src/index.js build/exsclaim_ui_components/src/lib/index.js
 	cp -avru dashboard/src/webpack.config.js build/exsclaim_ui_components
 	npm install react-docgen@5.4.3
-	$(dash_generate_components) build/exsclaim_ui_components/src/lib/components build/exsclaim_ui_components/exsclaim_ui_components -p package-info.json
 	npm run build:js --prefix=build/exsclaim_ui_components
+	cd build/exsclaim_ui_components ; npm run build:js ; \
+		/usr/src/app/build/venv/bin/dash-generate-components ./src/lib/components exsclaim_ui_components -p package-info.json
+
 
 build/exsclaim/dashboard: build/exsclaim_ui_components
 	cp -avr dashboard/dashboard build/exsclaim/dashboard
 	cp -avr build/exsclaim_ui_components/exsclaim_ui_components build/exsclaim/dashboard/exsclaim_ui_components
+	sed -i 's/import exsclaim_ui_components/import exsclaim.dashboard.exsclaim_ui_components/g' ./build/exsclaim/dashboard/__main__.py
 
 build/exsclaim/__init__.py: build/exsclaim/dashboard
 	cat build/exsclaim_ui_components/MANIFEST.in >> build/MANIFEST.in
 	sed -i 's/fastapi\/api/exsclaim\/api/g' build/MANIFEST.in
 	sed -i 's/dashboard\/dashboard/exsclaim\/dashboard/g' build/MANIFEST.in
 	sed -i 's/exsclaim_ui_components/exsclaim\/dashboard\/exsclaim_ui_components/g' build/MANIFEST.in
-	sed -i 's/fastapi\//exsclaim\/api\//g' build/pyproject.toml
-	sed -i 's/dashboard\//exsclaim\/dashboard\//g' build/pyproject.toml
 	sed -i 's/fastapi\.api/exsclaim\.api/g' build/pyproject.toml
 	sed -i 's/dashboard\.dashboard/exsclaim\.dashboard/g' build/pyproject.toml
+	sed -i 's/fastapi\/requirements/fastapi_requirements/g' build/pyproject.toml
+	sed -i 's/dashboard\/requirements/dashboard_requirements/g' build/pyproject.toml
 	printf "\n\nfrom .api import *\nfrom .dashboard import *\n" >> build/exsclaim/__init__.py
 	printf "\nfrom .exsclaim_ui_components import *\n" >> build/exsclaim/dashboard/__init__.py
 
