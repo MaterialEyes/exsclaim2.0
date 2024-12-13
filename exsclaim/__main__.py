@@ -9,7 +9,7 @@ from asyncio import run
 from atexit import register
 from json import load
 from os import PathLike
-from os.path import splitext
+from os.path import splitext, isfile
 from pathlib import Path
 
 
@@ -76,28 +76,22 @@ def run_pipeline(query=None, verbose:bool=False, compress:str=None, compress_loc
 	return 0
 
 
-def dashboard(configuration:PathLike[str]=None, port:str=None, fastapi_port:str=None, **kwargs):
-	from .dashboard import app as dashboard
-	from .api import app as fastapi, StandaloneApplication
-	from threading import Thread
+def dashboard(dashboard_configuration:PathLike[str]=None, api_configuration:PathLike[str]=None):
+	from subprocess import Popen
 
-	fastapi.configuration_ini = configuration
-	port = port or "8000"
-	fastapi_port = fastapi_port or "3000"
+	current_directory = Path(__file__).parent
 
-	fastapi_app = StandaloneApplication(fastapi, bind=f"127.0.0.1:{fastapi_port}")
-	dashboard_app = StandaloneApplication(dashboard, bind=f"127.0.0.1:{port}")
+	api_configuration = api_configuration or str(current_directory / "api" / "config.py")
+	dashboard_configuration = dashboard_configuration or str(current_directory / "dashboard" / "config.py")
 
-	threads = [
-		Thread(target=lambda app: app.run(), args=(fastapi_app,)),
-		Thread(target=lambda app: app.run(), args=(dashboard_app,)),
-	]
+	if not isfile(api_configuration):
+		raise ValueError(f"The api configuration file \"{api_configuration}\" does not exist.")
 
-	for thread in threads:
-		thread.start()
+	if not isfile(dashboard_configuration):
+		raise ValueError(f"The dashboard configuration file \"{dashboard_configuration}\" does not exist.")
 
-	for thread in threads:
-		thread.join()
+	Popen(["gunicorn", "exsclaim.api:app", "-c", api_configuration])
+	Popen(["gunicorn", "exsclaim.dashboard:server", "-c", dashboard_configuration])
 
 
 def main(args=None):
@@ -120,9 +114,8 @@ def main(args=None):
 	query_subparser.add_argument("--verbose", "-v", action="store_true")
 
 	view_subparser = subparsers.add_parser("view", help="View search results from EXSCLAIM!")
-	view_subparser.add_argument("-c", "--configuration", help="The path to the ini configuration file.")
-	view_subparser.add_argument("-p", "--port", help="The port for the dashboard.")
-	view_subparser.add_argument("-fp", "--fastapi_port", help="The port for the API.")
+	view_subparser.add_argument("-dc", "--dashboard_configuration", help="The path to the gunicorn configuration file for the dashboard. Example at https://github.com/benoitc/gunicorn/blob/bacbf8aa5152b94e44aa5d2a94aeaf0318a85248/examples/example_config.py")
+	view_subparser.add_argument("-ac", "--api_configuration", help="The path to the gunicorn configuration file for the api.")
 
 	args = vars(parser.parse_args(args))
 
@@ -133,6 +126,7 @@ def main(args=None):
 		case "query":
 			run_pipeline(**args)
 		case "view":
+			del args["command"]
 			dashboard(**args)
 		case "train":
 			...

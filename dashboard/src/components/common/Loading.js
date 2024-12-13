@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Typography, CircularProgress, Stack } from '@mui/material';
+import PropTypes from 'prop-types';
 
 // The loading page that appears when UI is getting and posting information from the API
 
@@ -15,7 +16,6 @@ const loadingDefault = {
 }
 
 const Loading = () => {
-    
   return (
     <Box sx={loadingDefault} display="flex">
       <Stack alignItems="center"> 
@@ -25,5 +25,7 @@ const Loading = () => {
      </Box>
   )
 }
-        
+
+Loading.propTypes = {}
+
 export default Loading;

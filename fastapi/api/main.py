@@ -10,7 +10,6 @@ from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import Response, FileResponse, JSONResponse
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
-from gunicorn.app.base import BaseApplication
 from io import BytesIO
 from json import dump, dumps
 from os import listdir, mkdir, getenv
@@ -28,7 +27,7 @@ from typing import Literal, Type
 from uuid import UUID
 
 
-__all__ = ["app", "StandaloneApplication"]
+__all__ = ["app"]
 
 
 DJANGO_COMPATIBILITY = "Django API Backwards Compatibility"
@@ -99,18 +98,6 @@ for _dir in ("results", "logs"):
 	path.mkdir(exist_ok=True, parents=True)
 logger = get_logger()
 _EXAMPLE_UUID = UUID("fd70dd4b-1043-4650-aa11-9f55dc2e2c2b")
-
-
-class StandaloneApplication(BaseApplication):
-	def __init__(self, application, **kwargs):
-		self.application = application
-		super().__init__()
-		self.config = kwargs
-
-	def load_config(self):
-		for key, value in self.config.items():
-			if key in self.cfg.settings and value is not None:
-				self.cfg.set(key.lower(), value)
 
 
 @app.get("/", include_in_schema=False)

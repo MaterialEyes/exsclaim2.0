@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Button } from '@mui/material';
+import PropTypes from 'prop-types';
 
 // Submits the user query to the API, which then runs EXSCLAIM. After the subfigure results are loaded, 
 // the user is taken to the results page (Layout.js)
@@ -25,7 +26,7 @@ const InputButton = (props) => {
 
     // POST user input to API
     fetch(`${process.env.FAST_API_URL}/query`, {
-      method: 'POST', 
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         "Accept": "application/json"
@@ -35,12 +36,26 @@ const InputButton = (props) => {
 
     props.setLoadResults(true);
   }
-  
+
   return (
     <Box sx={{ padding: 1 }}>
       <Button sx={{ width: 200}} variant="contained" onClick={submitQuery}>Submit</Button>
     </Box>
   )
 }
-      
+
+InputButton.defaultProps = {};
+InputButton.propTypes = {
+  outputName: PropTypes.string,
+  journalFamily: PropTypes.string,
+  numArticles: PropTypes.number,
+  sort: PropTypes.string,
+  term: PropTypes.string,
+  synonyms: PropTypes.string,
+  access: PropTypes.bool,
+  model: PropTypes.string,
+  modelKey: PropTypes.string,
+  setLoadResults: PropTypes.func
+}
+
 export default InputButton;

@@ -1,10 +1,10 @@
 import React from 'react';
 import { Box, Stack, Typography, FormControlLabel, FormGroup, Radio, RadioGroup } from '@mui/material';
+import PropTypes from 'prop-types';
 
 // Gets the type of sort that EXSCLAIM will use
 
 const SortBy = (props) => {
-    
   return (
     <Box sx={{ padding: 1 }}>
       <Stack direction="row" spacing={2}>
@@ -25,6 +25,10 @@ const SortBy = (props) => {
       </Stack>
     </Box>
   )
+}
+
+SortBy.propTypes = {
+    sort: PropTypes.string
 }
         
 export default SortBy;

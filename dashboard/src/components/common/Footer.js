@@ -24,7 +24,8 @@ const Footer = ({anl_logo}) => {
           <Stack>
             {/* some links pertaining to EXSCLAIM */}
             <Typography variant="h6" sx={{ fontWeight: "bold" }}>More Info</Typography>
-            <Link href="https://github.com/MaterialEyes/exsclaim2.0" underline="hover"> EXSCLAIM GitHub Page</Link>
+            <Link href="https://github.com/MaterialEyes/exsclaim2.0" underline="hover">EXSCLAIM GitHub Page</Link>
+            <Link href="https://github.com/MaterialEyes/exsclaim-ui" underline="hover">EXSCLAIM UI GitHub Page</Link>
             <Link href="https://arxiv.org/abs/2103.10631" underline="hover">EXSCLAIM Paper</Link>
           </Stack>
         </Grid>

@@ -7,6 +7,7 @@ import Header from './common/Header'
 import Layout from './common/Layout';
 import Query from './common/Query';
 import Footer from './common/Footer';
+import PropTypes from 'prop-types';
 
 /*
  * Layout of app should be:
@@ -30,6 +31,10 @@ function App() {
       <Footer />
     </div>
   );
+}
+
+App.propTypes = {
+    loadResults: PropTypes.bool
 }
 
 export default App;

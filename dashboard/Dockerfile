@@ -40,6 +40,8 @@ RUN npm install react-docgen
 RUN dash-generate-components ./src/lib/components exsclaim_ui_components -p package-info.json
 RUN npm run build:js
 
+ENTRYPOINT ["npm", "start"]
+
 FROM python:3.11.9-slim AS py-prod
 
 ENV PORT=8080
@@ -58,4 +60,4 @@ COPY --from=node-base /usr/src/app/exsclaim_ui_components/exsclaim_ui_components
 
 RUN pip install ./exsclaim_ui_components
 
-ENTRYPOINT ["python3", "main.py"]
+ENTRYPOINT ["python3", "__main__.py"]
