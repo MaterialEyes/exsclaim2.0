@@ -1,4 +1,4 @@
-fastapi==0.115.4
+fastapi[standard]==0.115.6
 pydantic>=2.7.0,<3.0.0
 gunicorn==23.0.0
 uvicorn==0.32.0

@@ -140,10 +140,10 @@ class Query(models.Model):
         choices=JOURNAL_CHOICES
     )
     maximum_scraped = models.IntegerField(null=True)
-    REVELANT = "relevant"
+    RELEVANT = "relevant"
     RECENT = "recent"
     SORT_CHOICES = [
-        (REVELANT, "relevant"),
+        (RELEVANT, "relevant"),
         (RECENT, "recent")
     ]
     sortby = models.CharField(

@@ -1,4 +1,3 @@
-import React from 'react';
 import { useState, useEffect } from 'react';
 import ImagesPage from '../results/ImagesPage';
 import SearchPage from '../search/SearchPage';
@@ -6,9 +5,6 @@ import { Box, Grid, Paper, styled } from '@mui/material';
 import { fetchArticles, fetchSubFigures, fetchFigures } from '../../services/ApiClient';
 import Loading from './Loading';
 import PropTypes from 'prop-types';
-import Header from "./Header.js";
-
-// One big container containing the UI results page. It is divided into two parts: left side menu, right side figures
 
 // a blue-colored header box
 const HeaderBox = styled(Paper)(({ theme }) => ({
@@ -29,6 +25,9 @@ const boxDefault = {
 	m: 2
 }
 
+/**
+ * One big container containing the UI results page. It is divided into two parts: left side menu, right side figures.
+ */
 const Layout = (props) => {
 
 	const [articles, setArticles] = useState([]); // set all articles
@@ -80,13 +79,14 @@ const Layout = (props) => {
 
 	// get articles from API
 	const getArticles = async () => {
-		const articlesFromServer = await fetchArticles()
-		setArticles(articlesFromServer)
+		const articlesJson = await fetchArticles(props.fast_api_url);
+		const articlesFromServer = articlesJson["results"];
+		setArticles(articlesFromServer);
 	}
 
 	// get subfigures from API
 	const getSubFigures = async (page) => {
-		const subFiguresJson = await fetchSubFigures(page);
+		const subFiguresJson = await fetchSubFigures(props.fast_api_url, page);
 		const data = subFiguresJson["results"];
 
 		setSubFigures(oldArray => [...oldArray, ...data]);
@@ -101,7 +101,7 @@ const Layout = (props) => {
 
 	// get figures from API
 	const getFigures = async (page) => {
-		const figuresJson = await fetchFigures(page);
+		const figuresJson = await fetchFigures(props.fast_api_url, page);
 		const data = figuresJson["results"];
 		setFigures(oldArray => [...oldArray, ...data]);
 
@@ -116,15 +116,15 @@ const Layout = (props) => {
 	useEffect(() => {
 		getArticles();
 		setArticlesLoaded(true);
-	}, [])
+	}, []);
 
 	useEffect(() => {
 		getSubFigures(subFigurePage);
-	}, [subFigurePage])
+	}, [subFigurePage]);
 
 	useEffect(() => {
 		getFigures(figurePage);
-	}, [figurePage])
+	}, [figurePage]);
 
 	// return a loading screen if API is still running, return menu and subfigures once loading is done
 	return (
@@ -140,7 +140,7 @@ const Layout = (props) => {
 						<Grid item xs={8}>
 							<HeaderBox>Figure Results</HeaderBox>
 						</Grid>
-
+						{/* TODO: Add a box with the results ID that can be edited and check different results*/}
 						<Grid item xs={4}>
 							{/* left-hand side menu */}
 							<SearchPage
@@ -163,9 +163,22 @@ const Layout = (props) => {
 }
 
 Layout.propTypes = {
+	/**
+	 * The id of the layout.
+	 */
+	id: PropTypes.string,
+	/**
+	 * If the results page should be loaded (true) or the query page (false).
+	 */
 	loadResults: PropTypes.bool,
+	/**
+	 * The ID for the results that were submitted from the Query page.
+	 */
+	queryResultsId: PropTypes.string,
+	/**
+	 * The setter for the loadResults variable.
+	 */
 	setLoadResults: PropTypes.func,
-	id: PropTypes.string
 }
 
 Layout.defaultProps = {

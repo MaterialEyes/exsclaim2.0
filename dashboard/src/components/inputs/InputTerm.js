@@ -2,8 +2,9 @@ import React from 'react';
 import { Box, Stack, Typography, TextField } from '@mui/material';
 import PropTypes from 'prop-types';
 
-// Gets the main search term to be used in EXSCLAIM
-
+/**
+ * Gets the main search term to be used in EXSCLAIM
+ */
 const InputTerm = (props) => {
 
 	return (
@@ -25,6 +26,9 @@ const InputTerm = (props) => {
 }
 
 InputTerm.propTypes = {
+	/**
+	 * The input term to search for.
+	 */
 	term: PropTypes.string
 }
 

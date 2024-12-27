@@ -2,8 +2,9 @@ import React from 'react';
 import { Box, Stack, Typography, Autocomplete, TextField } from '@mui/material';
 import PropTypes from 'prop-types';
 
-// Gets the alternative search terms (synonyms) to be used in EXSCLAIM
-
+/**
+ * Gets the alternative search terms (synonyms) to be used in EXSCLAIM!
+ */
 const InputSynonyms = (props) => {
 
 	return (
@@ -25,7 +26,7 @@ const InputSynonyms = (props) => {
 					)}
 					sx={{ width: 300, minHeight: 50 }}
 					onChange={(event, values) => {
-						props.setSynonyms(values);
+						props.setSynonyms(values.split(","));
 					}}
 				/>
 			</Stack>
@@ -34,7 +35,10 @@ const InputSynonyms = (props) => {
 }
 
 InputSynonyms.propTypes = {
-	synonyms: PropTypes.string
+	/**
+	 * Any synonyms that are related to the search term.
+	 */
+	synonyms: PropTypes.arrayOf(PropTypes.string)
 }
 
 export default InputSynonyms;

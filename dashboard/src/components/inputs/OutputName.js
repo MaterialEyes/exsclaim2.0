@@ -2,8 +2,9 @@ import React from 'react';
 import { Box, Stack, Typography, TextField } from '@mui/material';
 import PropTypes from 'prop-types';
 
-// Handles and gets the output EXSCLAIM file name inputted by the user
-
+/**
+ * Handles and gets the output EXSCLAIM file name inputted by the user.
+ */
 const OutputName = (props) => {
 	return (
 		<Box sx={{ padding: 1 }}>
@@ -24,6 +25,9 @@ const OutputName = (props) => {
 }
 
 OutputName.propTypes = {
+	/**
+	 * The name of the search's output.
+	 */
 	outputName: PropTypes.string
 }
 

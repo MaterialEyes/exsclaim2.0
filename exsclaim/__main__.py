@@ -124,7 +124,7 @@ def main(args=None):
 			install_dependencies()
 			exit(0)
 		case "query":
-			run_pipeline(**args)
+			return(run_pipeline(**args))
 		case "view":
 			del args["command"]
 			dashboard(**args)

@@ -5,11 +5,7 @@ import Classification from './Classification';
 import License from './License';
 import Scale from './Scale';
 import Submit from './Submit';
-
-// This page comes second in importance. The main idea is
-// to create an html form to mimic an exsclaim query json
-// to send a post request to the api that will initiate
-// a run of the pipeline
+import PropTypes from 'prop-types';
 
 // The left-hand side menu in the results page
 
@@ -23,6 +19,10 @@ const SubHeaderBox = styled(Paper)(({ theme }) => ({
   color: '#fff',
 }));
 
+/**
+ * This page comes second in importance.
+ * The main idea is to create an html form to mimic an exsclaim query json to send a post request to the api that will initiate a run of the pipeline
+ */
 const SearchPage = (props) => {
   return (
     <Box sx={{ width: '100%' }}>
@@ -52,5 +52,7 @@ const SearchPage = (props) => {
     </Box>
   )
 }
+
+SearchPage.propTypes = {}
 
 export default SearchPage;

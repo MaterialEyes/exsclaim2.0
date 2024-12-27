@@ -4,3 +4,4 @@ dash_bootstrap_components==1.6.0
 sd_material_ui==4.6.0
 #dash-material-components==2.0.3
 cookiecutter==2.6.0
+gunicorn==23.0.0

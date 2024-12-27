@@ -1,5 +1,5 @@
 py = $(shell python3 -c "from sys import executable as ex; print(ex)" || python -c "from sys import executable as ex; print(ex)")
-python = ./build/venv/bin/python
+python = $(shell pwd)/build/venv/bin/python
 pip = $(python) -m pip
 dash_generate_components = $(shell pwd)/build/venv/bin/dash-generate-components
 
@@ -19,39 +19,41 @@ build/exsclaim: build/create_directory
 	cp -avru fastapi/api build/exsclaim/api
 
 
-build/exsclaim_ui_components: build/exsclaim build/venv
+build/app: build/exsclaim build/venv
+	mkdir build/app
 	$(python) -m pip install -r ./dashboard/requirements.txt
-	$(python) -m cookiecutter https://github.com/plotly/dash-component-boilerplate.git --no-input \
- 				--output-dir ./build \
-                 project_name="EXSCLAIM UI Components" \
+	cd build/app ; $(python) -m cookiecutter https://github.com/plotly/dash-component-boilerplate.git --no-input \
+ 				 project_name="EXSCLAIM UI Components" \
                  author_name="Material Eyes" \
                  author_email=developer@materialeyes.org \
                  github_org=MaterialEyes \
                  description="A UI for EXSCLAIM" \
-                 use_async=True \
+                 use_async=False \
                  license="MIT License" \
                  publish_on_npm=False \
                  install_dependencies=False
-	cp -avru dashboard/package.json build/exsclaim_ui_components
-	npm install ./build/exsclaim_ui_components
-	mkdir -p build/exsclaim_ui_components/src/lib
-	cp -avru dashboard/src/components build/exsclaim_ui_components/src/lib/components
-	cp -avru dashboard/src/services build/exsclaim_ui_components/src/lib/services
-	cp -avru dashboard/src/index.js build/exsclaim_ui_components/src/lib/index.js
-	cp -avru dashboard/src/webpack.config.js build/exsclaim_ui_components
-	npm install react-docgen@5.4.3
-	npm run build:js --prefix=build/exsclaim_ui_components
-	cd build/exsclaim_ui_components ; npm run build:js ; \
-		$(dash_generate_components) ./src/lib/components exsclaim_ui_components -p package-info.json
+	cp -avru dashboard/package.json build/app
+	cd build/app ; npm install
+	mkdir -p build/app/exsclaim_ui_components/src/lib
+	cp -avru dashboard/src/components build/app/exsclaim_ui_components/src/lib/components
+	cp -avru dashboard/src/services build/app/exsclaim_ui_components/src/lib/services
+	cp -avru dashboard/src/index.js build/app/exsclaim_ui_components/src/lib/index.js
+	cp -avru dashboard/src/webpack.config.js build/app/exsclaim_ui_components
+	#npm run build:js --prefix=build/exsclaim_ui_components
+	cd build/app/exsclaim_ui_components ; \
+		npm install react-docgen ; \
+		$(dash_generate_components) ./src/lib/components exsclaim_ui_components -p package-info.json ; \
+		npm run build:js
 
 
-build/exsclaim/dashboard: build/exsclaim_ui_components
+build/exsclaim/dashboard: build/app
 	cp -avr dashboard/dashboard build/exsclaim/dashboard
-	cp -avr build/exsclaim_ui_components/exsclaim_ui_components build/exsclaim/dashboard
-	sed -i 's/include /include exsclaim\/dashboard\//g' build/exsclaim_ui_components/MANIFEST.in
+	cp -avr build/app/exsclaim_ui_components/exsclaim_ui_components build/exsclaim/dashboard
+	sed -i 's/include /include exsclaim\/dashboard\//g' build/app/exsclaim_ui_components/MANIFEST.in
+
 
 build/exsclaim/__init__.py: build/exsclaim/dashboard
-	cat build/exsclaim_ui_components/MANIFEST.in >> build/MANIFEST.in
+	cat build/app/exsclaim_ui_components/MANIFEST.in >> build/MANIFEST.in
 	sed -i 's/fastapi\/api/exsclaim\/api/g' build/MANIFEST.in
 	sed -i 's/dashboard\/dashboard/exsclaim\/dashboard/g' build/MANIFEST.in
 	sed -i 's/fastapi\.api/exsclaim\.api/g' build/pyproject.toml

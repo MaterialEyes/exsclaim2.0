@@ -77,11 +77,11 @@ services:
             - ./db/setup:/docker-entrypoint-initdb.d:ro
             - /etc/localtime:/etc/localtime:ro
         healthcheck:
-            test: CMD /usr/bin/pg_isready -d $POSTGRES_DB -U $POSTGRES_USER -p $POSTGRES_PORT
-            interval: 5s
-            timeout: 60s
-            start_period: 10s
-            retries: 12
+            test: ["CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p ${POSTGRES_PORT} && exit 0 || exit 1'"]
+            interval: 6s
+            timeout: 4s
+            start_period: 6s
+            retries: 6
 
     api:
         restart: always
@@ -132,7 +132,7 @@ services:
             - ./logs:/exsclaim/logs
             - ./output:/exsclaim/results
         ports:
-            - "80:${FASTAPI_PORT}"
+            - "81:${FASTAPI_PORT}"
         networks:
             frontend:
                 aliases:
@@ -140,9 +140,9 @@ services:
             backend:
                 aliases:
                     - api
-#        depends_on:
-#            postgres:
-#                condition: service_healthy
+        depends_on:
+            postgres:
+                condition: service_healthy
 
     dashboard:
         build:
@@ -157,8 +157,7 @@ services:
         image: exsclaim/ui/dashboard
         environment:
             - PORT=3000
-            - POSTGRES_PORT=${POSTGRES_PORT}
-            - FAST_API_URL=http://api:${FASTAPI_PORT}
+            - FAST_API_URL=http://localhost:81
         ports:
             - "3000:3000"
         networks:
@@ -166,9 +165,9 @@ services:
             - backend
 ##        volumes:
 ##            - "./dashboard:/usr/src/app"
-#        depends_on:
-#            fastapi:
-#                condition: service_healthy
+        depends_on:
+            fastapi:
+                condition: service_healthy
 #            api:
 #                condition: service_healthy
 
@@ -179,6 +178,18 @@ services:
         image: exsclaim/build
         volumes:
             -   ./dist:/usr/src/dist
+
+    make:
+        image: python:3.12.5-slim
+        ports:
+            - "8000:8000"
+            - "3000:3000"
+        volumes:
+            - ./:/usr/src/app
+            - /argonne/tmp:/tmp/pip
+        container_name: exsclaim
+        working_dir: /usr/src/app
+        command: /bin/bash
 
 
 networks:

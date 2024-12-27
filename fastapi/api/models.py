@@ -50,7 +50,6 @@ class Article(BaseModel):
 	url: Annotated[str, FastPath(title="The url to reach the article.")]
 	license: Annotated[str, FastPath(title="The article's license type.")]
 	open: Annotated[bool, FastPath(title="If the article is open access.")] = False
-	# TODO: Test if the authors are properly being scraped now.
 	authors: Annotated[str | None, FastPath(title="The authors of the article.")] = None
 	abstract: Annotated[str | None, FastPath(title="The abstract for the article.")] = None
 
@@ -58,7 +57,7 @@ class Article(BaseModel):
 class Figure(BaseModel):
 	# TODO: Check if these descriptions are accurate
 	id: Annotated[str, FastPath(title="The id of the figure. Typically, its the id of the article that the figure came from followed by the images number within the article.")]
-	caption: Annotated[str, FastPath(title="The caption of the figure.")]
+	caption: Annotated[str, FastPath(title="The caption of the figure.")] = None
 	caption_delimiter: str | None = None
 	url: Annotated[str, FastPath(title="The url to reach the raw figure.")]
 	figure_path: Annotated[str, FastPath(title="The path to the ")]
@@ -69,13 +68,13 @@ class Subfigure(BaseModel):
 	id: str
 	classification_code: Literal["MC", "DF", "GR", "PH", "IL", "UN", "PT"]
 	height: float | None = None
-	weight: float | None = None
+	width: float | None = None
 	nm_height: float | None = None
-	nm_weight: float | None = None
+	nm_width: float | None = None
 	x1: int
 	y1: int
 	x2: int
 	y2: int
-	caption: str
+	caption: str | None = None
 	keywords: list[str]
 	figure_id: str

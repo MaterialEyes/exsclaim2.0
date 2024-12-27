@@ -12,7 +12,6 @@ import Query from "./components/common/Query";
 import Loading from "./components/common/Loading";
 import Layout from "./components/common/Layout";
 import Footer from "./components/common/Footer";
-import NavigationBar from "./components/common/NavigationBar";
 import Header from "./components/common/Header";
 import License from "./components/search/License";
 import Scale from "./components/search/Scale";
@@ -22,7 +21,7 @@ import Submit from "./components/search/Submit";
 import KeyWords from "./components/search/KeyWords";
 import CropImage from "./components/images/CropImage";
 import ImagesPage from "./components/results/ImagesPage";
-import ResultsPage from "./components/results/ResultsPage";
+import App from "./components/App.js";
 
 export {
 	fetchArticles,
@@ -42,7 +41,6 @@ export {
 	Loading,
 	Layout,
 	Footer,
-	NavigationBar,
 	Header,
 	License,
 	Scale,
@@ -52,7 +50,7 @@ export {
 	KeyWords,
 	CropImage,
 	ImagesPage,
-	ResultsPage,
+	App,
 }
 
 // import React from 'react';

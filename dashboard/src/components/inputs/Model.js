@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Box, Stack, Typography, FormControlLabel, FormGroup, Radio, RadioGroup, TextField } from '@mui/material';
 import PropTypes from 'prop-types';
 
-// Gets what kind of llm (large langauge model) EXSCLAIM will use
-
+/**
+ * Gets what kind of LLM (Large Langauge Model) EXSCLAIM! will use.
+ */
 const Model = (props) => {
 
 	const [showKey, setShowKey] = useState(false);
@@ -35,7 +36,7 @@ const Model = (props) => {
 						}}
 					>
 						<FormControlLabel sx={{ height: 30 }} value="vicuna" control={<Radio />} label="Vicuna" />
-						<FormControlLabel sx={{ height: 30 }} value="gpt3.5-turbo" control={<Radio />} label="GPT3.5-turbo" />
+						<FormControlLabel sx={{ height: 30 }} value="gpt-3.5-turbo" control={<Radio />} label="GPT3.5-turbo" />
 						<FormControlLabel sx={{ height: 30 }} value="gpt-4" control={<Radio />} label="GPT-4" />
 					</RadioGroup>
 				</FormGroup>
@@ -58,7 +59,13 @@ const Model = (props) => {
 }
 
 Model.propTypes = {
+	/**
+	 * The name of the LLM model.
+	 */
 	model: PropTypes.string.isRequired,
+	/**
+	 * The API Key needed to run the given LLM.
+	 */
 	modelKey: PropTypes.string
 }
 

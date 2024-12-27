@@ -14,8 +14,8 @@ RUN python3 -m cookiecutter https://github.com/plotly/dash-component-boilerplate
     description="A UI for EXSCLAIM" \
     use_async=False \
     license="MIT License" \
-    publish_on_npm=false \
-    install_dependencies=true
+    publish_on_npm=False \
+    install_dependencies=False
 
 
 FROM node:current AS node-base
@@ -36,7 +36,7 @@ COPY ./src/services ./src/lib/services
 COPY ./src/index.js ./src/lib/index.js
 COPY ./src/webpack.config.js ./
 
-RUN npm install react-docgen
+RUN npm install
 RUN dash-generate-components ./src/lib/components exsclaim_ui_components -p package-info.json
 RUN npm run build:js
 
@@ -50,6 +50,7 @@ ENV DEBUG=true
 WORKDIR /usr/src/app
 
 COPY ./dashboard ./
+COPY --from=py-base /usr/local/bin/gunicorn /usr/local/bin/gunicorn
 COPY --from=py-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=node-base /usr/src/app/exsclaim_ui_components/setup.py /usr/src/app/exsclaim_ui_components/setup.py
 COPY --from=node-base /usr/src/app/exsclaim_ui_components/package.json /usr/src/app/exsclaim_ui_components/package.json
@@ -58,6 +59,7 @@ COPY --from=node-base /usr/src/app/exsclaim_ui_components/MANIFEST.in  /usr/src/
 COPY --from=node-base /usr/src/app/exsclaim_ui_components/LICENSE  /usr/src/app/exsclaim_ui_components/LICENSE
 COPY --from=node-base /usr/src/app/exsclaim_ui_components/exsclaim_ui_components /usr/src/app/exsclaim_ui_components/exsclaim_ui_components
 
-RUN pip install ./exsclaim_ui_components
+RUN mv __main__.py main.py && \
+    pip install ./exsclaim_ui_components
 
-ENTRYPOINT ["python3", "__main__.py"]
+ENTRYPOINT ["gunicorn", "-c", "config.py", "main:server"]

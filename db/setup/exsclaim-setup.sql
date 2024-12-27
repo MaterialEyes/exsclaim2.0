@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS results.subfigure(
     y1 INT NOT NULL,
     x2 INT NOT NULL,
     y2 INT NOT NULL,
-    caption TEXT NOT NULL,
+    caption TEXT DEFAULT NULL,
     keywords VARCHAR(20)[] NOT NULL,
     -- general VARCHAR(20)[] NOT NULL,
     figure_id VARCHAR(40) NOT NULL REFERENCES results.figure(id)
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS results.scale(
     x2 INT NOT NULL,
     y2 INT NOT NULL,
     length VARCHAR(8) DEFAULT NULL,
-    label_line_distance INT DEFAULT NULL,
+    label_line_distance DOUBLE PRECISION DEFAULT NULL,
     confidence DOUBLE PRECISION DEFAULT NULL,
     subfigure_id VARCHAR(44) NOT NULL REFERENCES results.subfigure(id)
 );

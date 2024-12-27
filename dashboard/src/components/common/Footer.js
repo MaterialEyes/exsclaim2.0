@@ -2,11 +2,12 @@ import React from 'react'
 import { Box, Grid, Typography, Stack, Link } from '@mui/material';
 import PropTypes from "prop-types";
 
-// The footer of the app, contains more information about Argonne and EXSCLAIM
-
-const Footer = ({anl_logo}) => {
+/**
+ * The footer of the app, contains more information about Argonne and EXSCLAIM!
+ */
+const Footer = (props) => {
   return (
-    <Box sx={{
+    <Box id={props.id} sx={{
       width: "100%",
       height: 120,
       boxShadow: 10,
@@ -17,7 +18,7 @@ const Footer = ({anl_logo}) => {
         <Grid item xs={4}>
           {/* image and link to Argonne website */}
           <a href="https://www.anl.gov/">
-            <img src={anl_logo} alt="Argonne Logo" height={60} />
+            <img src="/assets/Argonnelablogo.png" alt="Argonne Logo" height={60} />
           </a>
         </Grid>
         <Grid item xs={8}>
@@ -35,10 +36,13 @@ const Footer = ({anl_logo}) => {
 }
 
 Footer.defaultProps = {
-    anl_logo: "/assets/Argonnelablogo.png"
+    id: "footer"
 }
 
 Footer.propTypes = {
+    /**
+     * The id of the footer.
+     */
     id: PropTypes.string
 }
 

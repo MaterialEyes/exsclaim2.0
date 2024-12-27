@@ -81,37 +81,3 @@ ADD https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pt
 RUN playwright install-deps && playwright install chromium
 
 ENTRYPOINT ["xvfb-run", "python3"]
-
-FROM python:3.11.9-slim AS build
-
-WORKDIR /usr/src/app
-
-SHELL ["/bin/bash", "-c"]
-
-COPY ./exsclaim/ ./exsclaim/
-COPY ./requirements.txt setup.py pyproject.toml LICENSE README.md MANIFEST.in ./
-COPY dashboard/requirements.txt ./exsclaim/dashboard/requirements.txt
-
-COPY --from=exsclaim/ui/dashboard /usr/src/app/__main__.py ./exsclaim/dashboard/__main__.py
-COPY --from=exsclaim/ui/dashboard /usr/src/app/assets ./exsclaim/dashboard/assets
-COPY --from=exsclaim/ui/dashboard /usr/src/app/exsclaim_ui_components/exsclaim_ui_components ./exsclaim/dashboard/exsclaim_ui_components
-COPY --from=exsclaim/ui/dashboard /usr/src/app/exsclaim_ui_components/MANIFEST.in /tmp/dashboard/MANIFEST.in
-
-COPY --from=exsclaim/ui/api /usr/src/app/fastapi/api ./exsclaim/api
-COPY --from=exsclaim/ui/api /usr/src/app/fastapi/requirements.txt ./exsclaim/api/requirements.txt
-
-RUN cat /tmp/dashboard/MANIFEST.in >> MANIFEST.in && \
-    sed -i 's/fastapi\/api/exsclaim\/api/g' MANIFEST.in && \
-    sed -i 's/dashboard\/dashboard/exsclaim\/dashboard/g' MANIFEST.in && \
-    sed -i 's/exsclaim_ui_components/exsclaim\/dashboard\/exsclaim_ui_components/g' MANIFEST.in && \
-    sed -i 's/fastapi\//exsclaim\/api\//g' pyproject.toml && \
-    sed -i 's/dashboard\//exsclaim\/dashboard\//g' pyproject.toml && \
-    sed -i 's/fastapi\.api/exsclaim\.api/g' pyproject.toml && \
-    sed -i 's/dashboard\.dashboard/exsclaim\.dashboard/g' pyproject.toml && \
-    printf "\n\nfrom .api import *\nfrom .dashboard import *\n" >> exsclaim/__init__.py
-
-RUN --mount=type=cache,target=/tmp/pip \
-    pip install --upgrade build --cache-dir=/tmp/pip --root-user-action ignore
-RUN python -m build && chown -R 1000:1000 dist/
-
-CMD ["cp", "-avru", "/usr/src/app/dist", "/usr/src"]

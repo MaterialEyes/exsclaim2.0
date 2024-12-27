@@ -7,16 +7,17 @@ from datetime import datetime as dt
 from exsclaim import get_database_connection_string, PipelineInterruptionException
 from exsclaim.__main__ import main as exsclaim_main
 from fastapi import FastAPI, Request, BackgroundTasks
-from fastapi.responses import Response, FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import Response, FileResponse, JSONResponse
 from io import BytesIO
 from json import dump, dumps
 from os import listdir, mkdir, getenv
 from pathlib import Path
-from psycopg import connect, OperationalError
+from psycopg import connect, OperationalError, Cursor
 from psycopg.errors import UndefinedTable
-from psycopg.rows import dict_row, class_row
+from psycopg.rows import class_row
 from pytz import utc as UTC
 from requests import get
 from shutil import make_archive, rmtree, _ARCHIVE_FORMATS
@@ -98,6 +99,20 @@ for _dir in ("results", "logs"):
 	path.mkdir(exist_ok=True, parents=True)
 logger = get_logger()
 _EXAMPLE_UUID = UUID("fd70dd4b-1043-4650-aa11-9f55dc2e2c2b")
+
+
+origins = [
+	"http://localhost",
+	"http://localhost:3000",
+	"http://localhost:81",
+]
+app.add_middleware(
+	CORSMiddleware,
+	allow_origins=origins,
+	allow_credentials=True,
+	allow_methods=["*"],
+	allow_headers=["*"],
+)
 
 
 @app.get("/", include_in_schema=False)
@@ -872,12 +887,12 @@ def get_items(_type:Type[BaseModel], table:str, header_str:str) -> JSONResponse:
 		cursor = db.cursor(row_factory=class_row(_type))
 		cursor.execute(f"SELECT * FROM results.{table}")
 		results = cursor.fetchall()
-		article_count = cursor.rowcount
+		count = cursor.rowcount
 
 	results = [dict(article) for article in results]
 
-	return JSONResponse(results, status_code=200, media_type="application/json",
-						headers={f"{header_str}-Count": str(article_count)})
+	return JSONResponse(dict(results=results, next=False), status_code=200, media_type="application/json",
+						headers={f"{header_str}-Count": str(count)})
 
 
 @app.get("/articles", tags=[DJANGO_COMPATIBILITY], response_model=list[Article],
@@ -973,10 +988,10 @@ def article(id:str):
 @app.get("/figures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Figure],
 		 responses=get_items_responses("Figure", "figures", []))
 def figures(page=None) -> JSONResponse:
-	return get_items(Figure, "subfigure", "Figure")
+	return get_items(Figure, "figure", "Figure")
 
 
 @app.get("/subfigures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Subfigure],
 		 responses=get_items_responses("Subfigure", "subfigures", []))
 def figures(page=None) -> JSONResponse:
-	return get_items(Subfigure, "figure", "Figure")
+	return get_items(Subfigure, "subfigure", "Figure")

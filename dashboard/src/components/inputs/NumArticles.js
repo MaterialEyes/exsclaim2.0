@@ -2,8 +2,9 @@ import React from 'react';
 import { Box, Stack, Typography, TextField } from '@mui/material';
 import PropTypes from "prop-types";
 
-// Gets the number of articles EXSCLAIM will parse through
-
+/**
+ * Gets the number of articles EXSCLAIM will parse through.
+ */
 const NumArticles = (props) => {
 
   // sets the number of articles EXSCLAIM will run through
@@ -37,7 +38,10 @@ const NumArticles = (props) => {
 }
 
 NumArticles.propTypes = {
-  props: PropTypes.number
+  /**
+   * The maximum number of articles to search through.
+   */
+  numArticles: PropTypes.number
 }
 
 export default NumArticles;

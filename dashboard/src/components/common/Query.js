@@ -12,8 +12,6 @@ import Model from '../inputs/Model';
 import InputButton from '../inputs/InputButton';
 import PropTypes from 'prop-types';
 
-// One big container with the input query menu for the user to run EXSCLAIM
-
 // a blue-colored header box
 const HeaderBox = styled(Paper)(({ theme }) => ({
 	backgroundColor: '#0cb1f7',
@@ -34,14 +32,17 @@ const boxDefault = {
 	m: 2,
 }
 
+/**
+ * One big container with the input query menu for the user to run EXSCLAIM
+ */
 const Query = (props) => {
 
 	const [outputName, setOutputName] = useState(""); // set output EXSCLAIM result file name
 	const [numArticles, setNumArticles] = useState(0); // set number of articles to parse
 	const [term, setTerm] = useState(""); // set term
 	const [synonyms, setSynonyms] = useState([]); // set synonyms
-	const [journalFamily, setJournalFamily] = useState("nature"); // set the journal family
-	const [sort, setSort] = useState("revelant"); // set sort type
+	const [journalFamily, setJournalFamily] = useState("Nature"); // set the journal family
+	const [sort, setSort] = useState("relevant"); // set sort type
 	const [access, setAccess] = useState(false); // set open-access or not
 	const [model, setModel] = useState("vicuna"); // set the llm
 	const [modelKey, setModelKey] = useState(""); // set the user's personal key to run certain llms
@@ -57,7 +58,8 @@ const Query = (props) => {
 		access: access,
 		model: model,
 		modelKey: modelKey,
-		setLoadResults: props.setLoadResults
+		setLoadResults: props.setLoadResults,
+		fast_api_url: props.fast_api_url
 	}
 
 	return (
@@ -95,13 +97,26 @@ const Query = (props) => {
 }
 
 Query.propTypes = {
+	/**
+	 * If the query page should be loaded (false) or the results page (true).
+	 */
 	loadResults: PropTypes.bool,
+	/**
+	 * The setter for the loadResults variable.
+	 */
 	setLoadResults: PropTypes.func,
-	id: PropTypes.string
+	/**
+	 * The id of the query object.
+	 */
+	id: PropTypes.string,
+	/**
+	 * The API's URL.
+	 */
+	fast_api_url: PropTypes.string
 }
 
 Query.defaultProps = {
-	id: "query"
+	id: "query",
 }
 
 export default Query;
