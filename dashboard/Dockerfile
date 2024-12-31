@@ -20,7 +20,6 @@ RUN python3 -m cookiecutter https://github.com/plotly/dash-component-boilerplate
 
 FROM node:current AS node-base
 
- # set the working direction
 WORKDIR /usr/src/app
 
 COPY --from=py-base /usr/src/app /usr/src/app
@@ -54,9 +53,9 @@ COPY --from=py-base /usr/local/bin/gunicorn /usr/local/bin/gunicorn
 COPY --from=py-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=node-base /usr/src/app/exsclaim_ui_components/setup.py /usr/src/app/exsclaim_ui_components/setup.py
 COPY --from=node-base /usr/src/app/exsclaim_ui_components/package.json /usr/src/app/exsclaim_ui_components/package.json
-COPY --from=node-base /usr/src/app/exsclaim_ui_components/README.md  /usr/src/app/exsclaim_ui_components/README.md
-COPY --from=node-base /usr/src/app/exsclaim_ui_components/MANIFEST.in  /usr/src/app/exsclaim_ui_components/MANIFEST.in
-COPY --from=node-base /usr/src/app/exsclaim_ui_components/LICENSE  /usr/src/app/exsclaim_ui_components/LICENSE
+COPY --from=node-base /usr/src/app/exsclaim_ui_components/README.md /usr/src/app/exsclaim_ui_components/README.md
+COPY --from=node-base /usr/src/app/exsclaim_ui_components/MANIFEST.in /usr/src/app/exsclaim_ui_components/MANIFEST.in
+COPY --from=node-base /usr/src/app/exsclaim_ui_components/LICENSE /usr/src/app/exsclaim_ui_components/LICENSE
 COPY --from=node-base /usr/src/app/exsclaim_ui_components/exsclaim_ui_components /usr/src/app/exsclaim_ui_components/exsclaim_ui_components
 
 RUN mv __main__.py main.py && \

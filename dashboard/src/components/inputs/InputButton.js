@@ -88,10 +88,6 @@ InputButton.propTypes = {
 	 */
 	id: PropTypes.string.isRequired,
 	/**
-	 *
-	 */
-	click: PropTypes.bool,
-	/**
 	 * The name of the output
 	 */
 	outputName: PropTypes.string,
