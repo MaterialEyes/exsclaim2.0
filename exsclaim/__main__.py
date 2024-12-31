@@ -91,7 +91,7 @@ def dashboard(dashboard_configuration:PathLike[str]=None, api_configuration:Path
 		raise ValueError(f"The dashboard configuration file \"{dashboard_configuration}\" does not exist.")
 
 	Popen(["gunicorn", "exsclaim.api:app", "-c", api_configuration])
-	Popen(["gunicorn", "exsclaim.dashboard:server", "-c", dashboard_configuration])
+	Popen(["gunicorn", "exsclaim.dashboard:server", "-c", dashboard_configuration], cwd=str(current_directory / "dashboard"))
 
 
 def main(args=None):

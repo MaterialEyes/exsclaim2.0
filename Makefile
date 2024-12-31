@@ -37,7 +37,6 @@ build/app: build/exsclaim build/venv
 	mkdir -p build/app/exsclaim_ui_components/src/lib
 	cp -avru dashboard/src/components build/app/exsclaim_ui_components/src/lib/
 	cp -avru dashboard/src/services build/app/exsclaim_ui_components/src/lib/
-	ls -al build/app/exsclaim_ui_components/src/lib/
 	cp -v dashboard/src/index.js build/app/exsclaim_ui_components/src/lib/index.js
 	cp -avru dashboard/src/webpack.config.js build/app/exsclaim_ui_components/
 	#npm run build:js --prefix=build/exsclaim_ui_components
