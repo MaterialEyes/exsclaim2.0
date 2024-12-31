@@ -18,6 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 from re import sub
 from textwrap import wrap
 from typing import Callable
+from uuid import uuid4, UUID
 
 
 __all__ = ["Pipeline", "SaveMethods", "PipelineInterruptionException"]
@@ -89,6 +90,7 @@ class Pipeline:
 
         # Set up file structure
         base_results_dir = paths.initialize_results_dir(self.query_dict.get("results_dir", None))
+        self.query_dict.setdefault("run_id", uuid4())
 
         self.results_directory = base_results_dir / self.query_dict["name"]
         self.results_directory.mkdir(exist_ok=True)
@@ -126,7 +128,7 @@ class Pipeline:
         # region Set up notifications
         exsclaim_notifications = self.query_dict.get("notifications", {})
         notifications = (_class.from_json(json)
-                         for key, _class in notifiers.items()
+                         for key, _class in Notifications.notifiers().items()
                          for json in exsclaim_notifications.get(key, []))
         self.notifications:tuple[Notifications] = tuple(notifications)
         # endregion
@@ -139,7 +141,7 @@ class Pipeline:
         """
         self.logger.info(info)
 
-    def run(self, tools:list[ExsclaimTool]=None, figure_separator=True, caption_distributor=True, journal_scraper=True, html_scraper=True) -> dict:
+    async def run(self, tools:list[ExsclaimTool]=None, figure_separator=True, caption_distributor=True, journal_scraper=True, html_scraper=True) -> dict:
         """Run EXSCLAIM pipeline on Pipeline instance's query path
 
         Args:
@@ -216,7 +218,7 @@ class Pipeline:
 
             # run each ExsclaimTool on search query
             for tool in tools:
-                self.exsclaim_dict = tool.run(self.query_dict, self.exsclaim_dict)
+                self.exsclaim_dict = await tool.run(self.query_dict, self.exsclaim_dict)
 
             # group unassigned objects
             self.group_objects()
@@ -240,7 +242,7 @@ class Pipeline:
 
                 if SaveMethods.POSTGRES in save_methods:
                     csv_dir = self.to_csv()
-                    self.to_postgres(csv_dir)
+                    self.to_postgres(csv_dir, self.query_dict["run_id"])
 
                 elif SaveMethods.CSV in save_methods and SaveMethods.POSTGRES not in save_methods:
                     self.to_csv()
@@ -700,7 +702,7 @@ class Pipeline:
 
         return csv_dir
 
-    def to_postgres(self, csv_dir):
+    def to_postgres(self, csv_dir, run_id:str | UUID):
         """Send csv files to a postgres database
 
         Modifies:
@@ -710,5 +712,5 @@ class Pipeline:
 
         with Database("exsclaim") as db:
             for table_name in ("article", "figure", "subfigure", "scale", "scalelabel", "subfigurelabel"):
-                db.copy_from(csv_dir / f"{table_name}.csv", f"results.{table_name}")
+                db.copy_from(csv_dir / f"{table_name}.csv", "results",  table_name, run_id)
                 db.commit()

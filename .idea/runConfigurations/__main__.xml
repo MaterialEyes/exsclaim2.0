@@ -14,7 +14,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="exsclaim" />
-    <option name="PARAMETERS" value="query /opt/project/query/nature-ESEM.json --caption_distributor --journal_scraper --figure_separator" />
+    <option name="PARAMETERS" value="query query/nature-ESEM.json --journal_scraper --figure_separator" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="true" />

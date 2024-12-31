@@ -13,7 +13,7 @@ import warnings
 from glob import glob
 from os.path import join
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageCms
 from scipy.special import softmax
 from torch.autograd import Variable
 from torch.nn.functional import softmax
@@ -131,10 +131,10 @@ class FigureSeparator(ExsclaimTool):
         new_separated.add(figure.name)
         return exsclaim_json
 
-    def run(self, search_query, exsclaim_dict):
+    async def run(self, search_query, exsclaim_dict):
         """Run the models relevant to manipulating article figures"""
         self.exsclaim_json = exsclaim_dict
-        return self._run(search_query,
+        return await self._run(search_query,
                          exsclaim_dict,
                          "Figure Separator",
                          "_figures",
@@ -187,7 +187,11 @@ class FigureSeparator(ExsclaimTool):
         with Image.open(figure_path).convert("RGB") as img_raw:
             icc_profile = img_raw.info.get("icc_profile", None)
             if icc_profile is not None:
-                self.logger.info(f"The icc profile of: {figure_path} seems to be incorrect.")
+                profile = ImageCms.createProfile("sRGB")
+                profile2 = ImageCms.ImageCmsProfile(profile)
+                icc_profile = profile2.tobytes()
+                # self.logger.info(f"The icc profile of: {figure_path} seems to be incorrect.")
+                img_raw.save(figure_path, icc_profile=icc_profile)
             width, height = img_raw.size
 
         # Run model on figure

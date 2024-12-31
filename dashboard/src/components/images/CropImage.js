@@ -1,48 +1,56 @@
-import React from 'react';
-import { useEffect, useRef } from 'react';
+import React, {useEffect, useRef} from 'react';
+import PropTypes from 'prop-types';
 
-// Returns the cropped image from the given data
-
+/**
+ * Returns the cropped image from the given data.
+ */
 const CropImage = (props) => {
-  const imgSize = 290;
+	const imgSize = 290;
 
-  const myCanvas = useRef();
-  
-  // get the dimensions of the crop
-  function cropImageAPI(data) {
-    var topLeft_x = data["x1"]; // top left corner x-coordinate of the subfigure
-    var topLeft_y = data["y1"]; // top left corner y-coordinate of the subfigure
-    var sub_width = data["width"]; // width of the subfigure
-    var sub_height = data["height"]; // height of the subfigure
+	const canvas = useRef();
 
-    var crop_dimensions = []
+	// get the dimensions of the crop
+	function cropImageAPI(data) {
+		const topLeft_x = data["x1"]; // top left corner x-coordinate of the subfigure
+		const topLeft_y = data["y1"]; // top left corner y-coordinate of the subfigure
+		const sub_width = data["width"]; // width of the subfigure
+		const sub_height = data["height"]; // height of the subfigure
 
-    crop_dimensions.push(topLeft_x, topLeft_y, sub_width, sub_height)
+		return [topLeft_x, topLeft_y, sub_width, sub_height];
+	}
 
-    return crop_dimensions;
-  }
+	useEffect(() => {
+		const context = canvas.current.getContext("2d");
 
-  useEffect(() => {
-    const context = myCanvas.current.getContext("2d");
+		const url = props.url;
+		const data = props.data;
 
-    const url = props.url;
-    const data = props.data;
+		// load in the cropped image
+		const image = new Image();
+		image.src = url;
+		image.onload = () => {
+			const dimensions = cropImageAPI(data);
+			context.drawImage(image, dimensions[0], dimensions[1], dimensions[2], dimensions[3],
+				0, 0, dimensions[2], dimensions[3]);
+		};
+	}, [canvas]);
 
-    // load in the cropped image
-    const image = new Image();
-    image.src = url;
-    image.onload = () => {
-      const dimensions = cropImageAPI(data);
-      context.drawImage(image, dimensions[0], dimensions[1], dimensions[2], dimensions[3],
-        0, 0, dimensions[2], dimensions[3]);
-    };
-  });
+	return (
+		<div>
+			<canvas ref={canvas} width={imgSize} height={imgSize} />
+		</div>
+	)
+}
 
-  return (
-      <div>
-        <canvas ref={myCanvas} width={imgSize} height={imgSize} ></canvas>
-      </div>
-  )
+CropImage.propTypes = {
+	/**
+	 * The url to the image.
+	 */
+	url: PropTypes.string.isRequired,
+	/**
+	 * The data about this image from EXSCLAIM
+	 */
+	data: PropTypes.object.isRequired
 }
 
 export default CropImage;

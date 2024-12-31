@@ -1,8 +1,10 @@
 import React from 'react'
 import { FormGroup, FormControlLabel, Checkbox } from '@mui/material';
+import PropTypes from 'prop-types';
 
-// Gets whether the subfigure should come from an open-source project or not
-
+/**
+ * Gets whether the subfigure should come from an open-source project or not.
+ */
 const License = (props) => {
 
   return (
@@ -16,7 +18,7 @@ const License = (props) => {
               size="small" 
               onChange={
                 ()=> {
-                  props.setLicense(props.license ? false : true) // set status of license after user input
+                  props.setLicense(!props.license) // set status of license after user input
                 }
               }
             />
@@ -26,6 +28,13 @@ const License = (props) => {
       </FormGroup>
     </div>
   )
+}
+
+License.propTypes = {
+    /**
+     *
+     */
+    license: PropTypes.bool
 }
 
 export default License;

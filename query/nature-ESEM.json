@@ -13,15 +13,7 @@
     },
     "llm": "gpt-3.5-turbo",
     "open": false,
-    "save_format": ["boxes", "save_subfigures", "csv"],
+    "save_format": ["boxes", "save_subfigures"],
     "logging": ["print", "exsclaim.log"],
-    "notifications": {
-        "ntfy": [
-            {"url": "https://ntfy.lenwashingtoniii.com/exsclaim"}
-        ],
-        "email": [
-            "lwashington3@hawk.iit.edu"
-        ]
-    },
-    "results_dir": "../output"
+    "results_dir": "/opt/project/output"
 }

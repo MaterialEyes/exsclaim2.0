@@ -122,7 +122,7 @@ class ExsclaimTool(ABC):
 	def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated:set):
 		...
 
-	def _run(self, search_query, exsclaim_dict:dict, display_name:str, subdirectory:str, loop_process_string:str,
+	async def _run(self, search_query, exsclaim_dict:dict, display_name:str, subdirectory:str, loop_process_string:str,
 			 append_file:str, path:Path=None, N:int=100):
 		if exsclaim_dict is None:
 			exsclaim_dict = {}
@@ -213,7 +213,7 @@ class JournalScraper(ExsclaimTool):
 	def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
 		return exsclaim_json
 
-	def run(self, search_query, exsclaim_json=None):
+	async def run(self, search_query, exsclaim_json=None):
 		"""Run the JournalScraper to find relevant article figures
 
 		Args:
@@ -227,35 +227,35 @@ class JournalScraper(ExsclaimTool):
 		journal_family_name = search_query["journal_family"]
 		if journal_family_name not in journals:
 			raise NameError(f"Journal family {journal_family_name} is not defined.")
-		journal = journals[journal_family_name](search_query,
-												scrape_hidden_articles=search_query.get("scrape_hidden_articles", False))
+		async with journals[journal_family_name](search_query,
+												scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
 
-		if exsclaim_json is None:
-			exsclaim_json = dict()
+			if exsclaim_json is None:
+				exsclaim_json = dict()
 
-		self.display_info(f"Running Journal Scraper\n")
-		self.results_directory.mkdir(exist_ok=True)
-		self._start_timer()
+			self.display_info(f"Running Journal Scraper\n")
+			self.results_directory.mkdir(exist_ok=True)
+			self._start_timer()
 
-		articles = journal.get_article_extensions()
-		self.display_info(f"{articles=}")
-		# Extract figures, captions, and metadata from each article
-		counter = 1
-		for counter, article in enumerate(articles, start=1):
-			self.display_info(f">>> ({counter:,} of {len(articles):,}) Extracting figures from: {article.split('/')[-1]}")
-			try:
-				article_dict = journal.get_article_figures(journal.domain + article)
-				exsclaim_json = self._update_exsclaim(exsclaim_json, article_dict)
-				self.new_articles_visited.add(article)
-			except Exception as e:
-				self.display_exception(e, article)
-			# Save to file every N iterations (to accommodate restart scenarios)
-			if counter % 1_000 == 0:
-				self._appendJSON(exsclaim_json)
+			articles = await journal.get_article_extensions()
+			self.display_info(f"{articles=}")
+			# Extract figures, captions, and metadata from each article
+			counter = 1
+			for counter, article in enumerate(articles, start=1):
+				self.display_info(f">>> ({counter:,} of {len(articles):,}) Extracting figures from: {article.split('/')[-1]}")
+				try:
+					article_dict = await journal.get_article_figures(journal.domain + article)
+					exsclaim_json = self._update_exsclaim(exsclaim_json, article_dict)
+					self.new_articles_visited.add(article)
+				except Exception as e:
+					self.display_exception(e, article)
+				# Save to file every N iterations (to accommodate restart scenarios)
+				if counter % 1_000 == 0:
+					self._appendJSON(exsclaim_json)
 
-		self._end_timer(f"{counter:,} articles")
+			self._end_timer(f"{counter:,} articles")
 
-		self._appendJSON(exsclaim_json)
+			self._appendJSON(exsclaim_json)
 		return exsclaim_json
 
 
@@ -699,7 +699,7 @@ class HTMLScraper(ExsclaimTool, ExsclaimBrowser):
 	def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
 		...
 
-	def run(self, search_query, exsclaim_json=None):
+	async def run(self, search_query, exsclaim_json=None):
 		"""Run the HTMLScraper to retrieve figures from user provided htmls
 
 		Args:
@@ -859,7 +859,7 @@ class CaptionDistributor(ExsclaimTool):
 			new_separated.add(figure)
 		return exsclaim_json
 
-	def run(self, search_query, exsclaim_json):
+	async def run(self, search_query, exsclaim_json):
 		"""Run the CaptionDistributor to distribute subfigure captions
 
 		Args:
@@ -870,7 +870,7 @@ class CaptionDistributor(ExsclaimTool):
 		"""
 		from os import getenv
 		search_query.setdefault("openai_API", getenv("OPENAI_API_KEY", None))
-		return self._run(search_query,
+		return await self._run(search_query,
 						 exsclaim_json,
 						 "Caption Separator",
 						 "_captions",

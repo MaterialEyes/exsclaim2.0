@@ -1,7 +1,6 @@
 import React from 'react';
 import { Box, Typography, CircularProgress, Stack } from '@mui/material';
-
-// The loading page that appears when UI is getting and posting information from the API
+import PropTypes from 'prop-types';
 
 // box container containing the loading components
 const loadingDefault = {
@@ -14,10 +13,12 @@ const loadingDefault = {
   m: 2
 }
 
-const Loading = () => {
-    
+/**
+ * The loading page that appears when UI is getting and posting information from the API
+ */
+const Loading = (props) => {
   return (
-    <Box sx={loadingDefault} display="flex">
+    <Box id={props.id} sx={loadingDefault} display="flex">
       <Stack alignItems="center"> 
         <CircularProgress size={60} />
         <Typography variant="h5" color="#4285F4">Loading Menu and Subfigures...</Typography>
@@ -25,5 +26,12 @@ const Loading = () => {
      </Box>
   )
 }
-        
+
+Loading.propTypes = {
+    /**
+     * The id of the loader.
+     */
+    id: PropTypes.string
+}
+
 export default Loading;

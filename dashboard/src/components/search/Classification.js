@@ -1,14 +1,16 @@
 import React from 'react'
 import { FormGroup, FormControlLabel, Checkbox, Grid } from '@mui/material';
+import PropTypes from 'prop-types';
 
-// Gets what type the subfigure results should be
-
+/**
+ * Gets what type the subfigure results should be.
+ */
 const Classification = (props) => {
 
   // set user's query of classification
   function setClassification(className) {
     let newClasses = { ...props.classes};
-    newClasses[className] = (props.classes[className] ? false : true);
+    newClasses[className] = !props.classes[className];
     props.setClasses(newClasses);
   }
 
@@ -138,6 +140,13 @@ const Classification = (props) => {
       </Grid>
     </div>
   )
+}
+
+Classification.propTypes = {
+    /**
+     *
+     */
+    classes: PropTypes.arrayOf(PropTypes.string)
 }
 
 export default Classification;
