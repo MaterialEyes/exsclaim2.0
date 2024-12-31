@@ -1,6 +1,6 @@
 [project]
 name = "exsclaim"
-version = "2.2.0b3"
+version = "2.3.0"
 description = "EXSCLAIM! is a library for the automatic EXtraction, Separation, and Caption-based natural Language Annotation of IMages from scientific figures."
 authors = [
     { name = "Eric Schwenker, Trevor Spreadbury, Weixin Jiang, Maria Chan, Len Washington III", email = "developer@materialeyes.org" }

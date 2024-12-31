@@ -14,16 +14,18 @@ CREATE TABLE IF NOT EXISTS classification_codes(
 );
 
 CREATE TABLE IF NOT EXISTS results.article(
+    run_id UUID NOT NULL,
     id VARCHAR(32) NOT NULL PRIMARY KEY,
     title TEXT NOT NULL,
     url VARCHAR(200) NOT NULL,
     license VARCHAR(200) NOT NULL,
     open BOOLEAN DEFAULT FALSE,
-    authors VARCHAR(250) DEFAULT '',
-    abstract TEXT DEFAULT ''
+    authors VARCHAR(350) DEFAULT NULL,
+    abstract TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS results.figure(
+    run_id UUID NOT NULL,
     id VARCHAR(40) NOT NULL PRIMARY KEY,
     caption TEXT NOT NULL,
     caption_delimiter VARCHAR(12),
@@ -33,6 +35,7 @@ CREATE TABLE IF NOT EXISTS results.figure(
 );
 
 CREATE TABLE IF NOT EXISTS results.subfigure(
+    run_id UUID NOT NULL,
     id VARCHAR(44) NOT NULL PRIMARY KEY,
     classification_code CHAR(2) NOT NULL REFERENCES classification_codes(code),
     height DOUBLE PRECISION DEFAULT NULL,
@@ -50,6 +53,7 @@ CREATE TABLE IF NOT EXISTS results.subfigure(
 );
 
 CREATE TABLE IF NOT EXISTS results.scale(
+    run_id UUID NOT NULL,
     id VARCHAR(48) NOT NULL PRIMARY KEY,
     x1 INT NOT NULL,
     y1 INT NOT NULL,
@@ -62,6 +66,7 @@ CREATE TABLE IF NOT EXISTS results.scale(
 );
 
 CREATE TABLE IF NOT EXISTS results.scalelabel(
+    run_id UUID NOT NULL,
     text VARCHAR(15) NOT NULL,
     x1 INT NOT NULL,
     y1 INT NOT NULL,
@@ -74,6 +79,7 @@ CREATE TABLE IF NOT EXISTS results.scalelabel(
 );
 
 CREATE TABLE IF NOT EXISTS results.subfigurelabel(
+    run_id UUID NOT NULL,
     text VARCHAR(15) NOT NULL,
     x1 INT NOT NULL,
     y1 INT NOT NULL,

@@ -241,7 +241,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
 		return (False, "unknown")
 
 	# @abstractmethod
-	def is_link_to_open_article(self, tag: Page | Locator) -> bool:
+	async def is_link_to_open_article(self, tag: Page | Locator) -> bool:
 		"""Checks if link is to an open access article
 		Args:
 			tag (bs4.tag): A tag containing an href attribute that
@@ -443,7 +443,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
 					continue
 
 				if url.split("/")[-1] in self.articles_visited or (
-						self.open and not self.is_link_to_open_article(page2)
+						self.open and not await self.is_link_to_open_article(page2)
 				):
 					# It is an article but we are not interested
 					continue
@@ -863,7 +863,7 @@ class ACS(JournalFamilyDynamic):
 						return (True, open_access.text)
 		return (False, "unknown")
 
-	def is_link_to_open_article(self, tag):
+	async def is_link_to_open_article(self, tag):
 		# ACS allows filtering for search. Therefore, if self.open is True, all results will be open.
 		return super().is_link_to_open_article(tag)
 
@@ -996,7 +996,7 @@ class Nature(JournalFamily):
 			_license = "unknown"
 		return is_open, _license
 
-	def is_link_to_open_article(self, locator:Page | Locator) -> bool:
+	async def is_link_to_open_article(self, locator:Page | Locator) -> bool:
 		if isinstance(locator, Locator):
 			url = locator.page.url
 		elif isinstance(locator, Page):
@@ -1009,8 +1009,8 @@ class Nature(JournalFamily):
 			return False
 
 		if isinstance(locator, Locator):
-			return self.get_license(locator.page)[0]
-		return self.get_license(locator)[0]
+			return (await self.get_license(locator.page))[0]
+		return (await self.get_license(locator))[0]
 
 	async def get_license_from_url(self, url:str):
 		page = await self.new_page()
@@ -1024,7 +1024,7 @@ class Nature(JournalFamily):
 		authors = ""
 		for author in await locators.all():
 			text = await author.inner_text()
-			authors += f"{text.strip()}, "
+			authors += f"{text.strip().rstrip(',')}, "
 
 		return authors.rstrip(", ")
 
@@ -1271,7 +1271,7 @@ class Wiley(JournalFamily):
 			return (True, open_access.text)
 		return (False, "unknown")
 
-	def is_link_to_open_article(self, tag):
+	async def is_link_to_open_article(self, tag):
 		"""Wiley allows filtering for search. Therefore, if self.open is True, all results will be open."""
 		return super().is_link_to_open_article(tag)
 

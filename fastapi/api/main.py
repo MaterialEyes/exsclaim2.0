@@ -379,6 +379,7 @@ def query(request:Request, search_query: Query, background_tasks:BackgroundTasks
 
 			exsclaim_input = {
 				"name": search_query.name if search_query else "exsclaim_results",
+				"run_id": str_uuid,
 				"journal_family": search_query.journal_family.lower(),
 				"maximum_scraped": search_query.maximum_scraped,
 				"sortby": search_query.sortby,
@@ -453,7 +454,7 @@ def ensure_uuid(uuid: str | UUID) -> UUID:
 @app.get("/status/{result_id}", tags=["Queries/Runs"],
 		 responses={
 			 200: {
-				 "description": "Known Status Found.",
+				 "description": "Status Found for ID.",
 				 "content": {
 					 "application/json": {
 						 "schema": {
