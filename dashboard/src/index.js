@@ -14,6 +14,7 @@ import Layout from "./components/common/Layout";
 import Footer from "./components/common/Footer";
 import Header from "./components/common/Header";
 import License from "./components/search/License";
+import ResultID from "./components/search/ResultID";
 import Scale from "./components/search/Scale";
 import Classification from "./components/search/Classification";
 import SearchPage from "./components/search/SearchPage";
@@ -43,6 +44,7 @@ export {
 	Footer,
 	Header,
 	License,
+	ResultID,
 	Scale,
 	Classification,
 	SearchPage,

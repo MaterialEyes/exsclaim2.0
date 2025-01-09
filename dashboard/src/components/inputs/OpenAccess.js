@@ -1,5 +1,5 @@
 import React from 'react';
-import {Box, Stack, Typography, FormControlLabel, FormGroup, Checkbox, Radio} from '@mui/material';
+import {Box, Stack, FormControlLabel, FormGroup, Checkbox } from '@mui/material';
 import PropTypes from "prop-types";
 
 /**
@@ -9,8 +9,6 @@ const OpenAccess = ({props}) => {
 	return (
 		<Box sx={{ padding: 1 }}>
 			<Stack direction="row" spacing={2}>
-				{/*<FormControlLabel sx={{ height: 30 }} value="vicuna" control={<Radio />} label="Vicuna" />*/}
-				{/*<Typography>Open Access:</Typography>*/}
 				<FormGroup>
 					<FormControlLabel
 						sx={{ height: 20}}

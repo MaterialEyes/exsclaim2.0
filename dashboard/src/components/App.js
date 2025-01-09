@@ -1,12 +1,8 @@
 import './App.css';
-//import {
-//  BrowserRouter, Routes, Route
-//} from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { useState } from 'react';
-import Header from './common/Header'
 import Layout from './common/Layout';
 import Query from './common/Query';
-import Footer from './common/Footer';
 import PropTypes from 'prop-types';
 
 /**
@@ -20,15 +16,16 @@ const App = (props) => {
 	const [queryResultsId, setQueryResultsId] = useState(""); // The results ID for the API
 
 	return (
-		<div id={props.id} className="App">
-			<Header />
-			{(loadResults) ? (
-				<Layout setLoadResults={setLoadResults} queryResultsId={queryResultsId} fast_api_url={props.fast_api_url} />
-			) : (
-				<Query setLoadResults={setLoadResults} setQueryResultsId={setQueryResultsId} fast_api_url={props.fast_api_url} />
-			)}
-			<Footer />
-		</div>
+		<BrowserRouter>
+			<Routes>
+				<Route path="/" element={
+					<Query setLoadResults={setLoadResults} setQueryResultsId={setQueryResultsId} fast_api_url={props.fast_api_url} />
+				} />
+				<Route path="/results/:id" element={
+					<Layout setLoadResults={setLoadResults} queryResultsId={queryResultsId} fast_api_url={props.fast_api_url} />
+				} />
+			</Routes>
+		</BrowserRouter>
 	);
 }
 
@@ -59,16 +56,3 @@ App.propTypes = {
 }
 
 export default App;
-
-/*
-
-<BrowserRouter>
-          <Routes>
-              <Route path="/" element={<Layout />}>
-                  <Route index element={<ResultsPage />} />
-                  <Route path="search" element={<SearchPage />} />
-              </Route>
-          </Routes>
-      </BrowserRouter>
-
-*/

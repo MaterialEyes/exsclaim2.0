@@ -1,6 +1,6 @@
-import React from 'react';
 import { Box, Button } from '@mui/material';
 import PropTypes from 'prop-types';
+import { useNavigate } from "react-router-dom";
 import { fetchStatus } from '../../services/ApiClient';
 
 /**
@@ -8,20 +8,26 @@ import { fetchStatus } from '../../services/ApiClient';
  * After the subfigure results are loaded, the user is taken to the results page (Layout.js)
  */
 const InputButton = (props) => {
+	const navigate = useNavigate();
+
 	function checkResultsStatus(deadline){
 		fetchStatus(props.fast_api_url, props.queryId).then((resultsReady) => {
 			if(!resultsReady){
 				setTimeout(() => requestIdleCallback(checkResultsStatus, {timeout: 60_000}), 60_000);
 			} else {
 				props.setLoadResults(true);
+				navigate(`/results/${props.queryId}`);
 			}
 		});
 	}
 
-	// the function that will send a post request with the user's input query to the API
+	/**
+	 * the function that will send a post request with the user's input query to the API
+	 * @returns {Promise<void>}
+	 */
 	async function submitQuery() {
 		// data that will be posted to the API
-		var inputData = {
+		let inputData = {
 			"name" : props.outputName,
 			"journal_family" : props.journalFamily,
 			"maximum_scraped" : props.numArticles,

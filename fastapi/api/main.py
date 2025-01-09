@@ -4,7 +4,7 @@ import logging
 from .models import *
 
 from datetime import datetime as dt
-from exsclaim import get_database_connection_string, PipelineInterruptionException
+from exsclaim import get_database_connection_string
 from exsclaim.__main__ import main as exsclaim_main
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,10 +21,9 @@ from psycopg.rows import class_row
 from pytz import utc as UTC
 from requests import get
 from shutil import make_archive, rmtree, _ARCHIVE_FORMATS
-from subprocess import Popen
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
-from typing import Literal, Type
+from typing import Literal, Type, Any
 from uuid import UUID
 
 
@@ -863,7 +862,7 @@ def get_possible_compressions(request:Request, compression_type:str = None) -> R
 	return Response(f"{compression_type} is {'NOT ' if not allowed else ''}an available compression type.", status_code=status_code, media_type="text/plain")
 
 
-def get_items_responses(_type:str, description_word:str, example):
+def get_items_responses(_type:str, description_word:str, example:list[dict[str, Any]]):
 	return {
 		200: {
 			"description": f"All saved {description_word}.",
@@ -883,10 +882,10 @@ def get_items_responses(_type:str, description_word:str, example):
 	}
 
 
-def get_items(_type:Type[BaseModel], table:str, header_str:str) -> JSONResponse:
+def get_items(_type:Type[BaseModel], results_id:UUID, table:str, header_str:str) -> JSONResponse:
 	with connect(get_database_connection_string(app.configuration_ini)) as db:
 		cursor = db.cursor(row_factory=class_row(_type))
-		cursor.execute(f"SELECT * FROM results.{table}")
+		cursor.execute(f"SELECT * FROM results.{table} WHERE run_id = %s", (results_id,))
 		results = cursor.fetchall()
 		count = cursor.rowcount
 
@@ -896,7 +895,7 @@ def get_items(_type:Type[BaseModel], table:str, header_str:str) -> JSONResponse:
 						headers={f"{header_str}-Count": str(count)})
 
 
-@app.get("/articles", tags=[DJANGO_COMPATIBILITY], response_model=list[Article],
+@app.get("/results/{results_id}/articles", tags=[DJANGO_COMPATIBILITY], response_model=list[Article],
 		 responses=get_items_responses("Article", "articles", [
 			 {
 				 "id": "s41467-024-50040-6",
@@ -926,8 +925,8 @@ def get_items(_type:Type[BaseModel], table:str, header_str:str) -> JSONResponse:
 				 "abstract": "null"
 			 }
 		 ]))
-def articles() -> JSONResponse:
-	return get_items(Article, "article", "Article")
+def articles(results_id:UUID) -> JSONResponse:
+	return get_items(Article, results_id, "article", "Article")
 
 
 @app.get("/articles/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Article,
@@ -986,13 +985,13 @@ def article(id:str):
 		return JSONResponse({"message": f"No article with id: {id}."}, status_code=404, media_type="application/json")
 
 
-@app.get("/figures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Figure],
+@app.get("/results/{results_id}/figures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Figure],
 		 responses=get_items_responses("Figure", "figures", []))
-def figures(page=None) -> JSONResponse:
-	return get_items(Figure, "figure", "Figure")
+def figures(results_id:UUID, page=None) -> JSONResponse:
+	return get_items(Figure, results_id, "figure", "Figure")
 
 
-@app.get("/subfigures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Subfigure],
+@app.get("/results/{results_id}/subfigures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Subfigure],
 		 responses=get_items_responses("Subfigure", "subfigures", []))
-def figures(page=None) -> JSONResponse:
-	return get_items(Subfigure, "subfigure", "Figure")
+def figures(results_id:UUID, page=None) -> JSONResponse:
+	return get_items(Subfigure, results_id, "subfigure", "Figure")

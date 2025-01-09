@@ -31,8 +31,14 @@ export const fetchStatus = async (baseUrl, id) => {
 	}
 }
 
-export const fetchArticles = async (baseUrl) => {
-	return fetch(`${baseUrl}/articles`, {
+/**
+ * Loads the articles found during a run.
+ * @param baseUrl The URL that points toward the EXSCLAIM API.
+ * @param id The UUID of the run that you're interested in.
+ * @returns {Promise<any>}
+ */
+export const fetchArticles = async (baseUrl, id) => {
+	return fetch(`${baseUrl}/results/${id}/articles`, {
 			method: "GET",
 			headers: {
 				"Access-Control-Allow-Origin": "*",
@@ -57,8 +63,15 @@ export const fetchArticle = async (baseUrl, id) => {
 	});
 }
 
-export const fetchFigures = async (baseUrl, num) => {
-	return fetch(`${baseUrl}/figures/?page=${num}`, {
+/**
+ * Loads the full figures found during a run.
+ * @param baseUrl The URL that points toward the EXSCLAIM API.
+ * @param id The UUID of the run that you're interested in.
+ * @param num The page number (DEPRECATED).
+ * @returns {Promise<any>}
+ */
+export const fetchFigures = async (baseUrl, id, num) => {
+	return fetch(`${baseUrl}/results/${id}/figures/?page=${num}`, {
 			method: "GET",
 			headers: {
 				"Access-Control-Allow-Origin": "*",
@@ -70,8 +83,15 @@ export const fetchFigures = async (baseUrl, num) => {
 	});
 }
 
-export const fetchSubFigures = async (baseUrl, num) => {
-	return fetch(`${baseUrl}/subfigures/?page=${num}`, {
+/**
+ * Loads the subfigures found during a run.
+ * @param baseUrl The URL that points toward the EXSCLAIM API.
+ * @param id The UUID of the run that you're interested in.
+ * @param num The page number (DEPRECATED).
+ * @returns {Promise<any>}
+ */
+export const fetchSubFigures = async (baseUrl, id, num) => {
+	return fetch(`${baseUrl}/results/${id}/subfigures/?page=${num}`, {
 			method: "GET",
 			headers: {
 				"Access-Control-Allow-Origin": "*",
