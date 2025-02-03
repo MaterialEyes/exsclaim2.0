@@ -205,6 +205,6 @@ websockets==12.0
 wrapt==1.16.0
 wsproto==1.2.0
 xxhash==3.4.1
-yarl==1.9.4
+yarl==1.18.3
 zipp==3.19.2
 zstandard==0.22.0
