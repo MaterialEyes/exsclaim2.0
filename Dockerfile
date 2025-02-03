@@ -3,8 +3,11 @@ LABEL authors="Len Washington III"
 
 ARG EXSCLAIM_GITHUB_USER=MaterialEyes
 ARG EXSCLAIM_GITHUB_REPO=exsclaim2.0
-# Can be the branch name or a tag name
+# Can be a branch name, tag name, or commit
 ARG EXSCLAIM_GITHUB_REVISION=main
+
+ARG UID=1000
+ARG GID=1000
 
 SHELL ["/bin/bash", "-c"]
 
@@ -16,19 +19,14 @@ RUN --mount=type=cache,target=/tmp/pip \
     pip install --upgrade pip --cache-dir=/tmp/pip && \
 	pip install "./$EXSCLAIM_GITHUB_REPO-$EXSCLAIM_GITHUB_REVISION" --cache-dir=/tmp/pip
 
-FROM base AS prod
-ARG UID=1000
-ARG GID=1000
-
 WORKDIR /usr/src/app
 
-COPY --chown=$UID:$GID entrypoint.sh load_models.py ./
+COPY --chown=$UID:$GID entrypoint.sh ./
+COPY --chown=$UID:$GID query ./query
 RUN chmod +x ./entrypoint.sh
 
 ENTRYPOINT ["./entrypoint.sh"]
-CMD [ "python3", "-m", "exsclaim", "query", "/usr/src/app/query/nature-ESEM.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]
-
-COPY --chown=$UID:$GID query ./query
+CMD [ "python3", "-m", "exsclaim", "query", "/usr/src/app/query/exsclaim-query.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]
 
 FROM python:3.11.9 AS jupyter-base
 
@@ -81,3 +79,23 @@ ADD https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pt
 RUN playwright install-deps && playwright install chromium
 
 ENTRYPOINT ["xvfb-run", "python3"]
+
+FROM python:3.12.5 AS make
+
+WORKDIR /usr/src/app
+
+COPY ./api ./api
+COPY ./dashboard ./dashboard
+COPY ./db ./db
+COPY ./exsclaim ./exsclaim
+COPY ./fastapi ./fastapi
+COPY entrypoint.sh LICENSE Makefile MANIFEST.in pyproject.toml README.md requirements.txt setup.py ./
+
+RUN apt update && apt install -y build-essential && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash && \
+    . ~/.bashrc && \
+    nvm install v22.11.0 && \
+    make build
+
+ENTRYPOINT ["/bin/bash", "-c"]
+CMD ["cp -avru /usr/src/app/dist/* /usr/src/dist/"]

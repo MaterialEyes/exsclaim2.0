@@ -12,7 +12,15 @@ from uuid import UUID
 __all__ = ["initialize_database", "modify_database_configuration", "get_database_connection_string", "Database"]
 
 
-def get_database_connection_string(configuration_file:PathLike[str] = None, section:str = "Postgres") -> str:
+def get_database_connection_string(configuration_file:PathLike[str] = None, section:str = "Postgres", password_file:PathLike[str]=None) -> str:
+	"""
+	Creates a Postgres database connection string from a configuration file.
+	:param PathLike[str] configuration_file:
+	:param str section:
+	:raises configparser.NoSectionError: If the provided configuration file does not contain a section with the name provided in the section parameter.
+	:raises FileNotFoundError: If the provided password file does not exist.
+	:rtype: str
+	"""
 	def get_value(environment_name:str, default_value:str, ini_params:dict[str, str], ini_name:str=None) -> str:
 		value = getenv(environment_name, default_value)
 		value = ini_params.get(ini_name, value)
@@ -29,10 +37,16 @@ def get_database_connection_string(configuration_file:PathLike[str] = None, sect
 		ini_params = {key: value for key, value in parser.items(section)}
 
 	username = get_value("POSTGRES_USER", "exsclaim", ini_params, "user")
-	password = get_value("POSTGRES_PASSWORD", "exsclaimtest!9700", ini_params, "password")
 	port = get_value("POSTGRES_PORT", "5432", ini_params, "port")
 	database_name = get_value("POSTGRES_DB", "exsclaim", ini_params, "database")
 	host = get_value("POSTGRES_HOST", "localhost", ini_params, "host")
+
+	password_file = password_file or getenv("POSTGRES_PASSWORD_FILE", "/run/secrets/exsclaim_psql")
+	if not (Path(password_file).exists() and Path(password_file).is_file()):
+		raise FileNotFoundError(f"Password file \"{password_file}\" does not exist.")
+
+	with open(password_file, "r") as f:
+		password = f.read().strip()
 
 	# db is one of the aliases given through Docker Compose
 	url = f"postgres://{username}:{password}@{host}:{port}/{database_name}"
