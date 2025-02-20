@@ -169,7 +169,7 @@ class JournalFamily(ABC, ExsclaimBrowser):
 		ExsclaimBrowser.__init__(self)
 		self.search_query = search_query
 		self.open = search_query.get("open", False)
-		self.order = search_query.get("order", "relevant")
+		self.order = search_query.get("sortby", "relevant")
 		self.logger = kwargs.get("logger", getLogger(__name__))
 
 		# Set up file structure

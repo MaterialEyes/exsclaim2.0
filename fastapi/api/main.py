@@ -100,14 +100,10 @@ logger = get_logger()
 _EXAMPLE_UUID = UUID("fd70dd4b-1043-4650-aa11-9f55dc2e2c2b")
 
 
-origins = [
-	"http://localhost",
-	"http://localhost:3000",
-	"http://localhost:81",
-]
+
 app.add_middleware(
 	CORSMiddleware,
-	allow_origins=origins,
+	allow_origins=["*"],
 	allow_credentials=True,
 	allow_methods=["*"],
 	allow_headers=["*"],

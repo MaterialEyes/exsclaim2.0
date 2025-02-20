@@ -8,6 +8,8 @@ ARG EXSCLAIM_GITHUB_REVISION=main
 
 ARG UID=1000
 ARG GID=1000
+ARG UNAME=exsclaim
+ARG GNAME=exsclaim
 
 SHELL ["/bin/bash", "-c"]
 
@@ -20,12 +22,23 @@ RUN --mount=type=cache,target=/tmp/pip \
     pip install --upgrade pip --cache-dir=/tmp/pip && \
 	pip install "./$EXSCLAIM_GITHUB_REPO-$EXSCLAIM_GITHUB_REVISION" --cache-dir=/tmp/pip && \
     playwright install-deps && playwright install chromium
+RUN groupadd -g $GID $GNAME
+RUN useradd -lm -u $UID -g $GNAME -c "EXSCLAIM non-root user" $UNAME
+RUN usermod -aG $GID $UNAME
+RUN mkdir -p /exsclaim/{logs,results}/
+RUN chown -R $UID:$GID /exsclaim
+RUN chown -R $UID:$GID /usr/local/lib/python3.11/site-packages/exsclaim
+RUN chmod -R 775 /usr/local/lib/python3.11/site-packages/exsclaim
 
 WORKDIR /usr/src/app
 
 COPY --chown=$UID:$GID entrypoint.sh ./
 COPY --chown=$UID:$GID query ./query
 RUN chmod +x ./entrypoint.sh
+
+USER $UID
+
+RUN playwright install chromium
 
 ENTRYPOINT ["./entrypoint.sh"]
 CMD [ "python3", "-m", "exsclaim", "query", "/usr/src/app/query/exsclaim-query.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]

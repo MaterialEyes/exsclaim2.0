@@ -48,7 +48,7 @@ class Article(BaseModel):
 	id: Annotated[str, FastPath(title="The id of the article. Typically, its the url path without the domain name.")]
 	title: Annotated[str, FastPath(title="The title of the article.")]
 	url: Annotated[str, FastPath(title="The url to reach the article.")]
-	license: Annotated[str, FastPath(title="The article's license type.")]
+	license: Annotated[str | None, FastPath(title="The article's license type.")] = None
 	open: Annotated[bool, FastPath(title="If the article is open access.")] = False
 	authors: Annotated[str | None, FastPath(title="The authors of the article.")] = None
 	abstract: Annotated[str | None, FastPath(title="The abstract for the article.")] = None
@@ -57,7 +57,7 @@ class Article(BaseModel):
 class Figure(BaseModel):
 	# TODO: Check if these descriptions are accurate
 	id: Annotated[str, FastPath(title="The id of the figure. Typically, its the id of the article that the figure came from followed by the images number within the article.")]
-	caption: Annotated[str, FastPath(title="The caption of the figure.")] = None
+	caption: Annotated[str | None, FastPath(title="The caption of the figure.")] = None
 	caption_delimiter: str | None = None
 	url: Annotated[str, FastPath(title="The url to reach the raw figure.")]
 	figure_path: Annotated[str, FastPath(title="The path to the ")]
