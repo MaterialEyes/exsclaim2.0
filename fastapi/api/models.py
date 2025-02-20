@@ -76,5 +76,5 @@ class Subfigure(BaseModel):
 	x2: int
 	y2: int
 	caption: str | None = None
-	keywords: list[str]
+	keywords: list[str] | None = None
 	figure_id: str
