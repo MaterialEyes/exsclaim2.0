@@ -4,6 +4,7 @@ services:
     base:
         build:
             context: .
+            target: base
             args:
                 - EXSCLAIM_GITHUB_REVISION=exsclaim2_for_spin
                 - UID=${UID}

@@ -15,6 +15,7 @@ from json import load, dump
 from os.path import isfile, splitext
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
+from psycopg import Error as PostgresError
 from re import sub
 from textwrap import wrap
 from typing import Callable
@@ -712,5 +713,8 @@ class Pipeline:
 
         with Database("exsclaim") as db:
             for table_name in ("article", "figure", "subfigure", "scale", "scalelabel", "subfigurelabel"):
-                db.copy_from(csv_dir / f"{table_name}.csv", "results",  table_name, run_id)
-                db.commit()
+                try:
+                    db.copy_from(csv_dir / f"{table_name}.csv", "results",  table_name, run_id)
+                    db.commit()
+                except PostgresError as e:
+                    self.logger.exception(e)

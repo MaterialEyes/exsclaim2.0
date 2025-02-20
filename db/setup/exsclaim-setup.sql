@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS results.article(
     id VARCHAR(32) NOT NULL PRIMARY KEY,
     title TEXT NOT NULL,
     url VARCHAR(200) NOT NULL,
-    license VARCHAR(200) NOT NULL,
+    license VARCHAR(200) DEFAULT NULL,
     open BOOLEAN DEFAULT FALSE,
     authors VARCHAR(350) DEFAULT NULL,
     abstract TEXT DEFAULT NULL
@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS results.subfigure(
     x2 INT NOT NULL,
     y2 INT NOT NULL,
     caption TEXT DEFAULT NULL,
-    keywords VARCHAR(20)[] NOT NULL,
+    keywords TEXT DEFAULT NULL,
+    -- keywords VARCHAR(20)[] NOT NULL,
     -- general VARCHAR(20)[] NOT NULL,
     figure_id VARCHAR(40) NOT NULL REFERENCES results.figure(id)
 );

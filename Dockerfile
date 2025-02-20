@@ -16,8 +16,10 @@ WORKDIR /usr/src/install
 ADD https://github.com/$EXSCLAIM_GITHUB_USER/$EXSCLAIM_GITHUB_REPO/archive/$EXSCLAIM_GITHUB_REVISION.tar.gz exsclaim.tar.gz
 RUN --mount=type=cache,target=/tmp/pip \
     tar -xzvf exsclaim.tar.gz && \
+    apt update && apt install -y build-essential && \
     pip install --upgrade pip --cache-dir=/tmp/pip && \
-	pip install "./$EXSCLAIM_GITHUB_REPO-$EXSCLAIM_GITHUB_REVISION" --cache-dir=/tmp/pip
+	pip install "./$EXSCLAIM_GITHUB_REPO-$EXSCLAIM_GITHUB_REVISION" --cache-dir=/tmp/pip && \
+    playwright install-deps && playwright install chromium
 
 WORKDIR /usr/src/app
 
