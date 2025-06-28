@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
+from aiohttp import ClientSession, ClientConnectionError
 from logging import getLogger
-from requests import post, ConnectionError
 from typing import Type
 
 
@@ -22,7 +22,7 @@ class Notifications(ABC):
 		...
 
 	@abstractmethod
-	def notify(self, data: dict | str, name:str, exception: Exception = None):
+	async def notify(self, data: dict | str, name:str, exception: Exception = None):
 		...
 
 	@classmethod
@@ -55,7 +55,7 @@ class NTFY(Notifications):
 		priority = json.get("priority", "3")
 		return cls(url, access_token, priority=priority)
 
-	def notify(self, data: dict | str, name:str, exception: Exception = None):
+	async def notify(self, data: dict | str, name:str, exception: Exception = None):
 		if isinstance(data, dict):
 			from json import dumps
 			data = dumps(data)
@@ -73,10 +73,11 @@ class NTFY(Notifications):
 		if self._access_token is not None:
 			headers["Authorization"] = f"Bearer {self._access_token}"
 
-		try:
-			post(self._ntfy_url, data, headers=headers)
-		except ConnectionError as e:
-			raise CouldNotNotifyException(str(e))
+		async with ClientSession() as session:
+			try:
+				await session.post(self._ntfy_url, data=data, headers=headers)
+			except ClientConnectionError as e:
+				raise CouldNotNotifyException from e
 
 	@property
 	def url(self) -> str:
@@ -100,5 +101,5 @@ class Email(Notifications):
 			recipients = json.get("recipients", tuple())
 		return cls(recipients)
 
-	def notify(self, data: dict | str, name:str, exception: Exception = None):
+	async def notify(self, data: dict | str, name:str, exception: Exception = None):
 		self.logger.error(f"Setup notifications through email.")

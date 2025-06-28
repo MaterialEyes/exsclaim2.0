@@ -1,5 +1,9 @@
-EXSCLAIM2.0: LLM-powered Automatic **EX**traction, **S**eparation, and **C**aption-based natural **L**anguage **A**nnotation of **IM**ages from scientific figures
-
+# EXSCLAIM2.0: LLM-powered Automatic **EX**traction, **S**eparation, and **C**aption-based natural **L**anguage **A**nnotation of **IM**ages from scientific figures
+[![License](https://img.shields.io/github/license/MaterialEyes/exsclaim2.0.svg?color=blue)](https://github.com/MaterialEyes/exsclaim2.0/blob/main/LICENSE)
+[![Website](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim-dev.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Website)
+](https://exsclaim-dev.materialeyes.org)
+[![Release](https://img.shields.io/github/release/MaterialEyes/exsclaim2.0.svg)](https://github.com/MaterialEyes/exsclaim2.0/releases)
+[![DOI](https://zenodo.org/badge/DOI/10.48550/arXiv.2103.10631.svg)](https://arxiv.org/abs/2103.10631)
 
 ## 🤔 Consider Collaboration
 
@@ -10,9 +14,8 @@ If you find this tool or any of its derived capabilities useful, please consider
 EXSCLAIM2.0 is a Python package combining EXSCLAIM! code with Large Language models (LLMs) that can be used for the automatic generation of datasets of labeled images from published papers.
 There are four main steps:
 1. [JournalScraper](https://github.com/MaterialEyes/exsclaim2.0/wiki/JournalScraper): scrap journal websites, acquiring figures, captions, and metadata
-2. [HTMLScraper](https://github.com/MaterialEyes/exsclaim2.0/wiki/HTMLScraper): scrap user provided HTML files, acquiring figures, captions, and metadata 
-3. [CaptionDistributor](https://github.com/MaterialEyes/exsclaim2.0/wiki/CaptionDistributor): separate figure captions into the component chunks that refer to the figure's subfigures using LLMs and prompt engineering
-4. [FigureSeparator](https://github.com/MaterialEyes/exsclaim2.0/wiki/FigureSeparator): separate figures into subfigures, detect scale information, label, and type of image
+2. [CaptionDistributor](https://github.com/MaterialEyes/exsclaim2.0/wiki/CaptionDistributor): separate figure captions into the component chunks that refer to the figure's subfigures using LLMs and prompt engineering
+3. [FigureSeparator](https://github.com/MaterialEyes/exsclaim2.0/wiki/FigureSeparator): separate figures into subfigures, detect scale information, label, and type of image
 
 ## Examples and tutorials
 We provide several tutorials demonstrating how to use EXSCLAIM2.0:

@@ -1,11 +1,8 @@
 from os.path import dirname
-from os import system
 from pathlib import Path
 from setuptools import setup
 from setuptools.command.build_py import build_py as _build_py
-from setuptools.command.install import install as _install
 from subprocess import Popen, PIPE
-from sys import platform
 
 # build with python setup.py bdist_wheel
 # upload to testpypi w/ python3 -m twine upload --repository testpypi dist/*
@@ -50,22 +47,8 @@ class CustomBuildCommand(_build_py):
 			f.write(original_version)
 
 
-class CustomInstallCommand(_install):
-	def run(self):
-		super().run()
-		if self.distribution.script_name == "setup.py":
-			if "linux" in platform:
-				system(
-					"apt update && apt install ffmpeg libsm6 libxext6 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libatspi2.0-0 libxcomposite1 libxdamage1 -y")
-
-			system("exsclaim install-deps")
-		else:
-			print("Skipping install tasks during build.")
-
-
 setup(
 	cmdclass={
 		"build_py": CustomBuildCommand,
-		"install": CustomInstallCommand
 	},
 )

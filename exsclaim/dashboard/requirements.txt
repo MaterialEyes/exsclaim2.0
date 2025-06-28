@@ -1,0 +1,2 @@
+dash_bootstrap_components==2.0.3
+cookiecutter==2.6.0

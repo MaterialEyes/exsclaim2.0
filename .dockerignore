@@ -7,3 +7,24 @@ gen
 *.html
 
 **/exsclaim.egg-info
+
+.git_hooks
+build
+dist
+logs
+notebooks
+output
+
+Dockerfile*
+docker-compose.yml
+
+sql-data/
+
+exsclaim/dashboard/node_modules
+exsclaim/figures/checkpoints/*
+
+**/__pycache__
+
+default.env
+.env
+.git*

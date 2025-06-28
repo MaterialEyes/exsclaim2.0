@@ -1,0 +1,5 @@
+#!/bin/bash
+
+curl -fs "http://localhost:$FAST_API_PORT" || exit 1
+curl -fs "http://localhost:$DASHBOARD_PORT" || exit 1
+exit 0

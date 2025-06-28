@@ -121,7 +121,7 @@ def train_object_detector(train_status):
     # move model to the right device
     model.to(device)
 
-    model_name = "scale_bar_model_{}".format(train_status)
+    model_name = f"scale_bar_model_{train_status}"
     num_epochs = 200
     for epoch in range(start_epoch + 1, num_epochs):
         # train for one epoch, printing every 10 iterations
@@ -146,7 +146,7 @@ def train_object_detector(train_status):
                     "optimizer_state_dict": optimizer.state_dict(),
                     # 'lr_state_dict': lr_scheduler.state_dict()
                 },
-                checkpoints / "scale_bar_model_{}-{}.pt".format(train_status, epoch),
+                checkpoints / f"scale_bar_model_{train_status}-{epoch}.pt",
             )
 
 

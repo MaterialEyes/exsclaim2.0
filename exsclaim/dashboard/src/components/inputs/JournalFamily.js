@@ -1,0 +1,53 @@
+import React from 'react';
+import { Box, Stack, Typography, FormControlLabel, FormGroup, Radio, RadioGroup } from '@mui/material';
+import PropTypes from 'prop-types';
+
+/**
+ * Gets the journal family where EXSCLAIM! will parse through
+ */
+const JournalFamily = (props) => {
+
+	return (
+		<Box id={props.id} sx={{ padding: 1 }}>
+			<Stack direction="row" spacing={2}>
+				<Typography>Journal Family:</Typography>
+				<FormGroup>
+					<RadioGroup
+						aria-labelledby="journal family label"
+						defaultValue="Nature"
+						name="journal family buttons"
+						onChange={(event, value) => {
+							props.setJournalFamily(value);
+						}}
+					>
+						{
+							props.journalFamilies.map((journal, index) => (
+								<FormControlLabel sx={{ height: 30 }} value={journal} control={<Radio />} label={journal} />
+							))
+						}
+						{/*<FormControlLabel sx={{ height: 30 }} value="Wiley" control={<Radio />} label="Wiley" />*/}
+						{/*<FormControlLabel sx={{ height: 30 }} value="RSC" control={<Radio />} label="RSC" />*/}
+						{/*<FormControlLabel sx={{ height: 30 }} value="ACS" control={<Radio />} label="ACS" />*/}
+					</RadioGroup>
+				</FormGroup>
+			</Stack>
+		</Box>
+	)
+}
+
+JournalFamily.propTypes = {
+	/**
+	 * The id of the JournalFamily box.
+	 */
+	id: PropTypes.string,
+	/**
+	 * The journal family that will be searched through.
+	 */
+	journalFamily: PropTypes.string,
+	/**
+	 * The list of available journal families to search through.
+	 */
+	journalFamilies: PropTypes.arrayOf(PropTypes.string)
+}
+
+export default JournalFamily;

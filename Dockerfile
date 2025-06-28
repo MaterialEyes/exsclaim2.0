@@ -1,116 +1,132 @@
-FROM python:3.11.9-slim AS base
+FROM python:3.13.2 AS build
 LABEL authors="Len Washington III"
-
-ARG EXSCLAIM_GITHUB_USER=MaterialEyes
-ARG EXSCLAIM_GITHUB_REPO=exsclaim2.0
-# Can be a branch name, tag name, or commit
-ARG EXSCLAIM_GITHUB_REVISION=main
 
 ARG UID=1000
 ARG GID=1000
 ARG UNAME=exsclaim
 ARG GNAME=exsclaim
 
+ARG GECKODRIVER_VERSION=0.36
+ARG CHROMEDRIVER_VERSION=137.0.7151.68
+# This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
+ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
+
 SHELL ["/bin/bash", "-c"]
 
-WORKDIR /usr/src/install
-
-ADD https://github.com/$EXSCLAIM_GITHUB_USER/$EXSCLAIM_GITHUB_REPO/archive/$EXSCLAIM_GITHUB_REVISION.tar.gz exsclaim.tar.gz
 RUN --mount=type=cache,target=/tmp/pip \
-    tar -xzvf exsclaim.tar.gz && \
-    apt update && apt install -y build-essential && \
-    pip install --upgrade pip --cache-dir=/tmp/pip && \
-	pip install "./$EXSCLAIM_GITHUB_REPO-$EXSCLAIM_GITHUB_REVISION" --cache-dir=/tmp/pip && \
-    playwright install-deps && playwright install chromium
-RUN groupadd -g $GID $GNAME
-RUN useradd -lm -u $UID -g $GNAME -c "EXSCLAIM non-root user" $UNAME
-RUN usermod -aG $GID $UNAME
-RUN mkdir -p /exsclaim/{logs,results}/
-RUN chown -R $UID:$GID /exsclaim
-RUN chown -R $UID:$GID /usr/local/lib/python3.11/site-packages/exsclaim
-RUN chmod -R 775 /usr/local/lib/python3.11/site-packages/exsclaim
+    apt update && apt install -y build-essential make git cmake libfreetype6-dev libharfbuzz-dev && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash && \
+    . ~/.bashrc && \
+    nvm install v22.11.0 && \
+    pip install --upgrade pip --cache-dir=/tmp/pip --root-user-action ignore
 
-WORKDIR /usr/src/app
+WORKDIR /opt/install
 
-COPY --chown=$UID:$GID entrypoint.sh ./
+COPY ./ ./
+
+RUN --mount=type=cache,target=/tmp/pip \
+    . ~/.bashrc && \
+	npm config set strict-ssl false && \
+    make install && \
+    wget -o- https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip && \
+	unzip chromedriver-linux64.zip && \
+	mv chromedriver-linux64/chromedriver /usr/local/bin && \
+	wget -o- https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chrome-linux64.zip && \
+	unzip chrome-linux64.zip -d /opt/chrome
+
+
+FROM python:3.13.2-slim AS core
+LABEL authors="Len Washington III"
+
+ARG UID=1000
+ARG GID=1000
+ARG UNAME=exsclaim
+ARG GNAME=exsclaim
+
+ENV OLLAMA_MODELS=/opt/ollama
+ENV FAST_API_PORT=8000
+ENV DASHBOARD_PORT=3000
+ENV FAST_API_URL=http://localhost:$FAST_API_PORT
+ENV DASHBOARD_URL=http://localhost:$DASHBOARD_PORT
+
+SHELL ["/bin/bash", "-c"]
+HEALTHCHECK --interval=6s --timeout=4s --start-period=12s --retries=8 CMD docker-healthcheck
+ENTRYPOINT ["docker-entrypoint"]
+CMD exsclaim initialize_db;exsclaim ui --force_ollama --blocking
+
+
+RUN groupadd -g $GID $GNAME && \
+    useradd -lm -u $UID -g $GNAME -c "EXSCLAIM non-root user" --shell /bin/bash $UNAME && \
+    usermod -aG $GID $UNAME && \
+    mkdir -p /exsclaim/{logs,results}/ && \
+    chown -R $UID:$GID /exsclaim && \
+    apt update && \
+    apt install -y curl libglib2.0-0 libnss3 libgconf-2-4 libfontconfig1 \
+        libxcb1 libx11-6 libx11-xcb1 libxcomposite1 \
+        libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 \
+        libxrender1 libxss1 libxtst6 libpango1.0-0 \
+        libcairo2 libcups2 libdbus-1-3 libexpat1 libuuid1 libxkbcommon0 \
+        libxshmfence1 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libgbm1 \
+        libasound2 libgdk-pixbuf2.0-0 libgtk-3-0 jq && \
+	mkdir -p $OLLAMA_MODELS && \
+	curl -fsSL https://ollama.com/install.sh | sh && \
+	chown -R ollama:ollama $OLLAMA_MODELS && \
+	chmod -R 775 $OLLAMA_MODELS && \
+	usermod -aG ollama $UNAME
+
+WORKDIR /opt/exsclaim
+
+COPY --chown=$UID:$GID docker-entrypoint docker-healthcheck /usr/local/bin/
 COPY --chown=$UID:$GID query ./query
-RUN chmod +x ./entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint && \
+    chmod +x /usr/local/bin/docker-healthcheck && \
+    chown $UID:$GID /opt/exsclaim
 
 USER $UID
 
-RUN playwright install chromium
+RUN echo -e '#!/bin/bash\n\nnohup ollama serve&\nOLLAMA_PID=$!\necho "Waiting for Ollama server to start..."\nwhile [ "$(ollama list | grep NAME)" == "" ]; do\n  sleep 1\ndone\nollama pull llama3.2\nkill $OLLAMA_PID' > pull_ollama_file && \
+    chmod +x pull_ollama_file && \
+    ./pull_ollama_file && \
+    rm pull_ollama_file
 
-ENTRYPOINT ["./entrypoint.sh"]
-CMD [ "python3", "-m", "exsclaim", "query", "/usr/src/app/query/exsclaim-query.json", "--caption_distributor", "--journal_scraper", "--figure_separator" ]
+COPY --from=build --chown=$UID:$GID /opt/install/dist/exsclaim* /opt/install/
+COPY --from=build --chown=$UID:$GID /usr/local/bin /usr/local/bin
+COPY --from=build --chown=$UID:$GID /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 
-FROM python:3.11.9 AS jupyter-base
+FROM core AS pycharm
+LABEL authors="Len Washington III"
 
-WORKDIR /usr/src/app
+CMD ["python3"]
 
-COPY jupyter_requirements.txt jupyter_extensions.txt ./
-RUN pip install -r jupyter_requirements.txt --no-cache-dir
-RUN pip install -r jupyter_extensions.txt --no-cache-dir
-RUN pip install --upgrade notebook
+USER root
+
+RUN apt update && apt install -y build-essential libxml2 cmake curl && \
+    touch ~/.xinitrc && chmod +x ~/.xinitrc && \
+    pip install ipython==9.2.0 pydevd==3.3.0 pydevd-pycharm~=252.21735.39 pytest==8.4.1 --root-user-action ignore --cache-dir /tmp/pip && \
+    chmod -R 775 /opt && \
+    chown -R exsclaim:root /opt && \
+    mkdir -p /home/exsclaim/.cache/torch/hub/checkpoints/ && \
+    curl --request GET \
+    --url 'https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth'\
+    --output '/home/exsclaim/.cache/torch/hub/checkpoints/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth'
+
+USER $UID
+
+FROM core AS jupyter
+
+WORKDIR /opt/exsclaim
 
 EXPOSE 8888
-
-FROM prod AS jupyter
-
-WORKDIR /usr/src/app
-
 CMD ["jupyter", "notebook", "--allow-root", "--port=8888", "--ip=0.0.0.0"]
 
-COPY --from=jupyter-base /usr/local/bin/jupyter /usr/local/bin/jupyter
-COPY --from=jupyter-base /usr/local/bin/jupyter-* /usr/local/bin/
-COPY --from=jupyter-base /usr/local/share/jupyter /usr/local/share/jupyter
-COPY --from=jupyter-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
-RUN ls -la /root/.nvm && \
+COPY jupyter_requirements.txt jupyter_extensions.txt ./
+RUN pip install -r jupyter_requirements.txt --no-cache-dir && \
+    pip install -r jupyter_extensions.txt --no-cache-dir && \
+    pip install --upgrade notebook && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash && \
+    ls -la /root/.nvm && \
     \. /root/.nvm/nvm.sh && \
     \. /root/.nvm/bash_completion && \
     nvm install v20.15.0 && \
     jupyter lab build
-
-FROM python:3.11.9-slim AS pycharm
-LABEL authors="Len Washington III"
-
-WORKDIR /usr/src/requirements
-
-COPY requirements.txt .
-COPY jupyter_requirements.txt .
-COPY dashboard/requirements.txt ./dash_requirements.txt
-COPY fastapi/requirements.txt ./fastapi_requirements.txt
-
-RUN apt update && apt install -y build-essential x11vnc xauth && \
-    touch ~/.xinitrc && chmod +x ~/.xinitrc && \
-    pip install pip==24.1 --root-user-action ignore --cache-dir /tmp/pip
-
-RUN --mount=type=cache,target=/tmp/pip \
-    pip install -r requirements.txt -r jupyter_requirements.txt -r dash_requirements.txt -r fastapi_requirements.txt \
-    --root-user-action ignore --cache-dir /tmp/pip
-
-ADD https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth /root/.cache/torch/hub/checkpoints/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth
-RUN playwright install-deps && playwright install chromium
-
-ENTRYPOINT ["xvfb-run", "python3"]
-
-FROM python:3.12.5 AS make
-
-WORKDIR /usr/src/app
-
-COPY ./api ./api
-COPY ./dashboard ./dashboard
-COPY ./db ./db
-COPY ./exsclaim ./exsclaim
-COPY ./fastapi ./fastapi
-COPY entrypoint.sh LICENSE Makefile MANIFEST.in pyproject.toml README.md requirements.txt setup.py ./
-
-RUN apt update && apt install -y build-essential && \
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash && \
-    . ~/.bashrc && \
-    nvm install v22.11.0 && \
-    make build
-
-ENTRYPOINT ["/bin/bash", "-c"]
-CMD ["cp -avru /usr/src/app/dist/* /usr/src/dist/"]

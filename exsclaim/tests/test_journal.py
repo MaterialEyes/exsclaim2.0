@@ -69,7 +69,7 @@ class TestNature(unittest.TestCase):
         # set up and execute mock execution
         mock_url = "http://www.test_exsclaim.com/article/test_article"
         responses.add(responses.GET, mock_url, body=test_html)
-        result_soup = self.jfamily.get_soup_from_request(mock_url)
+        result_soup = self.jfamily.get(mock_url)
         self.assertEqual(expected_soup, result_soup)
 
     @responses.activate

@@ -1,3 +1,4 @@
+import cv2
 from os import PathLike
 
 
@@ -20,5 +21,6 @@ def apply_mask(figure_path:PathLike[str]):
 	img[mask > 0] = [0, 0, 0, 0]
 
 	# Convert the image back to PIL format and save the result
-	img_pil = Image.fromarray(img)
-	img_pil.save(figure_path)
+	# img_pil = Image.fromarray(img)
+	# img_pil.save(figure_path)
+	cv2.imwrite(figure_path, img)

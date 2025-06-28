@@ -3,18 +3,16 @@ include exsclaim/README.md
 recursive-include exsclaim *.py
 recursive-include exsclaim *.pyi
 
-recursive-include fastapi/api *.py
-recursive-include fastapi/api *.pyi
+recursive-include exsclaim/api *.py
+recursive-include exsclaim/api *.pyi
 
-recursive-include dashboard/dashboard *.py
-recursive-include dashboard/dashboard *.pyi
+recursive-include exsclaim/dashboard *.py
+recursive-include exsclaim/dashboard *.pyi
 
 include exsclaim/figures/config/yolov3_default_master.cfg
 include exsclaim/figures/config/yolov3_default_subfig.cfg
 include exsclaim/figures/config/scale_label_reader.json
 include exsclaim/figures/scale/corpus.txt
-
-include exsclaim/utilities/setup.sql
 
 include exsclaim/tests/data/nature_test.json
 include exsclaim/tests/data/images/pipeline/*
@@ -24,6 +22,11 @@ include exsclaim/tests/data/images/scale_bar_test_images/*
 include exsclaim/tests/data/images/scale_label_test_images/*
 include exsclaim/tests/data/nature_closed_expected.json
 
-include dashboard/dashboard/assets/*.png
-include dashboard/dashboard/assets/*.ico
+include exsclaim/dashboard/assets/*.png
+include exsclaim/dashboard/assets/*.ico
+
+include exsclaim/dashboard/exsclaim_ui_components/*.js
+include exsclaim/dashboard/exsclaim_ui_components/*.json
+
+include exsclaim/dashboard
 

@@ -1,74 +1,80 @@
 name: exsclaim2
 
 services:
-    base:
-        build:
-            context: .
-            target: base
-            args:
-                - EXSCLAIM_GITHUB_REVISION=exsclaim2_for_spin
-                - UID=${UID}
-                - GID=${GID}
-                - UNAME=${UNAME}
-                - TZ=${TZ}
-        image: exsclaim/base
-        env_file: .env
-
     python:
         build:
-            target: "prod"
+            target: build
             args:
                 - UID=${UID}
                 - GID=${GID}
                 - UNAME=${UNAME}
+                - UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX}
         image: exsclaim/core
         env_file: .env
         environment:
-            - OPENAI_API_KEY=${OPENAI_API_KEY}
+            - POSTGRES_HOST=db
         volumes:
 #            # This was added for when the exsclaim module was being edited while a container already existed.
 #            # Can be removed if no work is being done to exsclaim since pip already locally installed it.
-            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
-            - ./query:/usr/src/app/query
-            - ./output:/usr/src/app/output
+#            - ./exsclaim:/usr/local/lib/python3.13/site-packages/exsclaim
+            - ./:/opt/exsclaim
+            - /etc/localtime:/etc/localtime:ro
+        ports:
+            - "127.0.0.1:3000:3000"
+            - "127.0.0.1:8000:8000"
+            - "127.0.0.1:11434:11434"
+        links:
+            - postgres:db
+        depends_on:
+            postgres:
+                condition: service_healthy
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        -  driver: nvidia
+                           count: all
+                           capabilities: [ gpu ]
+        runtime: nvidia
+        secrets:
+            - db_password
+
+    pycharm:
+        extends:
+            service: python
+        build:
+            target: pycharm
+        image: exsclaim/pycharm
+        command: [ "python3" ]
+        ports: []
+        secrets:
+            - db_password
 
     jupyter:
         build:
             target: "jupyter"
-            args:
-                - UID=${UID}
-                - GID=${GID}
-                - UNAME=${UNAME}
         image: exsclaim/jupyter
         env_file: .env
-        environment:
-            - HF_TOKEN=${HF_TOKEN}
-            - OPENAI_API_KEY=${OPENAI_API_KEY}
         volumes:
-            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
-            - ./query:/usr/src/app/query
-            - ./notebooks:/usr/src/app/notebooks
+            - ./exsclaim:/usr/local/lib/python3.13/site-packages/exsclaim
+            - ./query:/opt/exsclaim/query
+            - ./notebooks:/opt/exsclaim/notebooks
         ports:
             - "8888:8888"
 
     postgres:
-        image: postgres:16.4-alpine
+        image: postgres:17-alpine
         env_file: .env
         ports:
-            - "127.0.0.1:6543:$POSTGRES_PORT"
+            - "127.0.0.1:6543:5432"
         environment:
-            - POSTGRES_USER=${POSTGRES_USER:-exsclaim}
+            - POSTGRES_PORT=5432
             - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
-            - POSTGRES_DB=${POSTGRES_DB:-exsclaim}
-            - POSTGRES_PORT=${POSTGRES_PORT:-5432}
-            - TZ=${TZ:-America/Chicago}
-            - PGTZ=${TZ}
         volumes:
             - ./sql-data:/var/lib/postgresql/data:Z
-            - ./db/setup:/docker-entrypoint-initdb.d:ro
             - /etc/localtime:/etc/localtime:ro
         healthcheck:
-            test: ["CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p ${POSTGRES_PORT} && exit 0 || exit 1'"]
+            test: ["CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p 5432 && exit 0 || exit 1'"]
             interval: 6s
             timeout: 4s
             start_period: 6s
@@ -76,66 +82,6 @@ services:
         secrets:
             - db_password
 
-    fastapi:
-        restart: always
-        env_file: .env
-        environment:
-            - OPENAI_API_KEY=${OPENAI_API_KEY}
-            - PORT=${FASTAPI_PORT}
-            - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
-        image: exsclaim/ui/api
-        build:
-            context: ./fastapi
-            target: dev
-            args:
-                - PORT=${FASTAPI_PORT}
-                - UID=${UID}
-                - GID=${GID}
-                - UNAME=${UNAME}
-        links:
-            - postgres:db
-        volumes:
-            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
-            - ./fastapi/api:/usr/src/app/api
-            - ./logs:/exsclaim/logs
-            - ./output:/exsclaim/results
-        ports:
-            - "81:${FASTAPI_PORT}"
-        depends_on:
-            postgres:
-                condition: service_healthy
-        secrets:
-            - db_password
-
-    dashboard:
-        build:
-            context: ./dashboard
-            target: py-prod
-            args:
-                - UID=${UID}
-                - GID=${GID}
-                - UNAME=${UNAME}
-        pull_policy: build
-        env_file: .env
-        image: exsclaim/ui/dashboard
-        environment:
-            - PORT=3000
-            - FAST_API_URL=http://localhost:81
-        links:
-            - fastapi:api
-        ports:
-            - "3000:3000"
-        depends_on:
-            fastapi:
-                condition: service_healthy
-
-    make:
-        image: exsclaim/build
-        build:
-            context: .
-            target: make
-        volumes:
-            - ./dist:/usr/src/dist
 
 secrets:
     db_password:

@@ -11,7 +11,7 @@ if [[ "$VERSION" == *"b"* ]]; then
 	VERSION="${SHORT_VERSION}b${BETA_NUMBER}"
 	echo "version = \"$VERSION\"" > "$VERSION_FILE"
 	sed -i "s/^version = .*$/version = \"$VERSION\"/g" pyproject.toml
-	git add "$VERSION_FILE"
-	git add pyproject.toml
+	sed -i "s/^  \"version\": .*$/  \"version\": \"$VERSION\",/g" exsclaim/dashboard/package.json
+	git add "$VERSION_FILE" pyproject.toml exsclaim/dashboard/package.json
 	echo "Changed the version number to $VERSION."
 fi

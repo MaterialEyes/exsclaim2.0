@@ -5,10 +5,9 @@ try:
 except ImportError:
 	__version__ = None
 from argparse import ArgumentParser
-from asyncio import run
 from atexit import register
 from json import load
-from os import PathLike
+from os import PathLike, getenv
 from os.path import splitext, isfile
 from pathlib import Path
 
@@ -24,22 +23,15 @@ def on_terminate():
 	logging.shutdown()
 
 
-def install_dependencies():
-	from subprocess import call
-	# TODO: Add all of the dependency installation requirements
-	call("playwright install-deps".split(" "))
-	call("playwright install chromium".split(" "))
-
-
-def run_pipeline(query=None, verbose:bool=False, compress:str=None, compress_location:str=None,
-				 caption_distributor:bool=False, journal_scraper:bool=False, figure_separator:bool=False, html_scraper:bool=False, **kwargs):
-	compress = compress or ""
-
+async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compress_location:str=None,
+				 caption_distributor:bool=False, journal_scraper:bool=False, figure_separator:bool=False, **kwargs):
 	if query is None:
 		raise ValueError("The search query is required.")
 
-	if not any((caption_distributor, journal_scraper, figure_separator, html_scraper)):
+	if not any((caption_distributor, journal_scraper, figure_separator)):
 		raise ValueError("You must run run the pipeline with at least one tool.")
+
+	compress = compress or ""
 
 	path = Path(query).absolute()
 	if not path.exists():
@@ -57,7 +49,8 @@ def run_pipeline(query=None, verbose:bool=False, compress:str=None, compress_loc
 
 	pipeline = Pipeline(search_query)
 	try:
-		results = run(pipeline.run(caption_distributor=caption_distributor, journal_scraper=journal_scraper, figure_separator=figure_separator, html_scraper=html_scraper))
+		results = await pipeline.run(caption_distributor=caption_distributor, journal_scraper=journal_scraper,
+								   figure_separator=figure_separator)
 
 		for handler in pipeline.logger.handlers:
 			handler.flush()
@@ -76,32 +69,58 @@ def run_pipeline(query=None, verbose:bool=False, compress:str=None, compress_loc
 	return 0
 
 
-def dashboard(dashboard_configuration:PathLike[str]=None, api_configuration:PathLike[str]=None):
+async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:PathLike[str] = None,
+			  blocking:bool = False, api_port:str = "8000", dashboard_port:str = "3000"):
+	from signal import signal, SIGINT, SIGTERM, SIGQUIT
 	from subprocess import Popen
 
-	current_directory = Path(__file__).parent
+	exsclaim_dir = Path(__file__).parent.resolve()
 
-	api_configuration = api_configuration or str(current_directory / "api" / "config.py")
-	dashboard_configuration = dashboard_configuration or str(current_directory / "dashboard" / "config.py")
+	def get_configuration(configuration:PathLike[str], folder:str) -> str:
+		configuration = configuration or (exsclaim_dir / folder / "config.py")
 
-	if not isfile(api_configuration):
-		raise ValueError(f"The api configuration file \"{api_configuration}\" does not exist.")
+		if not isfile(configuration):
+			raise FileNotFoundError(f"The configuration file \"{configuration}\" does not exist.")
 
-	if not isfile(dashboard_configuration):
-		raise ValueError(f"The dashboard configuration file \"{dashboard_configuration}\" does not exist.")
+		configuration = f"file:{configuration}"
 
-	Popen(["gunicorn", "exsclaim.api:app", "-c", api_configuration])
-	Popen(["gunicorn", "exsclaim.dashboard:server", "-c", dashboard_configuration], cwd=str(current_directory / "dashboard"))
+		return configuration
+
+	api_configuration = get_configuration(api_configuration, "api")
+	dashboard_configuration = get_configuration(dashboard_configuration, "dashboard")
+
+	api = Popen(["/usr/local/bin/hypercorn", "exsclaim.api:app", "-c", api_configuration])
+	dashboard = Popen(["/usr/local/bin/gunicorn", "exsclaim.dashboard:server", "-c", dashboard_configuration],
+		  cwd=str(exsclaim_dir / "dashboard"))
+
+	def signal_handler(*args):
+		api.kill()
+		dashboard.kill()
+		return 0
+
+	if not blocking:
+		return 0
+
+	for sig in (SIGINT, SIGTERM, SIGQUIT):
+		signal(sig, signal_handler)
+	api.wait()
+	dashboard.wait()
+	return 0
 
 
-def main(args=None):
+async def init_db():
+	from .db import Database
+	db = Database()
+	await db.initialize_database()
+
+
+async def launch(args=None):
 	parser = ArgumentParser(prog="exsclaim")
 
 	parser.add_argument("-v", "--version", action="version",
 						version=f"EXSCLAIM v{__version__}" if __version__ is not None else "EXSCLAIM! version is currently unavailable.")
 
 	subparsers = parser.add_subparsers(dest="command", required=True)
-	subparsers.add_parser("install-deps", help="Install dependencies for EXSCLAIM!'s dependencies.")
 	query_subparser = subparsers.add_parser("query", help="The path to the JSON file holding the search query.")
 
 	query_subparser.add_argument("query", help="The path to the JSON file holding the search query.")
@@ -113,24 +132,45 @@ def main(args=None):
 	query_subparser.add_argument("--compress_location", "-cl", help="The location where the compressed search results will be stored.")
 	query_subparser.add_argument("--verbose", "-v", action="store_true")
 
-	view_subparser = subparsers.add_parser("view", help="View search results from EXSCLAIM!")
+	view_subparser = subparsers.add_parser("ui", help="View search results from EXSCLAIM!")
 	view_subparser.add_argument("-dc", "--dashboard_configuration", help="The path to the gunicorn configuration file for the dashboard. Example at https://github.com/benoitc/gunicorn/blob/bacbf8aa5152b94e44aa5d2a94aeaf0318a85248/examples/example_config.py")
 	view_subparser.add_argument("-ac", "--api_configuration", help="The path to the gunicorn configuration file for the api.")
+	view_subparser.add_argument("-B", "--blocking", action="store_true", help="If the program should wait for the subprocesses to finish before closing.")
+
+	db_subparser = subparsers.add_parser("initialize_db", help="Initializes the PostgreSQL database.")
+
+	for subparser in (query_subparser, view_subparser):
+		subparser.add_argument("--force_ollama", action="store_true", help="Fails if EXSCLAIM can't connect to the Ollama API.")
 
 	args = vars(parser.parse_args(args))
 
+	if "force_ollama" in args:
+		if args["force_ollama"]:
+			from .captions.ollama_llms import Ollama
+			Ollama.available_models(silent_fail=False)
+
+		del args["force_ollama"]
+
+	exit_code = None
 	match args["command"]:
-		case "install-deps":
-			install_dependencies()
-			exit(0)
 		case "query":
-			return(run_pipeline(**args))
-		case "view":
+			exit_code = await run_pipeline(**args)
+		case "ui":
 			del args["command"]
-			dashboard(**args)
+			exit_code = await ui(**args)
+		case "initialize_db":
+			exit_code = await init_db()
 		case "train":
 			...
 
+	if exit_code is not None:
+		exit(exit_code)
+
+
+def main(args=None):
+	from asyncio import run
+	run(launch(args))
+
 
 if __name__ == "__main__":
-	exit(main())
+	main()
