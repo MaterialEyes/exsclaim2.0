@@ -1,17 +1,20 @@
 try:
-	from .exsclaim_ui_components import App
 	from ..caption import LLM
 	from ..journal import JournalFamily
 	from ..utilities import PrinterFormatter, ExsclaimFormatter
+	from .components import create_homepage_layout, create_resultpage_layout
 except ImportError:
-	from exsclaim.dashboard.exsclaim_ui_components import App
 	from exsclaim import LLM, JournalFamily, PrinterFormatter, ExsclaimFormatter
+	from components import create_homepage_layout, create_resultpage_layout
 
 import dash_bootstrap_components as dbc
 import logging
 
-from dash import Dash, html
+from dash import Dash, html, Output, Input, dcc, callback
 from os import getenv
+from re import search
+from uuid import UUID
+
 
 __all__ = ["app", "server"]
 
@@ -26,6 +29,7 @@ logging.basicConfig(level=logging.DEBUG,
 					force=True)
 
 logger = logging.getLogger(__name__)
+DEBUG = getenv("EXSCLAIM_DEBUG") is not None
 
 
 def error_handler(exception:Exception) -> None:
@@ -34,29 +38,63 @@ def error_handler(exception:Exception) -> None:
 
 
 title = "EXSCLAIM Dashboard"
-app = Dash(title, title=title, on_error=error_handler,
+app = Dash(title, title=title, on_error=error_handler, suppress_callback_exceptions=True,
 		   external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME])
 server = app.server
 
-available_llms = [dict(model_name=model_name, needs_api_key=needs_api_key,
-					   display_name=label if label is not None else model_name.title())
-				  for model_name, (cls, needs_api_key, label) in LLM]
-journal_families = [name for name, cls in JournalFamily]
+available_llms = [dict(
+					model_name=model_name,
+					needs_api_key=needs_api_key,
+					display_name=label if label is not None else model_name.title()
+				  ) for model_name, (cls, needs_api_key, label) in LLM]
+show_api_key = {llm["model_name"]: llm["needs_api_key"] for llm in available_llms}
 
-app.layout = html.Div(
-	[
-		App(
-			fast_api_url=getenv("FAST_API_URL", "http://localhost:8000").rstrip('/'),
+journal_families = [name for name, cls in JournalFamily]
+fastapi_url = getenv("FAST_API_URL", "http://localhost:8000").rstrip('/')
+
+# Use the new Dash HomePage layout instead of React components
+home_page = create_homepage_layout(title, journal_families, available_llms)
+
+healthcheck = html.Div([
+	html.P("EXSCLAIM Dashboard is operating normally.")
+])
+
+
+app.layout = html.Div([
+	dcc.Store(
+		id="theme",
+		storage_type="local",
+		data=dict(theme="light")),
+	dcc.Store(
+		id="exsclaim-store",
+		storage_type="session",
+		data=dict(
+			fast_api_url=fastapi_url,
 			available_llms=available_llms,
-			journalFamilies=journal_families
-		),
-	],
+			show_api_key=show_api_key
+		)),
+	dcc.Location(id="url", refresh=False),
+	html.Div(id="page-content"),
+])
+
+
+@callback(
+	Output("page-content", "children"),
+	Input("url", "pathname")
 )
+def page_router(pathname:str):
+	if pathname == "/" or pathname == "":
+		return home_page
+	elif pathname == "/healthcheck":
+		return healthcheck
+	elif (result_id := search(r"/results/([\da-z-]+)", pathname)) is not None:
+		result_id = result_id.group(1)
+		return create_resultpage_layout(UUID(result_id), fastapi_url)
+	return None # TODO: Raise 404
 
 
 def main():
-	debug = getenv("EXSCLAIM_DEBUG") is not None
-	app.run(debug=debug, port=getenv("DASHBOARD_PORT", 3000), host="0.0.0.0")
+	app.run(debug=DEBUG, port=getenv("DASHBOARD_PORT", 3000), host="0.0.0.0")
 
 
 if __name__ == "__main__":

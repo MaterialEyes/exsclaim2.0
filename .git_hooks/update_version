@@ -1,0 +1,12 @@
+#!/bin/bash
+
+VERSION=$1
+GIT_DIR=${GIT_DIR-`git rev-parse --show-toplevel`}
+
+VERSION_FILE="$GIT_DIR/exsclaim/version.py"
+PYPROJECT_TOML="$GIT_DIR/pyproject.toml"
+
+echo "version = \"$VERSION\"" > "$VERSION_FILE"
+sed -i "s/^version = .*$/version = \"$VERSION\"/g" "$PYPROJECT_TOML"
+git add "$VERSION_FILE" "$PYPROJECT_TOML"
+echo "Changed the version number to $VERSION."

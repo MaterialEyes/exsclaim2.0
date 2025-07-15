@@ -10,7 +10,8 @@ from sqlalchemy import Enum as SAEnum, Column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import text, SQLModel, Field, DateTime
 from typing import Annotated, Literal, Optional
-from uuid import UUID, uuid4
+from uuid import UUID
+from uuid_utils import uuid7
 
 
 __all__ = ["BaseModel", "NTFY", "Query", "ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel", "ScaleLabel",
@@ -39,12 +40,12 @@ class Results(SQLModel, table=True):
 	__tablename__ = "results"
 
 	id: UUID = Field(
-		default_factory=uuid4,
+		default_factory=lambda: UUID(str(uuid7)),
 		primary_key=True,
 		index=True,
 		title="The unique run ID",
 		sa_column_kwargs=dict(
-			server_default=text("uuid_generate_v4()"),
+			server_default=text("uuid_generate_v7()"),
 			unique=True,
 			nullable=False,
 		)

@@ -3,9 +3,9 @@ from logging import Logger
 import exsclaim
 import logging
 
-from ..db import get_async_session
 from .settings import Settings
 from .models import *
+from .middleware import *
 from .routers import v1_router
 
 from aiohttp import ClientSession
@@ -15,6 +15,7 @@ from datetime import datetime as dt
 from exsclaim.__main__ import launch as exsclaim_main
 from fastapi import FastAPI, Request, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import Response, FileResponse, JSONResponse
@@ -26,10 +27,13 @@ from pytz import utc as UTC
 from sqlmodel import select, update, insert
 from sqlmodel.ext.asyncio.session import AsyncSession
 from shutil import make_archive, rmtree, _ARCHIVE_FORMATS
+from starlette.middleware import Middleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
 from typing import Literal, AsyncGenerator
-from uuid import UUID, uuid4
+from uuid import UUID
+from uuid_utils import uuid7
 
 
 __all__ = ["app"]
@@ -116,47 +120,94 @@ async def lifespan(app:FastAPI):
 	flush_logger()
 
 
-settings = Settings()
-app = FastAPI(
-	title=settings.PROJECT_NAME,
-	debug=settings.DEBUG,
-	docs_url=None,
-	redoc_url=None,
-	lifespan=lifespan
-)
-app.openapi = my_schema
-app.configuration_ini = None
-app.include_router(v1_router, prefix="/results/v1")
+def get_middleware() -> list[Middleware]:
+	middleware = [
+		Middleware(RequestLoggerMiddleware, logger=logger),
+		Middleware(PreflightCacheMiddleware),
+	]
+
+	# region CORS Middleware
+	origins = ["https://exsclaim.materialeyes.org", "https://exsclaim-dev.materialeyes.org"]
+	if settings.DEBUG:
+		origins.append(getenv("DASHBOARD_URL", "http://localhost:3000").rstrip('/'))
+
+	middleware.append(Middleware(
+		CORSMiddleware,
+		allow_origins=origins,
+		allow_credentials=True,
+		allow_methods=["GET", "POST"],
+		allow_headers=["*"],
+	))
+	# endregion
+
+	# region Trusted Host Middleware
+	trusted_hosts = [
+		"exsclaim.materialeyes.org",
+		"*.exsclaim.materialeyes.org",
+		"exsclaim-dev.materialeyes.org",
+		"*.exsclaim-dev.materialeyes.org",
+		"localhost",
+		"127.0.0.1",
+	]
+
+	middleware.append(Middleware(
+		TrustedHostMiddleware,
+		allowed_hosts=trusted_hosts
+	))
+	# endregion
+
+	middleware.append(Middleware(GZipMiddleware, minimum_size=1_000))
+	middleware.append(Middleware(SQLAlchemyMiddleware, logger=logger))
+
+	return middleware
+
 
 logger = create_logger()
 _EXAMPLE_UUID = UUID("fd70dd4b-1043-4650-aa11-9f55dc2e2c2b")
 # TODO: Cache content like favicon and the css files so they're scraped once
 cache = dict()
 
-
-origins = ["https://exsclaim.materialeyes.org", "https://exsclaim-dev.materialeyes.org"]
-if settings.DEBUG:
-	origins.append(getenv("DASHBOARD_URL", "http://localhost:3000").rstrip('/'))
-
-
-app.add_middleware(
-	CORSMiddleware,
-	allow_origins=origins,
-	allow_credentials=True,
-	allow_methods=["GET", "POST"],
-	allow_headers=["*"],
+settings = Settings()
+app = FastAPI(
+	title=settings.PROJECT_NAME,
+	debug=settings.DEBUG,
+	docs_url=None,
+	redoc_url=None,
+	lifespan=lifespan,
+	middleware=get_middleware()
 )
+app.openapi = my_schema
+app.configuration_ini = None
+app.include_router(v1_router, prefix="/results/v1")
 
 
 @app.get("/", include_in_schema=False)
-async def dark_theme(light_mode:bool = False):
+async def dark_theme(request:Request, light_mode:bool = True):
 	schema = app.openapi()
-	return get_swagger_ui_html(
+
+	# https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-CH-Prefers-Color-Scheme
+	color_scheme:str = request.headers.get("Sec-Ch-Prefers-Color-Scheme", "").replace("'\"", "")
+
+	light_css = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
+	dark_css = "/swagger-dark-ui.css"
+
+	match color_scheme:
+		case "light":
+			css = light_css
+		case "dark" | "":
+			css = dark_css
+		case _:
+			logger.error(f"Unsupported light mode preference: \"{color_scheme}\".")
+			css = light_css
+
+	response = get_swagger_ui_html(
 		openapi_url=app.openapi_url,
 		title=schema["info"]["title"],
-		swagger_css_url="/swagger-dark-ui.css" if not light_mode else "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css",
+		swagger_css_url=css,
 		swagger_favicon_url="/favicon.ico"
 	)
+
+	return response
 
 
 @app.get("/docs", include_in_schema=False)
@@ -276,9 +327,9 @@ async def get_dark_ui(map_file:bool = False) -> Response:
 				 }
 			 },
 		 })
-async def healthcheck(request:Request, session: AsyncSession = Depends(get_async_session),
-					  logger:logging.Logger = Depends(get_logger)) -> Response:
+async def healthcheck(request:Request, logger:logging.Logger = Depends(get_logger)) -> Response:
 	try:
+		session = request.state.session
 		await session.exec(select(Results))
 		response = Response(f"EXSCLAIM! version {exsclaim.__version__} is running fine.",
 							status_code=200, media_type="text/plain")
@@ -317,7 +368,7 @@ async def run_exsclaim(_id:UUID, search_query_location:Path, session: AsyncSessi
 
 		results_dir = search_query_location.parent
 		if results_dir.is_dir():
-			rmtree(results_dir.absolute())
+			rmtree(results_dir.absolute(), ignore_errors=True)
 	except Exception as e:
 		logging.getLogger(f"run_exsclaim_{_id}").exception(e)
 
@@ -408,11 +459,13 @@ async def run_exsclaim(_id:UUID, search_query_location:Path, session: AsyncSessi
 	}
 }, tags=["Queries/Runs"])
 async def query(request:Request, search_query: Query, background_tasks:BackgroundTasks,
-				logger:logging.Logger = Depends(get_logger), session: AsyncSession = Depends(get_async_session)) -> Response:
+				logger:logging.Logger = Depends(get_logger)) -> Response:
+	session = request.state.session
 	send_json = request.headers.get("accept", "") == "application/json"
 	try:
-		uuid = uuid4()
+		uuid = uuid7()
 		str_uuid = str(uuid)
+		uuid = UUID(str_uuid)
 
 		results_dir = Path("/exsclaim") / "results" / str_uuid
 		results_dir.mkdir(exist_ok=True, parents=True)
@@ -615,7 +668,8 @@ async def query(request:Request, search_query: Query, background_tasks:Backgroun
 				 }
 			 },
 		 })
-async def status(result_id: UUID, session: AsyncSession = Depends(get_async_session), logger:logging.Logger = Depends(get_logger)):
+async def status(result_id: UUID, logger:logging.Logger = Depends(get_logger)):
+	session = request.state.session
 	results = await session.exec(select(Results).where(Results.id == result_id))
 	result:Results = results.one_or_none()
 
@@ -721,8 +775,8 @@ async def status(result_id: UUID, session: AsyncSession = Depends(get_async_sess
 				 }
 			 },
 		 })
-async def download(request:Request, result_id:UUID, compression:str = "default", filename:Literal["name", "id"] = "id",
-				   session: AsyncSession = Depends(get_async_session)) -> Response:
+async def download(request:Request, result_id:UUID, compression:str = "default", filename:Literal["name", "id"] = "id") -> Response:
+	session = request.state.session
 	# Set the filename to be id by default
 	if compression != "default":
 		if compression not in _ARCHIVE_FORMATS.keys():
@@ -761,6 +815,10 @@ async def download(request:Request, result_id:UUID, compression:str = "default",
 							status_code=501, media_type="text/plain")
 
 	results_file = (Path("/exsclaim") / "results" / str(result_id)).with_suffix(".tar.gz")
+	if not results_file.exists():
+		return Response("The result id was found in our database, but the corresponding results file could not be found. Please try again later.",
+						status_code=500, media_type="text/plain")
+
 	if compression == "gztar":
 		return FileResponse(path=str(results_file), media_type="application/octet-stream", filename=results_file.name,
 							status_code=200)
@@ -881,3 +939,10 @@ async def get_possible_compressions(request:Request, compression_type:str = None
 		return JSONResponse({"allowed": allowed}, status_code=status_code, media_type="application/json")
 
 	return Response(f"{compression_type} is {'NOT ' if not allowed else ''}an available compression type.", status_code=status_code, media_type="text/plain")
+
+
+@app.get("/classification_codes", tags=["Queries/Runs"], response_model=list[ClassificationCodes])
+async def classification_codes(request:Request) -> Response:
+	session = request.state.session
+	results = await session.exec(select(ClassificationCodes))
+	return results.all()

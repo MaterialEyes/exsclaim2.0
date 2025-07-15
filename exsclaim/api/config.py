@@ -1,11 +1,10 @@
-from exsclaim.api import settings
-from multiprocessing import cpu_count
-from os import getenv
+from exsclaim.config import get_variables
+# Hypercorn
 
-workers = max(cpu_count() // 2, 1)
-bind = f"0.0.0.0:{getenv('FAST_API_PORT', '8000')}"
-include_date_header = True
+globals().update(get_variables("FAST_API_PORT", "8000", "FAST_API_KEY_FILE",
+							   "FAST_API_CERT_FILE", "api_access.log", "api_error.log",
+							   "FAST_API_INSECURE_PORT"))
 
+include_server_header = False
 if settings.DEBUG:
 	use_reloader = True
-	debug = True

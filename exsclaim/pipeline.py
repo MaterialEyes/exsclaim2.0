@@ -1,5 +1,3 @@
-from exsclaim import figure
-
 from .figure import FigureSeparator
 from .exceptions import *
 from .notifications import *
@@ -24,7 +22,7 @@ from PIL import Image, ImageDraw, ImageFont
 from re import sub
 from textwrap import wrap, dedent
 from typing import Any, Callable
-from uuid import uuid4, UUID
+from uuid_utils import uuid7
 
 
 __all__ = ["Pipeline", "SaveMethods", "PipelineInterruptionException"]
@@ -90,7 +88,7 @@ class Pipeline:
 
 		# Set up file structure
 		base_results_dir = paths.initialize_results_dir(self.query_dict.get("results_dir", None))
-		self.query_dict.setdefault("run_id", uuid4())
+		self.query_dict.setdefault("run_id", str(uuid7()))
 
 		self.results_directory = base_results_dir / self.query_dict["name"]
 		self.results_directory.mkdir(exist_ok=True)

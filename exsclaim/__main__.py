@@ -7,7 +7,7 @@ except ImportError:
 from argparse import ArgumentParser
 from atexit import register
 from json import load
-from os import PathLike, getenv
+from os import PathLike
 from os.path import splitext, isfile
 from pathlib import Path
 
@@ -93,16 +93,17 @@ async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:Pat
 	dashboard = Popen(["/usr/local/bin/gunicorn", "exsclaim.dashboard:server", "-c", dashboard_configuration],
 		  cwd=str(exsclaim_dir / "dashboard"))
 
-	def signal_handler(*args):
-		api.kill()
-		dashboard.kill()
-		return 0
-
 	if not blocking:
 		return 0
 
-	for sig in (SIGINT, SIGTERM, SIGQUIT):
+	def signal_handler(*args):
+		dashboard.kill()
+		api.kill()
+		return 0
+
+	for sig in {SIGINT, SIGTERM, SIGQUIT}:
 		signal(sig, signal_handler)
+
 	api.wait()
 	dashboard.wait()
 	return 0

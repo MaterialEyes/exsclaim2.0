@@ -24,9 +24,6 @@ include exsclaim/tests/data/nature_closed_expected.json
 
 include exsclaim/dashboard/assets/*.png
 include exsclaim/dashboard/assets/*.ico
+include exsclaim/dashboard/assets/*.css
 
-include exsclaim/dashboard/exsclaim_ui_components/*.js
-include exsclaim/dashboard/exsclaim_ui_components/*.json
-
-include exsclaim/dashboard
-
+include exsclaim/dashboard/components

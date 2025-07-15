@@ -3,7 +3,7 @@ name: exsclaim2
 services:
     python:
         build:
-            target: build
+            target: core
             args:
                 - UID=${UID}
                 - GID=${GID}
@@ -14,10 +14,10 @@ services:
         environment:
             - POSTGRES_HOST=db
         volumes:
-#            # This was added for when the exsclaim module was being edited while a container already existed.
-#            # Can be removed if no work is being done to exsclaim since pip already locally installed it.
 #            - ./exsclaim:/usr/local/lib/python3.13/site-packages/exsclaim
             - ./:/opt/exsclaim
+            - ./output:/exsclaim/results
+            - ./logs:/exsclaim/logs
             - /etc/localtime:/etc/localtime:ro
         ports:
             - "127.0.0.1:3000:3000"

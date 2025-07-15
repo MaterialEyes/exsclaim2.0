@@ -1,9 +1,7 @@
-from multiprocessing import cpu_count
-from os import getenv
-from exsclaim.api import settings
+from exsclaim.config import get_variables
+# Gunicorn
 
-bind = f"0.0.0.0:{getenv('DASHBOARD_PORT', '3000')}"
-workers = max(cpu_count() // 2, 1)
+globals().update(get_variables("DASHBOARD_PORT", "3000", "DASHBOARD_KEY_FILE",
+							   "DASHBOARD_CERT_FILE", "dashboard_access.log", "dashboard_error.log",
+							   "DASHBOARD_INSECURE_PORT"))
 
-if settings.DEBUG:
-	reload = True

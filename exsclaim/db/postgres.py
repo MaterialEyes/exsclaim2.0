@@ -6,14 +6,13 @@ from os import PathLike, getenv
 from pathlib import Path
 from shutil import copy
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import Any
 from uuid import UUID
 
 
-__all__ = ["async_engine", "get_async_session", "modify_database_configuration", "get_database_connection_string", "Database"]
+__all__ = ["async_engine", "modify_database_configuration", "get_database_connection_string", "Database"]
 
 
 def get_database_connection_string(configuration_file:PathLike[str] = None, section:str = "Postgres", password_file:PathLike[str]=None) -> str:
@@ -81,14 +80,6 @@ async_engine = create_async_engine(
 )
 
 
-async def get_async_session() -> AsyncSession:
-	async_session = sessionmaker(
-		bind=async_engine, class_=AsyncSession, expire_on_commit=False
-	)
-	async with async_session() as session:
-		yield session
-
-
 class Database:
 	def __init__(self, name="exsclaim", configuration_file=None):
 		db_url = get_database_connection_string(configuration_file, name)
@@ -128,6 +119,7 @@ class Database:
 
 		async with self.async_engine.begin() as conn:
 			await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
+			await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"pg_uuidv7\";"))
 			await conn.execute(CreateSchema("results", if_not_exists=True))
 			await conn.run_sync(SQLModel.metadata.create_all, checkfirst=True)
 

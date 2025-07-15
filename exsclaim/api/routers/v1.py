@@ -1,7 +1,6 @@
-from ...db import get_async_session
 from ..models import *
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from starlette.responses import JSONResponse
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -119,43 +118,50 @@ def get_item_responses(*args, **kwargs):
 				 "abstract": "null"
 			 }
 		 ]))
-async def articles(results_id:UUID, session: AsyncSession = Depends(get_async_session)):
+async def articles(results_id:UUID):
+	session = request.state.session
 	return await Article.get_items(results_id, session)
 
 
 @router.get("/{results_id}/figures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Figure],
 		 responses=get_items_responses("Figure", "figures", []))
-async def figures(results_id:UUID, page=None, session: AsyncSession = Depends(get_async_session)):
+async def figures(results_id:UUID, page=None):
+	session = request.state.session
 	return await Figure.get_items(results_id, session)
 
 
 @router.get("/{results_id}/subfigures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Subfigure],
 		 responses=get_items_responses("Subfigure", "subfigures", []))
-async def subfigures(results_id:UUID, page=None, session: AsyncSession = Depends(get_async_session)):
+async def subfigures(results_id:UUID, page=None):
+	session = request.state.session
 	return await Subfigure.get_items(results_id, session)
 
 
 @router.get("/{results_id}/scales/", tags=[DJANGO_COMPATIBILITY], response_model=list[Scale],
 		 responses=get_items_responses("Scale", "scales", []))
-async def scales(results_id:UUID, session: AsyncSession = Depends(get_async_session)):
+async def scales(results_id:UUID):
+	session = request.state.session
 	return await Scale.get_items(results_id, session)
 
 
 @router.get("/{results_id}/subfigure_labels/", tags=[DJANGO_COMPATIBILITY], response_model=list[SubfigureLabel],
 		 responses=get_items_responses("SubfigureLabel", "subfigure labels", []))
-async def subfigure_labels(results_id:UUID, session: AsyncSession = Depends(get_async_session)):
+async def subfigure_labels(results_id:UUID):
+	session = request.state.session
 	return await SubfigureLabel.get_items(results_id, session)
 
 
 @router.get("/{results_id}/scale_labels/", tags=[DJANGO_COMPATIBILITY], response_model=list[ScaleLabel],
 		 responses=get_items_responses("ScaleLabel", "scale labels", []))
-async def scale_labels(results_id:UUID, session: AsyncSession = Depends(get_async_session)):
+async def scale_labels(results_id:UUID):
+	session = request.state.session
 	return await ScaleLabel.get_items(results_id, session)
 
 
 @router.get("/{results_id}/articles/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Article,
 		 responses=get_item_responses())
-async def article(results_id:UUID, id:str, session: AsyncSession = Depends(get_async_session)) -> JSONResponse | SQLModel:
+async def article(results_id:UUID, id:str) -> JSONResponse | SQLModel:
+	session = request.state.session
 	return await get_item(Article, results_id, id, session, "No article with id: {}.".format)
 # endregion
 
@@ -163,36 +169,42 @@ async def article(results_id:UUID, id:str, session: AsyncSession = Depends(get_a
 # region Individual Objects
 @router.get("/{results_id}/articles/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Article,
 			responses=get_item_responses("Article", "articles"))
-async def articles(results_id:UUID, id:str, session: AsyncSession = Depends(get_async_session)):
+async def articles(results_id:UUID, id:str):
+	session = request.state.session
 	return await get_item(Article, results_id, id, session, "No Article with id: {}".format)
 
 
 @router.get("/{results_id}/figures/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Figure,
 			responses=get_item_responses("Figure", "figures", []))
-async def figures(results_id:UUID, id:str, session: AsyncSession = Depends(get_async_session)):
+async def figures(results_id:UUID, id:str):
+	session = request.state.session
 	return await get_item(Figure, results_id, id, session, "No Figure with id: {}".format)
 
 
 @router.get("/{results_id}/subfigures/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Subfigure,
 			responses=get_item_responses("Subfigure", "subfigures", []))
-async def subfigures(results_id:UUID, id:str, session: AsyncSession = Depends(get_async_session)):
+async def subfigures(results_id:UUID, id:str):
+	session = request.state.session
 	return await get_item(Subfigure, results_id, id, session, "No Subfigure with id: {}".format)
 
 
 @router.get("/{results_id}/scales/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Scale,
 			responses=get_item_responses("Scale", "scales", []))
-async def scales(results_id:UUID, id:str, session: AsyncSession = Depends(get_async_session)):
+async def scales(results_id:UUID, id:str):
+	session = request.state.session
 	return await get_item(Scale, results_id, id, session, "No Scale with id: {}".format)
 
 
 @router.get("/{results_id}/subfigure_labels/{id}", tags=[DJANGO_COMPATIBILITY], response_model=SubfigureLabel,
 			responses=get_item_responses("SubfigureLabel", "subfigure labels", []))
-async def subfigure_labels(results_id:UUID, id:str, session: AsyncSession = Depends(get_async_session)):
+async def subfigure_labels(results_id:UUID, id:str):
+	session = request.state.session
 	return await get_item(SubfigureLabel, results_id, id, session, "No SubfigureLabel with id: {}".format)
 
 
 @router.get("/{results_id}/scale_labels/{id}", tags=[DJANGO_COMPATIBILITY], response_model=ScaleLabel,
 			responses=get_item_responses("ScaleLabel", "scale labels", []))
-async def scale_labels(results_id:UUID, id:str, session: AsyncSession = Depends(get_async_session)):
+async def scale_labels(results_id:UUID, id:str):
+	session = request.state.session
 	return await get_item(ScaleLabel, results_id, id, session, "No ScaleLabel with id: {}".format)
 # endregion
