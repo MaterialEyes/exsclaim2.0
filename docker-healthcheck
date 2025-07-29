@@ -1,0 +1,14 @@
+#!/bin/bash
+
+function api_failed() {
+	echo "API Healthcheck failed.";
+	exit 1
+}
+function dashboard_failed() {
+	echo "Dashboard Healthcheck failed.";
+	exit 1
+}
+
+curl -fs "http://localhost:$FAST_API_PORT/healthcheck" || api_failed
+curl -fs "http://localhost:$DASHBOARD_PORT/healthcheck" || dashboard_failed
+exit 0

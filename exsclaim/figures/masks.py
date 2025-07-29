@@ -1,3 +1,5 @@
+import cv2
+import numpy as np
 from os import PathLike
 
 
@@ -6,6 +8,7 @@ __all__ = ["apply_mask"]
 
 def apply_mask(figure_path:PathLike[str]):
 	# Load the image
+	figure_path = str(figure_path)
 	img = cv2.imread(figure_path, cv2.IMREAD_UNCHANGED)
 
 	# Convert the image to RGBA (just in case the image is in another format)
@@ -20,5 +23,6 @@ def apply_mask(figure_path:PathLike[str]):
 	img[mask > 0] = [0, 0, 0, 0]
 
 	# Convert the image back to PIL format and save the result
-	img_pil = Image.fromarray(img)
-	img_pil.save(figure_path)
+	# img_pil = Image.fromarray(img)
+	# img_pil.save(figure_path)
+	cv2.imwrite(figure_path, img)

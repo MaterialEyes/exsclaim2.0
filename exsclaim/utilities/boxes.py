@@ -12,9 +12,8 @@ from numpy import ndarray
 __all__ = ["convert_coords_to_labelbox", "convert_labelbox_to_coords", "find_box_center", "crop_from_geometry", "is_contained"]
 
 
-def convert_coords_to_labelbox(bbox_coordinates):
+def convert_coords_to_labelbox(x1:int, y1:int, x2:int, y2:int):
     """Converts x1,y1,x2,y2 to [{"x": x1, "y": y1}, ...]"""
-    x1, y1, x2, y2 = bbox_coordinates
     return [
         {"x": x1, "y": y1},
         {"x": x1, "y": y2},
@@ -23,7 +22,7 @@ def convert_coords_to_labelbox(bbox_coordinates):
     ]
 
 
-def convert_labelbox_to_coords(geometry):
+def convert_labelbox_to_coords(geometry:list[dict[str, float | int]]):
     """Converts from [{"x": x1, "y": y1}, ...] to (x1, y1, ...)"""
     # print(geometry)
     x1 = min([point["x"] for point in geometry])

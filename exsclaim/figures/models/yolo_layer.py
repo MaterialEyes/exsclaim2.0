@@ -622,7 +622,7 @@ class YOLOimgLayer(nn.Module):
                 j_best = min(max(int(pred[b, a, j, i, 1].cpu().numpy()), 0), fsize - 1)
 
                 # find box with iou over 0.7 and under 0.3 (predict center)
-                current_truth_box = truth_box[ti : ti + 1]
+                current_truth_box = truth_box[ti:ti + 1]
                 current_pred_boxes = pred[b, :, j_best, i_best, :4]
                 pred_ious = bboxes_iou(
                     current_truth_box, current_pred_boxes, xyxy=False

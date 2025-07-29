@@ -1,0 +1,192 @@
+@import url("https://fonts.googleapis.com/css2?family=Montserrat&display=swap");
+
+:root {
+    --accent-light: oklch(91% 33% 172);
+    --accent-color: oklch(58% 57% 260);
+    --accent-dark: oklch(67% 37% 281);
+}
+
+body[data-theme="light"] {
+    --bg-dark: hsl(0, 2%, 90%);
+    --bg: hsl(0, 1%, 95%);
+    --bg-light: hsl(0, 2%, 100%);
+    --text: hsl(0, 2%, 5%);
+    --text-muted: hsl(0, 2%, 30%);
+    --text-light: hsl(0, 2%, 90%);
+    --text-on-light: var(--text-muted);
+
+    img#exsclaim-logo {
+        content: url("/assets/ExsclaimLogo.png");
+    }
+
+    img#argonne-logo {
+        content: url("/assets/Argonnelablogo.png");
+        height: 60px;
+    }
+
+    .footer {
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+    }
+}
+
+body[data-theme="dark"] {
+    --bg-dark: hsl(0, 2%, 10%);
+    --bg: hsl(0, 2%, 15%);
+    --bg-light: hsl(0, 2%, 20%);
+    --text: hsl(0, 2%, 95%);
+    --text-muted: hsl(0, 2%, 75%);
+    --text-light: hsl(0, 2%, 90%);
+    --text-on-light: hsl(0, 2%, 10%);
+
+    img#exsclaim-logo {
+        content: url("/assets/ExsclaimLogo-Inverted.png")
+    }
+
+    img#argonne-logo {
+        content: url("/assets/Argonnelablogo-White.png");
+        height: 60px;
+    }
+
+    .footer {
+        box-shadow: 0 4px 8px rgba(255, 255, 255, 0.4);
+    }
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-muted);
+}
+
+.result-label {
+    background-color: var(--accent-light);
+    width: 98%
+}
+
+.label-column {
+    background-color: var(--accent-color);
+}
+
+.crop-container {
+    height: 258px;
+    width: 258px;
+    overflow: hidden;
+    position: relative;
+}
+
+.crop-image {
+    position: absolute;
+    top: calc(-1px * var(--y1) * var(--scale));
+    left: calc(-1px * var(--x1) * var(--scale));
+    transform: scale(var(--scale));
+    transform-origin: top left;
+    width: auto;
+    height: auto;
+}
+
+.button-link {
+    background-color: var(--accent-dark);
+    border-radius: 0.375em;
+    color: var(--text-light);
+    padding: 14px 25px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    width: 100%;
+}
+
+.button-link:hover {
+    background-color: var(--accent-color);
+}
+
+.button-link:disabled {
+    background-color: #940720;
+}
+
+#scale-threshold {
+    padding: 4px 10px;
+}
+
+.classification-checklist {
+    column-count: 1;
+}
+
+.px-unit {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateX(-100%);
+    size: 12px;
+    color: var(--text-on-light);
+}
+
+div.Select-placeholder {
+    color: var(--text-on-light);
+}
+
+@media screen and (max-width:500px) {
+    div.Select-placeholder::placeholder {
+        content: "Keywords...";
+    }
+}
+
+@media screen and (min-width:500px) {
+    .px-unit {
+        transform: translateX(-200%);
+    }
+
+    #scale-threshold {
+        padding: 12px 18px;
+    }
+}
+
+@media screen and (min-width:700px) {
+    .classification-checklist {
+        column-count: 2;
+        column-gap: 1.5rem;
+    }
+}
+
+    @media screen and (min-width:900px) {
+    .classification-checklist {
+        column-count: 3;
+        column-gap: 1.5rem;
+    }
+}
+
+/* CSS For the Dark Mode Button: https://codepen.io/Umer_Farooq/pen/eYJgKGN */
+#theme-button {
+    opacity: 0;
+    position: absolute;
+}
+
+.checkbox-label {
+    background-color: #111;
+    width: 50px;
+    height: 26px;
+    border-radius: 50px;
+    position: relative;
+    padding: 5px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.fa-moon {color: #f1c40f;}
+
+.fa-sun {color: #f39c12;}
+
+.checkbox-label .ball {
+    background-color: #fff;
+    width: 22px;
+    height: 22px;
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    border-radius: 50%;
+    transition: transform 0.2s linear;
+}
+
+:not(#theme-button:checked) + .checkbox-label .ball {
+    transform: translateX(24px);
+}

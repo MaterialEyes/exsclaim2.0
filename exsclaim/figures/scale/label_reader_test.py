@@ -472,7 +472,7 @@ class ScaleBarReaderTest:
                 single_result_dict = self.test_single_model(str(checkpoint_path))
                 results_dict[filename] = single_result_dict
                 with open("results_brief.txt", "w") as f:
-                    json.dump(results_dict, f)
+                    json.dump(results_dict, f, indent='\t')
 
 
 if __name__ == "__main__":

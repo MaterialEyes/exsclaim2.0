@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# pip install -U exsclaim
+nohup ollama serve > /opt/exsclaim/nohup.out&
+OLLAMA_PID=$!
+"$@"

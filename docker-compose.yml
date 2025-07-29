@@ -1,217 +1,91 @@
 name: exsclaim2
 
 services:
-    base:
-        pull_policy: build
-        build:
-            context: .
-            args:
-                - EXSCLAIM_GITHUB_REVISION=exsclaim2_for_spin
-                - UID=${UID}
-                - GID=${GID}
-                - UNAME=${UNAME}
-                - TZ=${TZ}
-        image: exsclaim/base
-        env_file: .env
-
     python:
         build:
-            target: "prod"
+            target: core
             args:
                 - UID=${UID}
                 - GID=${GID}
                 - UNAME=${UNAME}
+                - UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX}
         image: exsclaim/core
         env_file: .env
         environment:
-            - OPENAI_API_KEY=${OPENAI_API_KEY}
-        networks:
-            - backend
+            - POSTGRES_HOST=db
+            - YOLO_CONFIG_DIR=/exsclaim/yolo
+            - EXSCLAIM_CHECKPOINTS=/opt/exsclaim/exsclaim/figures/checkpoints
         volumes:
-#            # This was added for when the exsclaim module was being edited while a container already existed.
-#            # Can be removed if no work is being done to exsclaim since pip already locally installed it.
-            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
-            - ./query:/usr/src/app/query
-            - ./output:/usr/src/app/output
+            - ./exsclaim:/usr/local/lib/python3.13/site-packages/exsclaim
+            - ./:/opt/exsclaim
+            - ./output:/exsclaim/results
+            - ./logs:/exsclaim/logs
+            - /etc/localtime:/etc/localtime:ro
+#            - /usr/share/ollama/.ollama/models:/opt/ollama
+        ports:
+            - "127.0.0.1:3000:3000"
+            - "127.0.0.1:8000:8000"
+            - "127.0.0.1:11434:11434"
+        links:
+            - postgres:db
+        depends_on:
+            postgres:
+                condition: service_healthy
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        -  driver: nvidia
+                           count: all
+                           capabilities: [ gpu ]
+        runtime: nvidia
+        secrets:
+            - db_password
+
+    pycharm:
+        extends:
+            service: python
+        build:
+            target: pycharm
+        image: exsclaim/pycharm
+        command: [ "python3" ]
+#        ports: !reset []
+        secrets:
+            - db_password
 
     jupyter:
         build:
             target: "jupyter"
-            args:
-                - UID=${UID}
-                - GID=${GID}
-                - UNAME=${UNAME}
         image: exsclaim/jupyter
         env_file: .env
-        environment:
-            - HF_TOKEN=${HF_TOKEN}
-            - OPENAI_API_KEY=${OPENAI_API_KEY}
-        networks:
-            - backend
         volumes:
-            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
-            - ./query:/usr/src/app/query
-            - ./notebooks:/usr/src/app/notebooks
+            - ./exsclaim:/usr/local/lib/python3.13/site-packages/exsclaim
+            - ./query:/opt/exsclaim/query
+            - ./notebooks:/opt/exsclaim/notebooks
         ports:
             - "8888:8888"
 
     postgres:
-        image: postgres:16.4-alpine
+        image: postgres:17-alpine
         env_file: .env
         ports:
-            - "6543:$POSTGRES_PORT"
-        networks:
-            backend:
-                aliases:
-                    - db
-                    - postgresql
+            - "127.0.0.1:6543:5432"
         environment:
-            - POSTGRES_USER=${POSTGRES_USER:-exsclaim}
-            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-exsclaimtest!9700}
-            - POSTGRES_DB=${POSTGRES_DB:-exsclaim}
-            - POSTGRES_PORT=${POSTGRES_PORT:-5432}
-            - TZ=${TZ:-America/Chicago}
-            - PGTZ=${TZ}
+            - POSTGRES_PORT=5432
+            - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
         volumes:
             - ./sql-data:/var/lib/postgresql/data:Z
-            - ./db/setup:/docker-entrypoint-initdb.d:ro
             - /etc/localtime:/etc/localtime:ro
         healthcheck:
-            test: ["CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p ${POSTGRES_PORT} && exit 0 || exit 1'"]
+            test: ["CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p 5432 && exit 0 || exit 1'"]
             interval: 6s
             timeout: 4s
             start_period: 6s
             retries: 6
-
-    api:
-        restart: always
-        env_file: .env
-        environment:
-            - DJANGO_SECRET_KEY=local
-            - POSTGRES_HOST=db
-            - PORT=${DJANGO_PORT}
-        image: exsclaim/ui/django-api
-        build:
-            context: ./api
-            args:
-                ENV: dev
-            target: base
-        volumes:
-            - ./api/apps:/code/apps
-            - ./api/config:/code/config
-            - ./api/docs:/code/docs
-            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
-        ports:
-            - "$DJANGO_PORT:$DJANGO_PORT"
-        networks:
-            - frontend
-            - backend
-        depends_on:
-            postgres:
-                condition: service_healthy
-
-    fastapi:
-        restart: always
-        env_file: .env
-        environment:
-            - OPENAI_API_KEY=${OPENAI_API_KEY}
-            - PORT=${FASTAPI_PORT}
-            - POSTGRES_HOST=${POSTGRES_HOST}
-        image: exsclaim/ui/api
-        build:
-            context: ./fastapi
-            target: dev
-            args:
-                - PORT=${FASTAPI_PORT}
-                - UID=${UID}
-                - GID=${GID}
-                - UNAME=${UNAME}
-        volumes:
-            - ./exsclaim:/usr/local/lib/python3.11/site-packages/exsclaim
-            - ./fastapi/api:/usr/src/app/api
-            - ./logs:/exsclaim/logs
-            - ./output:/exsclaim/results
-        ports:
-            - "81:${FASTAPI_PORT}"
-        networks:
-            frontend:
-                aliases:
-                    - api
-            backend:
-                aliases:
-                    - api
-        depends_on:
-            postgres:
-                condition: service_healthy
-
-    dashboard:
-        build:
-            context: ./dashboard
-            target: py-prod
-            args:
-                - UID=${UID}
-                - GID=${GID}
-                - UNAME=${UNAME}
-        pull_policy: build
-        env_file: .env
-        image: exsclaim/ui/dashboard
-        environment:
-            - PORT=3000
-            - FAST_API_URL=http://localhost:81
-        ports:
-            - "3000:3000"
-        networks:
-            - frontend
-            - backend
-##        volumes:
-##            - "./dashboard:/usr/src/app"
-        depends_on:
-            fastapi:
-                condition: service_healthy
-#            api:
-#                condition: service_healthy
-
-    build_package:
-        build:
-            context: .
-            target: build
-        image: exsclaim/build
-        volumes:
-            -   ./dist:/usr/src/dist
-
-    make:
-        image: python:3.12.5-slim
-        ports:
-            - "8000:8000"
-            - "3000:3000"
-        volumes:
-            - ./:/usr/src/app
-            - /argonne/tmp:/tmp/pip
-        container_name: exsclaim
-        working_dir: /usr/src/app
-        command: /bin/bash
+        secrets:
+            - db_password
 
 
-networks:
-    frontend:
-    backend:
-
-volumes:
-    exsclaim_module:
-        driver: local
-        driver_opts:
-            type: bind
-            device: /usr/src/app/exsclaim
-
-    notebooks:
-        driver: local
-        driver_opts:
-            type: bind
-            device: /usr/src/app/notebooks
-
-    query:
-        driver: local
-        driver_opts:
-            type: bind
-            device: /usr/src/app/query
-
+secrets:
+    db_password:
+        file: ./exsclaim-psql.txt

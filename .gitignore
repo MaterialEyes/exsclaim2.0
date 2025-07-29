@@ -3,6 +3,12 @@ test.html
 dep_checker.py
 **/error.html
 conda/
+exsclaim-psql.txt
+nohup.out
+temp*
+test*.py
+TODO*
+*.passwd
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
