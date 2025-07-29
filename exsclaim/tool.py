@@ -19,7 +19,7 @@ from json import dump, load, JSONEncoder
 from logging import getLogger, StreamHandler
 from os import PathLike
 from pathlib import Path
-from re import search
+from re import match
 from time import time_ns as timer
 from typing import Iterable, Optional
 
@@ -237,18 +237,19 @@ class CaptionDistributor(ExsclaimTool):
 		kwargs.setdefault("logger_name", __name__ + ".CaptionDistributor")
 		super().__init__(search_query, **kwargs)
 
-	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter, caption_dict, keywords):
+	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter,
+						 caption_dict: dict[str, str], keywords: tuple[str]):
 		exsclaim_dict[figure_name]["caption_delimiter"] = delimiter
 
 		# Gets the figure number out of the figure name
-		match = search(r"^.+_(fig\d+)\.\w{3,4}$", exsclaim_dict[figure_name]["figure_name"])
-		if match is None:
-			raise ValueError(f"Could not find figure number in name: {figure_name}.")
-		figure_number = match.group(1)
-		del match
+		# match = search(r"^.+_(fig\d+)\.\w{3,4}$", exsclaim_dict[figure_name]["figure_name"])
+		# if match is None:
+		# 	raise ValueError(f"Could not find figure number in name: {figure_name}.")
+		# del match
 
 		for label, capt in caption_dict.items():
-			# query = f"{figure_number}{label} {capt if capt else ''}"
+			if match(r"\s*\[\s*]\s*", capt):
+				capt = ""
 
 			master_image = {
 				"label": label,
@@ -276,17 +277,17 @@ class CaptionDistributor(ExsclaimTool):
 	async def unload(self):
 		await LLM.from_search_query(self.search_query).unload()
 
-	async def runner(self, exsclaim_json:dict, search_query:dict, figure:str, new_separated:set, lock:Lock,
-					 semaphore:Semaphore):
+	async def _runner(self, exsclaim_json:dict, search_query:dict, figure:str, new_separated:set, lock:Lock,
+					 semaphore:Semaphore, i:int, num_captions:int):
 		try:
 			if figure == "s41929-023-01090-4_fig4.jpg":
 				self.logger.error(
 					f"There's an extra \"'\" in this {figure}'s caption that causes the JSON to not be parsed properly, skipping for now.")
-				return exsclaim_json
+				return
 
 			async with semaphore:
 				t0 = self._start_timer()
-				self.display_info(f">>> Parsing captions from: {figure}")
+				self.display_info(f">>> Parsing captions from: {figure} ({i:,} of {num_captions:,}).")
 
 				caption_text = exsclaim_json[figure]["full_caption"]
 
@@ -308,7 +309,7 @@ class CaptionDistributor(ExsclaimTool):
 		except Exception as e:
 			self.display_exception(e, figure)
 
-		self._end_timer(t0, f"CaptionDistributor: {figure}")
+		self._end_timer(t0, f"CaptionDistributor: {figure} ({i:,} of {num_captions:,}).")
 
 	async def run(self, search_query:dict, exsclaim_json:dict, limit_llms_to:Optional[int] = 5):
 		"""Run the CaptionDistributor to distribute subfigure captions
@@ -327,15 +328,15 @@ class CaptionDistributor(ExsclaimTool):
 
 		t0 = self._start_timer()
 		# List of objects (figures, captions, etc) that have already been separated
-		file = self.results_directory / "_captions"
+		already_done = self.results_directory / "_captions"
 
-		if file.is_file():
-			with open(file, "r", encoding="utf-8") as f:
+		if already_done.is_file():
+			with open(already_done, "r", encoding="utf-8") as f:
 				separated = {line.strip() for line in f.readlines()}
 		else:
 			separated = set()
 
-		with open(file, "w", encoding="utf-8") as f:
+		with open(already_done, "w", encoding="utf-8") as f:
 			for figure in separated:
 				f.write(f"{Path(figure).name}\n")
 		# Figure extra goes here
@@ -348,10 +349,11 @@ class CaptionDistributor(ExsclaimTool):
 			if value["figure_name"] not in separated
 		]
 
+		num_figures = len(figures)
 		lock = Lock()
 		await gather(*[
-			self.runner(exsclaim_json, search_query, _path, new_separated, lock, semaphore)
-			for _path in figures
+			self._runner(exsclaim_json, search_query, _path, new_separated, lock, semaphore, i+1, num_figures)
+			for i, _path in enumerate(figures)
 		])
 
 		self._end_timer(t0, f"{counter:,} figures")

@@ -669,7 +669,7 @@ class Pipeline:
 					figure_json["article_url"],
 					figure_json["license"],
 					figure_json["open"],
-					figure_json.get("authors", ""),
+					figure_json.get("authors", []),
 					figure_json.get("abstract", ""),
 				])
 				articles.add(article_id)
@@ -704,9 +704,8 @@ class Pipeline:
 					master_image.get("nm_height", None),
 					master_image.get("nm_width", None),
 					*subfigure_coords,
-					master_image["caption"],
-					str(master_image["keywords"]).replace("[", "{").replace("]", "}"),
-					# str(master_image["general"]).replace("[", "{").replace("]", "}"),
+					str(master_image.get("caption", "")),
+					master_image.get("keywords", []),
 					figure_id,
 				])
 
@@ -715,9 +714,7 @@ class Pipeline:
 					csv_info["subfigure_label"].append([
 						master_image["subfigure_label"]["text"],
 						*subfigure_label_coords,
-						master_image["subfigure_label"].get(
-							"label_confidence", None
-						),
+						master_image["subfigure_label"].get("label_confidence", None),
 						master_image["subfigure_label"].get("box_confidence", None),
 						subfigure_id,
 					])

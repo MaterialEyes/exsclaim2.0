@@ -1,14 +1,13 @@
 loguru==0.7.3
 
-numpy==2.2.6
-
 # Image manipulation
+numpy==2.2.6
 opencv-contrib-python-headless==4.12.0.88
 Pillow==11.3.0
 ultralytics==8.3.170
 
 # Asynchronous HTTP requests
-aiohttp==3.12.14
+aiohttp==3.12.15
 httpx==0.28.1
 brotli==1.1.0
 selenium==4.34.2
@@ -49,7 +48,7 @@ starlette==0.46.2
 uvicorn==0.35.0
 hypercorn==0.17.3
 sqlmodel==0.0.24
-sqlalchemy==2.0.41
+sqlalchemy==2.0.42
 pydantic_settings==2.10.1
 uuid-utils==0.11.0
 

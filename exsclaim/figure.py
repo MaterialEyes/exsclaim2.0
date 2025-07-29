@@ -55,16 +55,13 @@ class FigureSeparator(ExsclaimTool):
 		try:
 			self.yolo_model = YOLO(yolov11_load)
 			self.yolo_model.to(self.device)
-
-			# Common YOLO settings if needed
-			self.confidence_threshold = 0.25	# Default confidence threshold
-			self.image_size = 640				# Default YOLO image size
-		except Exception as e:
+		except BaseException as e:
 			self.logger.exception("Error loading YOLO model.")
 			raise ExsclaimToolException from e
 
-		self.image_size = 640  # Default YOLO image size
+		# Common YOLO settings if needed
 		self.confidence_threshold = 0.25  # Default confidence threshold
+		self.image_size = 640  # Default YOLO image size
 
 		# Load scale bar detection model
 		# load an object detection model pre-trained on COCO
@@ -119,7 +116,7 @@ class FigureSeparator(ExsclaimTool):
 		self.results_directory.mkdir(exist_ok=True)
 
 		t0 = self._start_timer()
-		# List of objects (figures, captions, etc) that have already been separated
+		# List of objects (figures, captions, etc.) that have already been separated
 		file = self.results_directory / "_figures"
 
 		if file.is_file():

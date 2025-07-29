@@ -29,8 +29,8 @@ async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compre
 	if query is None:
 		raise ValueError("The search query is required.")
 
-	if not any((journal_scraper, pdf_scraper, caption_distributor, figure_separator)):
-		raise ValueError("You must run run the pipeline with at least one tool.")
+	# if not any((journal_scraper, pdf_scraper, caption_distributor, figure_separator)):
+	# 	raise ValueError("You must run the pipeline with at least one tool.")
 
 	compress = compress or ""
 

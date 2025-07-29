@@ -231,7 +231,7 @@ class LLM(ABC, metaclass=LLMMeta):
 		captions = {entry.label: entry.caption for entry in captions.captions}
 		return captions
 
-	async def get_keywords(self, caption: str) -> list[str]:
+	async def get_keywords(self, caption: str) -> tuple[str]:
 		messages = [
 			ChatMessage(role="system", content=dedent(f"""\
 				You are an experienced material scientist. 
@@ -244,7 +244,7 @@ class LLM(ABC, metaclass=LLMMeta):
 		]
 
 		keywords = await self.get_response(messages, response_format=Keywords)
-		return keywords.keywords
+		return tuple(keywords.keywords)
 
 	@classmethod
 	def from_search_query(cls, search_query:dict):

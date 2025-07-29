@@ -12,7 +12,7 @@ async def fetch_status(client:AsyncClient, base_url: str, result_id: str) -> Sta
 		response = await client.get(f"{base_url}/status/{result_id}")
 		if response.is_success:
 			data = response.json()
-			match data:
+			match data["status"]:
 				case "Finished.":
 					return Status.FINISHED
 				case "Killed.":

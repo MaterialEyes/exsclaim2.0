@@ -21,7 +21,7 @@ services:
             - ./output:/exsclaim/results
             - ./logs:/exsclaim/logs
             - /etc/localtime:/etc/localtime:ro
-            - /usr/share/ollama/.ollama/models:/opt/ollama
+#            - /usr/share/ollama/.ollama/models:/opt/ollama
         ports:
             - "127.0.0.1:3000:3000"
             - "127.0.0.1:8000:8000"

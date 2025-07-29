@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 from os import PathLike
 
 
@@ -7,6 +8,7 @@ __all__ = ["apply_mask"]
 
 def apply_mask(figure_path:PathLike[str]):
 	# Load the image
+	figure_path = str(figure_path)
 	img = cv2.imread(figure_path, cv2.IMREAD_UNCHANGED)
 
 	# Convert the image to RGBA (just in case the image is in another format)

@@ -78,7 +78,7 @@ COPY --chown=$UID:$GID docker-entrypoint docker-healthcheck /usr/local/bin/
 COPY --chown=$UID:$GID query ./query
 RUN chmod +x /usr/local/bin/docker-entrypoint && \
     chmod +x /usr/local/bin/docker-healthcheck && \
-    chown $UID:$GID /opt/exsclaim
+    chown -R $UID:$GID /opt/exsclaim
 
 USER $UID
 

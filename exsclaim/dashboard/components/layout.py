@@ -356,13 +356,14 @@ async def update_layout_state(n_intervals, current_data:dict, data):
 
 	async with AsyncClient(verify=ssl_context) as client:
 		# Check if results are ready
-		match await fetch_status(client, fast_api_url, result_id):
-			case Status.RUNNING | Status.KILLED:
+		match (status := await fetch_status(client, fast_api_url, result_id)):
+			case Status.RUNNING:
 				return current_data, False, *results_pending  # Still loading, return current state
 			case Status.FINISHED:
 				pass
-			case Status.ERROR:
+			case Status.ERROR | Status.KILLED:
 				updated_data.update({
+					"status": status,
 					"results_available": False,
 					"articles_loaded": True,
 					"figures_loaded": True,
@@ -466,7 +467,11 @@ async def update_images(data, n_clicks, keywords, classifications, license_only)
 		return html.Div("No data available", className="text-center")
 
 	if not data.get("results_available", True):
-		return html.Div("The results for this run are unavailable due to an error interrupting the pipeline. Please re-submit your query later.", className="text-center")
+		match data.get("status", Status.ERROR):
+			case Status.KILLED:
+				return html.Div("This run was stopped by the user or admin, please re-submit your query.", className="text-center")
+			case Status.ERROR:
+				return html.Div("The results for this run are unavailable due to an error interrupting the pipeline. Please re-submit your query later.", className="text-center")
 
 	subfigures = data.get("subfigures", [])
 	figures = data.get("figures", [])
@@ -563,7 +568,10 @@ clientside_callback(
 		style = style !== undefined ? style : {};
 		style.overflowX = "auto"; //hidden
 	
-		if(images.props.children.length > 0){
+		const children = images.props.children;
+	
+		if(typeof(children) !== "string" && images.props.children.length > 1){
+			console.log(`Number of children: ${images.props.children.length} ${images.props.children}.`);
 			style.overflowY = "scroll";
 			style.maxHeight = filter_components.clientHeight;
 		} else {

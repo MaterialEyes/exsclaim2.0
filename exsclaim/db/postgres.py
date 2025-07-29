@@ -7,7 +7,7 @@ from logging import exception
 from os import PathLike, getenv
 from pathlib import Path
 from shutil import copy
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -120,6 +120,15 @@ class Database:
 					try:
 						session.add_all(objects)
 						await session.commit()
+					except IntegrityError as e:
+						if "duplicate key value" in str(e):
+							exception("Attempted to add duplicate primary keys to the database.")
+							await session.rollback()
+							continue
+						else:
+							exception(f"SQLAlchemy error found when uploading the results.")
+							await session.rollback()
+							break
 					except SQLAlchemyError:
 						exception(f"SQLAlchemy error found when uploading the results.")
 						await session.rollback()
