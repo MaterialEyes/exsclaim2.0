@@ -1,0 +1,5 @@
+#!/bin/bash
+
+VERSION=$1
+docker compose cp python:/opt/install/. dist/
+python3 -m twine upload "dist/exsclaim-$VERSION*" -u __token__ -p "$PYPI_TOKEN" && echo "Uploaded EXSCLAIM! version $VERSION to PyPI." || echo "Couldn't upload EXSCLAIM! version $VERSION to PyPI."
