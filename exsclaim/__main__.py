@@ -7,9 +7,10 @@ except ImportError:
 from argparse import ArgumentParser
 from atexit import register
 from json import load
-from os import PathLike
+from os import PathLike, chmod
 from os.path import splitext, isfile
 from pathlib import Path
+from shutil import make_archive
 
 
 @register
@@ -23,12 +24,12 @@ def on_terminate():
 	logging.shutdown()
 
 
-async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compress_location:str=None,
-				 caption_distributor:bool=False, journal_scraper:bool=False, figure_separator:bool=False, **kwargs):
+async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compress_location:str=None, journal_scraper:bool=False,
+				 pdf_scraper:bool=False, caption_distributor:bool=False, figure_separator:bool=False, **kwargs):
 	if query is None:
 		raise ValueError("The search query is required.")
 
-	if not any((caption_distributor, journal_scraper, figure_separator)):
+	if not any((journal_scraper, pdf_scraper, caption_distributor, figure_separator)):
 		raise ValueError("You must run run the pipeline with at least one tool.")
 
 	compress = compress or ""
@@ -49,17 +50,24 @@ async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compre
 
 	pipeline = Pipeline(search_query)
 	try:
-		results = await pipeline.run(caption_distributor=caption_distributor, journal_scraper=journal_scraper,
-								   figure_separator=figure_separator)
+		results = await pipeline.run(caption_distributor=caption_distributor, pdf_scraper=pdf_scraper,
+									 journal_scraper=journal_scraper, figure_separator=figure_separator)
 
 		for handler in pipeline.logger.handlers:
 			handler.flush()
 
 		if compress:
-			from shutil import make_archive
 			name = search_query["name"]
 			save_location, _ = splitext(compress_location or str(pipeline.results_directory))
 			make_archive(save_location, compress, root_dir=str(pipeline.results_directory.parent), base_dir=name)
+
+			try:
+				chmod(save_location, 0o775)
+				print("Changed the permissions.")
+			except PermissionError:
+				print(f"Could not change the permissions of {save_location} to 775.")
+				pipeline.logger.warning(f"Could not change the permissions of {save_location} to 775.")
+
 	except PipelineInterruptionException as e:
 		pipeline.logger.exception("The pipeline could not successfully finish running.")
 		if hasattr(e, "errno"):
@@ -69,8 +77,7 @@ async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compre
 	return 0
 
 
-async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:PathLike[str] = None,
-			  blocking:bool = False, api_port:str = "8000", dashboard_port:str = "3000"):
+async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:PathLike[str] = None, blocking:bool = False):
 	from signal import signal, SIGINT, SIGTERM, SIGQUIT
 	from subprocess import Popen
 
@@ -89,8 +96,8 @@ async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:Pat
 	api_configuration = get_configuration(api_configuration, "api")
 	dashboard_configuration = get_configuration(dashboard_configuration, "dashboard")
 
-	api = Popen(["/usr/local/bin/hypercorn", "exsclaim.api:app", "-c", api_configuration])
-	dashboard = Popen(["/usr/local/bin/gunicorn", "exsclaim.dashboard:server", "-c", dashboard_configuration],
+	api = Popen(["/usr/local/bin/hypercorn", "-c", api_configuration, "exsclaim.api:app"])
+	dashboard = Popen(["/usr/local/bin/gunicorn", "-c", dashboard_configuration, "exsclaim.dashboard:server"],
 		  cwd=str(exsclaim_dir / "dashboard"))
 
 	if not blocking:
@@ -125,9 +132,10 @@ async def launch(args=None):
 	query_subparser = subparsers.add_parser("query", help="The path to the JSON file holding the search query.")
 
 	query_subparser.add_argument("query", help="The path to the JSON file holding the search query.")
-	query_subparser.add_argument("--caption_distributor", "-cd", action="store_true")
-	query_subparser.add_argument("--journal_scraper", "-js", action="store_true")
-	query_subparser.add_argument("--figure_separator", "-fs", action="store_true")
+	query_subparser.add_argument("--journal_scraper", "--journal", "-js", action="store_true")
+	query_subparser.add_argument("--pdf_scraper", "--pdf", "-ps", action="store_true")
+	query_subparser.add_argument("--caption_distributor", "--caption", "-cd", action="store_true")
+	query_subparser.add_argument("--figure_separator", "--figure", "-fs", action="store_true")
 	query_subparser.add_argument("--html_scraper", "-hs", action="store_true")
 	query_subparser.add_argument("--compress", "-c", choices=["zip", "tar", "gztar", "bztar", "xztar"], help="Compress the search results into a tar.gz file to save space. Deletes the original folder after compression.")
 	query_subparser.add_argument("--compress_location", "-cl", help="The location where the compressed search results will be stored.")
@@ -164,13 +172,15 @@ async def launch(args=None):
 		case "train":
 			...
 
-	if exit_code is not None:
-		exit(exit_code)
+	return exit_code
 
 
 def main(args=None):
 	from asyncio import run
-	run(launch(args))
+	exit_code = run(launch(args))
+
+	if exit_code is not None:
+		exit(exit_code)
 
 
 if __name__ == "__main__":

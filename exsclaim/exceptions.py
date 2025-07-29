@@ -1,7 +1,10 @@
-__all__ = ["JournalScrapeError", "PipelineInterruptionException"]
+__all__ = ["ExsclaimToolException", "JournalScrapeError", "PDFScrapeException", "PipelineInterruptionException"]
 
 
-class JournalScrapeError(Exception):
+class ExsclaimToolException(Exception):
+	...
+
+class JournalScrapeError(ExsclaimToolException):
 	def __init__(self, message:str, status:int = None, headers=None):
 		self.message = message
 		self.status = status
@@ -28,6 +31,10 @@ class JournalScrapeError(Exception):
 
 	def __str__(self):
 		return repr(self)
+
+
+class PDFScrapeException(ExsclaimToolException):
+	...
 
 
 class PipelineInterruptionException(BaseException):

@@ -8,20 +8,20 @@ other, but they expose the same interface, so they are
 interchangeable.
 """
 
-from .caption import LLM #, get_context
-from .figures import apply_mask
+from .caption import LLM
+from .exceptions import JournalScrapeError
 from .journal import JournalFamily
 from .utilities import initialize_results_dir, PrinterFormatter
 
 from abc import ABC, abstractmethod
-from asyncio import gather, Lock
+from asyncio import gather, Lock, Semaphore
 from json import dump, load, JSONEncoder
 from logging import getLogger, StreamHandler
-from os import PathLike, getenv
+from os import PathLike
 from pathlib import Path
 from re import search
 from time import time_ns as timer
-from typing import Iterable
+from typing import Iterable, Optional
 
 import numpy as np
 
@@ -51,10 +51,14 @@ class ExsclaimTool(ABC):
 				handler.setFormatter(PrinterFormatter())
 				logger.addHandler(handler)
 
+		self.default_permissions = search_query.get("default_permissions", 0o775)
 		self.logger = logger
 		self.search_query = search_query
 
 	async def load(self):
+		...
+
+	async def unload(self):
 		...
 
 	@property
@@ -82,8 +86,8 @@ class ExsclaimTool(ABC):
 		# Set up file structure
 		self.results_directory = initialize_results_dir(self.search_query.get("results_dir", None)) / self.search_query["name"]
 
-	def _appendJSON(self, exsclaim_json:dict, exsclaim_filename:PathLike[str]=None, data:Iterable[str]=None,
-					filename:str|PathLike[str]=None):
+	def _appendJSON(self, exsclaim_json:dict, exsclaim_filename: PathLike[str] = None, data: Iterable[str] = None,
+					filename: str | PathLike[str] = None):
 		"""Commit updates to exsclaim json and update list of scraped articles
 
 		Args:
@@ -177,12 +181,15 @@ class JournalScraper(ExsclaimTool):
 		try:
 			async with JournalFamily(journal_family_name, search_query,
 								 scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
-			
-				article_dict = await journal.get_article_figures(journal.domain + article)
+				url = journal.domain + article
+				try:
+					article_dict = await journal.get_article_figures(url)
 
-			async with lock:
-				self._update_exsclaim(exsclaim_json, article_dict)
-			self.new_articles_visited.add(article)
+					async with lock:
+						self._update_exsclaim(exsclaim_json, article_dict)
+					self.new_articles_visited.add(article)
+				except JournalScrapeError:
+					self.logger.exception(f"Could not scrape the details for {url}.")
 		except Exception as e:
 			self.display_exception(e, article)
 
@@ -203,12 +210,10 @@ class JournalScraper(ExsclaimTool):
 		exsclaim_json = exsclaim_json or dict()
 
 		self.display_info(f"Running Journal Scraper\n")
-		self.results_directory.mkdir(exist_ok=True)
 
 		async with JournalFamily(journal_family_name, search_query,
 								 scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
 			extensions = await journal.get_article_extensions()
-			# extensions = ["/articles/s41467-025-56910-x"] # TODO: Find a test article that will have everything
 
 		lock = Lock()
 		await gather(*[
@@ -228,15 +233,9 @@ class CaptionDistributor(ExsclaimTool):
 		Absolute path to caption nlp model
 	"""
 
-	def __init__(self, search_query:dict=None, **kwargs):
+	def __init__(self, search_query:dict, **kwargs):
 		kwargs.setdefault("logger_name", __name__ + ".CaptionDistributor")
-		super().__init__(search_query if search_query is not None else {}, **kwargs)
-		self.model_path = ""
-
-	def _load_model(self):
-		if "" in self.model_path:
-			self.model_path = Path(__file__).parent / "captions" / "models"
-		# return caption.load_models(self.model_path) # TODO: Find out where load_models comes from
+		super().__init__(search_query, **kwargs)
 
 	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter, caption_dict, keywords):
 		exsclaim_dict[figure_name]["caption_delimiter"] = delimiter
@@ -249,7 +248,7 @@ class CaptionDistributor(ExsclaimTool):
 		del match
 
 		for label, capt in caption_dict.items():
-			query = f"{figure_number}{label} {capt if capt else ''}"
+			# query = f"{figure_number}{label} {capt if capt else ''}"
 
 			master_image = {
 				"label": label,
@@ -271,27 +270,32 @@ class CaptionDistributor(ExsclaimTool):
 		"""
 		super()._appendJSON(exsclaim_json, data=map(lambda figure: figure.split('/')[-1], data), filename=filename)
 
-	async def runner(self, exsclaim_json:dict, search_query:dict, figure:str, new_separated:set, lock:Lock):
-		t0 = self._start_timer()
-		self.display_info(f">>> Parsing captions from: {figure}")
+	async def load(self):
+		await LLM.from_search_query(self.search_query).load()
+
+	async def unload(self):
+		await LLM.from_search_query(self.search_query).unload()
+
+	async def runner(self, exsclaim_json:dict, search_query:dict, figure:str, new_separated:set, lock:Lock,
+					 semaphore:Semaphore):
 		try:
 			if figure == "s41929-023-01090-4_fig4.jpg":
 				self.logger.error(
 					f"There's an extra \"'\" in this {figure}'s caption that causes the JSON to not be parsed properly, skipping for now.")
 				return exsclaim_json
-			caption_text = exsclaim_json[figure]["full_caption"]
 
-			delimiter = 0
+			async with semaphore:
+				t0 = self._start_timer()
+				self.display_info(f">>> Parsing captions from: {figure}")
 
-			llm = search_query["llm"]
-			model_key = search_query.get("model_key", None)
-			llm = LLM(llm, model_key)
+				caption_text = exsclaim_json[figure]["full_caption"]
 
-			caption_dict = await llm.separate_captions(caption_text) # separate_captions(caption_text, api, llm)
-			# caption.associate_caption_text( # here add the gpt3 code separate_captions(caption_text) #
-			#  model, caption_text, search_query["query"]
-			# )
-			keywords = await llm.get_keywords(caption_text)
+				delimiter = "0"
+
+				llm = LLM.from_search_query(search_query)
+
+				caption_dict = await llm.separate_captions(caption_text)
+				keywords = await llm.get_keywords(caption_text)
 
 			if caption_dict is not None:
 				self.logger.debug(f"Full caption dict: \"{caption_dict}\".")
@@ -306,20 +310,20 @@ class CaptionDistributor(ExsclaimTool):
 
 		self._end_timer(t0, f"CaptionDistributor: {figure}")
 
-	async def run(self, search_query:dict, exsclaim_json:dict):
+	async def run(self, search_query:dict, exsclaim_json:dict, limit_llms_to:Optional[int] = 5):
 		"""Run the CaptionDistributor to distribute subfigure captions
 
 		Args:
 			search_query (dict): A Search Query JSON to guide search
 			exsclaim_json (dict): An EXSCLAIM JSON to store results in
+			limit_llms_to (int | None): Limit the number of llms to run at once. None will remove the limit.
 		Returns:
 			exsclaim_json (dict): Updated with results of search
 		"""
-		search_query.setdefault("openai_API", getenv("OPENAI_API_KEY", None))
 		exsclaim_json = exsclaim_json or dict()
+		semaphore = Semaphore(limit_llms_to or len(exsclaim_json))
 
 		self.display_info(f"Running Caption Distributor\n")
-		self.results_directory.mkdir(exist_ok=True)
 
 		t0 = self._start_timer()
 		# List of objects (figures, captions, etc) that have already been separated
@@ -346,7 +350,7 @@ class CaptionDistributor(ExsclaimTool):
 
 		lock = Lock()
 		await gather(*[
-			self.runner(exsclaim_json, search_query, _path, new_separated, lock)
+			self.runner(exsclaim_json, search_query, _path, new_separated, lock, semaphore)
 			for _path in figures
 		])
 

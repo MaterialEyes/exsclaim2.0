@@ -1,5 +1,3 @@
-from logging import Logger
-
 import exsclaim
 import logging
 
@@ -12,8 +10,8 @@ from aiohttp import ClientSession
 from asyncpg import UndefinedTableError
 from contextlib import asynccontextmanager
 from datetime import datetime as dt
-from exsclaim.__main__ import launch as exsclaim_main
-from fastapi import FastAPI, Request, BackgroundTasks, Depends
+from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
+from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
@@ -21,17 +19,18 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import Response, FileResponse, JSONResponse
 from io import BytesIO
 from json import dump
+from logging.handlers import TimedRotatingFileHandler
 from os import listdir, getenv
 from pathlib import Path
 from pytz import utc as UTC
 from sqlmodel import select, update, insert
 from sqlmodel.ext.asyncio.session import AsyncSession
-from shutil import make_archive, rmtree, _ARCHIVE_FORMATS
+from shutil import make_archive, rmtree, get_archive_formats
 from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
-from typing import Literal, AsyncGenerator
+from typing import Literal
 from uuid import UUID
 from uuid_utils import uuid7
 
@@ -85,21 +84,14 @@ def date_to_json(date:dt | None) -> str | None:
 def create_logger():
 	printer_handler = logging.StreamHandler()
 	printer_handler.setFormatter(exsclaim.PrinterFormatter())
-	file_handler = logging.FileHandler("/exsclaim/logs/exsclaim-api.log", "a")
+	file_handler = TimedRotatingFileHandler("/exsclaim/logs/exsclaim-api.log", backupCount=2,
+											interval=1, when="D")
 	file_handler.setFormatter(exsclaim.ExsclaimFormatter())
 
 	logging.basicConfig(level=logging.INFO,
 						handlers=(printer_handler, file_handler),
 						force=True)
 	return logging.getLogger(__name__)
-
-
-@asynccontextmanager
-async def get_logger() -> AsyncGenerator[Logger]:
-	global logger
-	yield logger
-
-	flush_logger()
 
 
 def flush_logger():
@@ -158,6 +150,7 @@ def get_middleware() -> list[Middleware]:
 
 	middleware.append(Middleware(GZipMiddleware, minimum_size=1_000))
 	middleware.append(Middleware(SQLAlchemyMiddleware, logger=logger))
+	middleware.append(Middleware(HashMiddleware))
 
 	return middleware
 
@@ -178,6 +171,7 @@ app = FastAPI(
 )
 app.openapi = my_schema
 app.configuration_ini = None
+
 app.include_router(v1_router, prefix="/results/v1")
 
 
@@ -327,7 +321,8 @@ async def get_dark_ui(map_file:bool = False) -> Response:
 				 }
 			 },
 		 })
-async def healthcheck(request:Request, logger:logging.Logger = Depends(get_logger)) -> Response:
+async def healthcheck(request:Request) -> Response:
+	logger: logging.Logger = request.state.logger
 	try:
 		session = request.state.session
 		await session.exec(select(Results))
@@ -353,28 +348,27 @@ async def healthcheck(request:Request, logger:logging.Logger = Depends(get_logge
 
 
 async def run_exsclaim(_id:UUID, search_query_location:Path, session: AsyncSession):
-	db_result = "Closed due to an error"
+	db_result: Status = Status.ERROR
 	result_code = -1
 	try:
-		args = ["query", str(search_query_location), "--caption_distributor",
-				"--journal_scraper", "--figure_separator", "--compress", "gztar",
-				"--compress_location", f"/exsclaim/results/{_id}"]
-		if settings.DEBUG:
-			args.append("--verbose")
-
-		result_code = await exsclaim_main(args)
+		result_code = await exsclaim_pipeline(query=search_query_location, journal_scraper=True, caption_distributor=True, figure_separator=True,
+											  compress="gztar", compress_location=f"/exsclaim/results/{_id}", verbose=settings.DEBUG)
 		if result_code == 0:
-			db_result = "Finished"
+			db_result = Status.FINISHED
 
 		results_dir = search_query_location.parent
 		if results_dir.is_dir():
 			rmtree(results_dir.absolute(), ignore_errors=True)
+	except KeyboardInterrupt:
+		db_result = Status.KILLED
 	except Exception as e:
 		logging.getLogger(f"run_exsclaim_{_id}").exception(e)
 
 	# "UPDATE results SET status = %s, end_time = NOW() WHERE id = %s", (db_result, _id)
+	logger.debug("\n\n\nAbout to update result to finished\n\n\n")
 	await session.exec(update(Results).where(Results.id == _id).values(status=db_result, end_time=dt.now()))
 	await session.commit()
+	logger.debug("\n\n\nCode should have gone through.\n\n\n")
 
 	return result_code
 
@@ -457,10 +451,11 @@ async def run_exsclaim(_id:UUID, search_query_location:Path, session: AsyncSessi
 			}
 		}
 	}
-}, tags=["Queries/Runs"])
-async def query(request:Request, search_query: Query, background_tasks:BackgroundTasks,
-				logger:logging.Logger = Depends(get_logger)) -> Response:
+}, tags=["Using EXSCLAIM"])
+async def query(request:Request, search_query: Query, background_tasks:BackgroundTasks) -> Response:
 	session = request.state.session
+	logger: logging.Logger = request.state.logger
+
 	send_json = request.headers.get("accept", "") == "application/json"
 	try:
 		uuid = uuid7()
@@ -483,7 +478,7 @@ async def query(request:Request, search_query: Query, background_tasks:Backgroun
 				}
 			},
 			"llm": search_query.llm,
-			"openai_API": search_query.model_key,
+			"model_key": search_query.model_key,
 			"open": search_query.open_access,
 			"save_format": search_query.save_format,
 			"logging": ["exsclaim.log"],
@@ -525,6 +520,7 @@ async def query(request:Request, search_query: Query, background_tasks:Backgroun
 		else:
 			response = Response(message, status_code=500, media_type="text/plain")
 	except Exception as e:
+		print(f"{logger=}, {e}")
 		logger.exception(e)
 		message = "An unknown error occurred within the EXSCLAIM! API. Please try again later."
 		if send_json:
@@ -535,7 +531,7 @@ async def query(request:Request, search_query: Query, background_tasks:Backgroun
 	return response
 
 
-@app.get("/status/{result_id}", tags=["Queries/Runs"],
+@app.get("/status/{result_id}", tags=["Using EXSCLAIM"],
 		 responses={
 			 200: {
 				 "description": "Status Found for ID.",
@@ -668,8 +664,9 @@ async def query(request:Request, search_query: Query, background_tasks:Backgroun
 				 }
 			 },
 		 })
-async def status(result_id: UUID, logger:logging.Logger = Depends(get_logger)):
+async def status(request:Request, result_id: UUID):
 	session = request.state.session
+	logger: logging.Logger = request.state.logger
 	results = await session.exec(select(Results).where(Results.id == result_id))
 	result:Results = results.one_or_none()
 
@@ -680,13 +677,13 @@ async def status(result_id: UUID, logger:logging.Logger = Depends(get_logger)):
 
 	status, start_time, end_time = result.status, result.start_time, result.end_time
 
-	time_diff = (end_time or dt.now()) - start_time
+	time_diff = (end_time or dt.now(tz=start_time.tzinfo)) - start_time
 
 	match status:
-		case Status.RUNNING | Status.FINISHED:
+		case Status.RUNNING | Status.FINISHED | Status.KILLED:
 			status_code = 200
 		case Status.ERROR:
-			status_code = 500
+			status_code = 503
 		case _:
 			logger.exception(f"Unknown status {status} when checking status of {result_id}.")
 			return JSONResponse(dict(message="An unknown status was saved in our database. Try again later."), status_code=500, media_type="application/json")
@@ -706,7 +703,7 @@ async def status(result_id: UUID, logger:logging.Logger = Depends(get_logger)):
 	return response
 
 
-@app.get("/results/{result_id}", tags=["Queries/Runs"],
+@app.get("/results/{result_id}", tags=["Using EXSCLAIM"],
 		 responses={
 			 200: {
 				 "description": "Results Compressed and Included.",
@@ -752,17 +749,6 @@ async def status(result_id: UUID, logger:logging.Logger = Depends(get_logger)):
 					 }
 				 }
 			 },
-			 500: {
-				 "description": "Error caused the query to not finish which results in no results.",
-				 "content": {
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": "The results could not be compiled due to an error. Please submit your query again."
-					 }
-				 }
-			 },
 			 501: {
 				 "description": "Internal Database Error.",
 				 "content": {
@@ -774,12 +760,23 @@ async def status(result_id: UUID, logger:logging.Logger = Depends(get_logger)):
 					 }
 				 }
 			 },
+			 503: {
+				 "description": "Error caused the query to not finish which results in no results.",
+				 "content": {
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": "The results could not be compiled due to an error. Please submit your query again."
+					 }
+				 }
+			 },
 		 })
 async def download(request:Request, result_id:UUID, compression:str = "default", filename:Literal["name", "id"] = "id") -> Response:
 	session = request.state.session
 	# Set the filename to be id by default
 	if compression != "default":
-		if compression not in _ARCHIVE_FORMATS.keys():
+		if compression not in get_archive_formats().keys():
 			return Response(f"Unknown archive format '{compression}'. Check /compression_types to see what values are allowed.", status_code=422, media_type="text/plain")
 
 	else: # compression == "default"
@@ -805,9 +802,12 @@ async def download(request:Request, result_id:UUID, compression:str = "default",
 	match result.status:
 		case Status.RUNNING:
 			return Response("The results are still being compiled.", status_code=202, media_type="text/plain")
+		case Status.KILLED:
+			return Response("The results were closed by user or admin intervention.",
+							status_code=200, media_type="text/plain")
 		case Status.ERROR:
 			return Response("The results could not be compiled due to an error. Please submit your query again.",
-							status_code=500, media_type="text/plain")
+							status_code=503, media_type="text/plain")
 		case Status.FINISHED:
 			...
 		case _:
@@ -850,7 +850,7 @@ async def download(request:Request, result_id:UUID, compression:str = "default",
 		return Response(str(e), status_code=422, media_type="text/plain")
 
 
-@app.get("/compression_types", tags=["Queries/Runs"],
+@app.get("/compression_types", tags=["Using EXSCLAIM"],
 		 responses={
 			 200: {
 				 "description": "Possible Compression Algorithms/Extensions",
@@ -927,13 +927,15 @@ async def download(request:Request, result_id:UUID, compression:str = "default",
 		 })
 async def get_possible_compressions(request:Request, compression_type:str = None) -> Response:
 	send_json = request.headers.get("accept", "") == "application/json"
+	compression_types = frozenset(map(lambda i: i[0], get_archive_formats()))
+
 	if compression_type is None:
-		compression_types = list(_ARCHIVE_FORMATS.keys())
+		compression_types = list(compression_types)
 		if send_json:
 			return JSONResponse({"compression_types": compression_types}, status_code=200, media_type="application/json")
 		return Response(str(compression_types), status_code=200, media_type="text/plain")
 
-	allowed = compression_type in _ARCHIVE_FORMATS.keys()
+	allowed = compression_type in compression_types
 	status_code = 202 if allowed else 404
 	if send_json:
 		return JSONResponse({"allowed": allowed}, status_code=status_code, media_type="application/json")
@@ -941,8 +943,23 @@ async def get_possible_compressions(request:Request, compression_type:str = None
 	return Response(f"{compression_type} is {'NOT ' if not allowed else ''}an available compression type.", status_code=status_code, media_type="text/plain")
 
 
-@app.get("/classification_codes", tags=["Queries/Runs"], response_model=list[ClassificationCodes])
+@app.get("/classification_codes", tags=["Using EXSCLAIM"], response_model=list[ClassificationCodes])
 async def classification_codes(request:Request) -> Response:
 	session = request.state.session
 	results = await session.exec(select(ClassificationCodes))
 	return results.all()
+
+
+@app.get("/checkpoints/{checkpoint}", tags=["EXSCLAIM Model Checkpoints"])
+async def download_checkpoint(checkpoint:str) -> Response:
+	checkpoint_folder = Path(getenv("EXSCLAIM_CHECKPOINTS", "/exsclaim/checkpoints")).resolve()
+
+	if not checkpoint_folder.exists() or not checkpoint_folder.is_dir():
+		return Response("Could not find any checkpoints. Please try again later.", status_code=503, media_type="text/plain")
+
+	checkpoint_path = checkpoint_folder / checkpoint
+	if not checkpoint_path.exists():
+		return Response(f"Could not find checkpoint \"{checkpoint}\". ", status_code=404, media_type="text/plain")
+
+	return FileResponse(path=str(checkpoint_path), media_type="application/octet-stream", filename=checkpoint,
+						status_code=200)

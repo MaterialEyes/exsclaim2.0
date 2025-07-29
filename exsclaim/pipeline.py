@@ -1,4 +1,5 @@
 from .figure import FigureSeparator
+from .pdf import PDFScraper
 from .exceptions import *
 from .notifications import *
 from .tool import ExsclaimTool, CaptionDistributor, JournalScraper
@@ -15,11 +16,12 @@ from datetime import datetime as dt
 from enum import Flag, auto
 from functools import reduce
 from json import load, dump
+from operator import or_
 from os.path import isfile, splitext
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-# from asyncpg import Error as PostgresError
 from re import sub
+from sqlalchemy.exc import SQLAlchemyError
 from textwrap import wrap, dedent
 from typing import Any, Callable
 from uuid_utils import uuid7
@@ -59,7 +61,21 @@ class SaveMethods(Flag):
 				return cls.from_str(value)
 			except ValueError:
 				return None
-		return reduce(lambda x, y: x | y, filter(lambda x: x is not None, map(get_values, lst)))
+		return reduce(or_, filter(lambda x: x is not None, map(get_values, lst)))
+		# return reduce(lambda x, y: x | y, filter(lambda x: x is not None, map(get_values, lst)))
+
+
+def chmod(path:Path, permissions=None):
+	if permissions is None:
+		permissions = path.stat().st_mode
+	else:
+		path.chmod(permissions)
+
+	for directory, _, files in path.walk():
+		directory.chmod(permissions)
+		for file in files:
+			new_path = directory / file
+			new_path.chmod(permissions)
 
 
 class Pipeline:
@@ -72,9 +88,8 @@ class Pipeline:
 			query_path (dict or path to json): An EXSCLAIM user query JSON
 		"""
 		# Load Query on which Pipeline will run
-		self.current_path = Path(__file__).resolve().parent
 		if "test" == query_path:
-			query_path = self.current_path / "tests" / "data" / "nature_test.json"
+			query_path = Path(__file__).resolve().parent / "tests" / "data" / "nature_test.json"
 
 		if isinstance(query_path, dict):
 			self.query_dict = query_path
@@ -94,7 +109,7 @@ class Pipeline:
 		self.results_directory.mkdir(exist_ok=True)
 
 		# region Set up logging
-		handlers = [] # TODO: Will probably need to protect the threads
+		handlers = []
 		for log_output in self.query_dict.get("logging", []):
 			if log_output.lower() == "print":
 				handler = logging.StreamHandler()
@@ -107,7 +122,7 @@ class Pipeline:
 
 		logging.basicConfig(level=logging.INFO, handlers=handlers, force=True)
 		self.logger = logging.getLogger(__name__)
-		self.logger.info(f"Results will be located in: `{self.results_directory}`.")
+		self.logger.info(f"Results will be located in: `{self.results_directory}` with run id {self.query_dict['run_id']}.")
 		# endregion
 
 		# region Check for an existing exsclaim json
@@ -140,7 +155,8 @@ class Pipeline:
 		"""
 		self.logger.info(info)
 
-	async def run(self, tools:list[type[ExsclaimTool]] = None, figure_separator=True, caption_distributor=True, journal_scraper=True) -> dict:
+	async def run(self, tools:list[type[ExsclaimTool]] = None, journal_scraper=True, pdf_scraper=True,
+				  caption_distributor=True, figure_separator=True) -> dict:
 		"""Run EXSCLAIM pipeline on Pipeline instance's query path
 
 		Args:
@@ -148,11 +164,13 @@ class Pipeline:
 				to run on query path in the order they will run. Default
 				argument is JournalScraper, CaptionDistributor,
 				FigureSeparator
-			journal_scraper (boolean): true if JournalScraper should
+			journal_scraper (boolean): True if JournalScraper should
 				be included in tools list. Overridden by a tools argument
-			caption_distributor (boolean): true if CaptionDistributor should
+			pdf_scraper (boolean): True if PDFScraper should
 				be included in tools list. Overridden by a tools argument
-			figure_separator (boolean): true if FigureSeparator should
+			caption_distributor (boolean): True if CaptionDistributor should
+				be included in tools list. Overridden by a tools argument
+			figure_separator (boolean): True if FigureSeparator should
 				be included in tools list. Overridden by a tools argument
 		Returns:
 			exsclaim_dict (dict): an exsclaim json
@@ -164,7 +182,7 @@ class Pipeline:
 			>>> from exsclaim import Pipeline, PipelineInterruptionException
 			>>> pipeline = Pipeline({})
 			>>> try:
-			>>>	    results = await pipeline.run(journal_scraper=True, figure_separator=True, caption_distributor=True)
+			>>>	    results = await pipeline.run(journal_scraper=True, pdf_scraper=False, figure_separator=True, caption_distributor=True)
 			>>>	    print(f"{results=}.")
 			>>> except PipelineInterruptionException as e:
 			>>>	    print(f"The EXSCLAIM! pipeline could not finish due to the following issue: {e}.")
@@ -200,36 +218,38 @@ class Pipeline:
 		"""))
 		_id = self.query_dict.get("id", None)
 		exsclaim_dict = self.exsclaim_dict
+		query_dict = self.query_dict
+		message = f"EXSCLAIM! query{f' `{_id}`' if _id is not None else ''} failed without a message."
 
 		try:
 			# set default values
 			if tools is None:
-				tools = []
+				tools: list[ExsclaimTool] = []
 				if journal_scraper:
 					tools.append(JournalScraper(self.query_dict, logger=self.logger))
+				if pdf_scraper:
+					tools.append(PDFScraper(self.query_dict, logger=self.logger))
 				if caption_distributor:
 					tools.append(CaptionDistributor(self.query_dict, logger=self.logger))
 				if figure_separator:
 					tools.append(FigureSeparator(self.query_dict, logger=self.logger))
-
-			query_dict = self.query_dict
+			else:
+				tools: list[ExsclaimTool] = [cls(self.query_dict, logger=self.logger) for cls in tools]
 
 			# Ensure that any save methods that need to load something before hand do it before pipeline runs
 			save_methods = SaveMethods.from_list(query_dict.get("save_format", []))
 
 			if SaveMethods.POSTGRES in save_methods:
 				try:
-					database = Database()
+					await Database().ensure_connection()
 				except BaseException as e:
 					raise PipelineInterruptionException("Save method \"postgres\" cannot be used since a connection to the server cannot be made.") from e
 
-			# Run any async functions that are needed before run
-			for tool in tools:
-				await tool.load()
-
 			# run each ExsclaimTool on search query
 			for tool in tools:
+				await tool.load()
 				exsclaim_dict = await tool.run(query_dict, exsclaim_dict)
+				await tool.unload()
 
 			self.exsclaim_dict = exsclaim_dict
 
@@ -251,20 +271,25 @@ class Pipeline:
 				for figure in self.exsclaim_dict:
 					self.draw_bounding_boxes(figure)
 
-			if SaveMethods.CSV in save_methods:
+			if SaveMethods.CSV in save_methods or SaveMethods.POSTGRES in save_methods:
 				csv_info = self.to_csv()
 
 				if SaveMethods.POSTGRES in save_methods:
 					db = Database()
-					await db.upload(csv_info, run_id=self.query_dict["run_id"])
+					try:
+						await db.upload(csv_info, run_id=self.query_dict["run_id"])
+					except SQLAlchemyError as e:
+						self.logger.exception("An error occurred while uploading the results to the database, but the pipeline finished running.")
+						raise PipelineInterruptionException("The results could not be saved to the database, but the pipeline finished running before this happened.") from e
 
 			# Creates success messages to be sent to the notifiers
 			message = f"EXSCLAIM! query{f' `{_id}`' if _id is not None else ''} finished at: {dt.now():%Y-%m-%dT%H:%M%z}."
-		except Exception as e:
+		except BaseException as e:
 			self.logger.exception(e)
 			message = f"An error occurred at {dt.now():%Y-%m-%dT%H:%M%z} running{' the' if _id is None else ''} EXSCLAIM! query{f' `{_id}`' if _id is not None else ''}."
 			raise PipelineInterruptionException from e
 		finally:
+			chmod(tools[0].results_directory, query_dict.get("permissions", 0o775))
 			for notifier in self.notifications:
 				try:
 					await notifier.notify(message, name=self.query_dict["name"])
@@ -497,7 +522,7 @@ class Pipeline:
 		for subfigure_json in master_images:
 			x1, y1, x2, y2 = tuple(map(int, convert_labelbox_to_coords(subfigure_json["geometry"])))
 			classification = subfigure_json["classification"]
-			caption = "\n".join(subfigure_json.get("caption", []))
+			caption: str = subfigure_json.get("caption", "")
 			caption = "\n".join(wrap(caption, width=100))
 
 			subfigure_label = subfigure_json["subfigure_label"]["text"]
@@ -529,7 +554,7 @@ class Pipeline:
 			image_y += image_buffer
 
 		labeled_image.save(extractions / figure_name)
-		# cv2.imwrite(str(extractions / figure_name), labeled_image)
+	# cv2.imwrite(str(extractions / figure_name), labeled_image)
 
 	def draw_bounding_boxes(self, figure_name:str, draw_scale=False, draw_labels=False, draw_subfigures=True):
 		"""Save figures with bounding boxes drawn
@@ -575,7 +600,7 @@ class Pipeline:
 			if label_geometry:
 				append_bbox(label_geometry, subfigure_labels)
 
-		unassigned_scale = figure_json.get("unassigned", {}).get("scale_bar_objects", [])
+		unassigned_scale = figure_json.get("unassigned", {}).get("scale_bar_lines", [])
 		for scale_object in unassigned_scale:
 			if "geometry" in scale_object:
 				geometry = scale_object["geometry"]
@@ -597,7 +622,7 @@ class Pipeline:
 
 		if draw_subfigures:
 			for bounding_box in subfigures:
-				draw_full_figure.rectangle(bounding_box, width=2, outline="red")
+				draw_full_figure.rectangle(bounding_box, width=5, outline="red")
 
 		del draw_full_figure
 		full_figure.save(boxes_directory / figure_name)
@@ -622,6 +647,7 @@ class Pipeline:
 			"illustration": "IL",
 			"unclear": "UN",
 			"parent": "PT",
+			"subfigure": "SB"
 		}
 
 		csv_info = {
@@ -678,7 +704,7 @@ class Pipeline:
 					master_image.get("nm_height", None),
 					master_image.get("nm_width", None),
 					*subfigure_coords,
-					"\t".join(master_image["caption"]),
+					master_image["caption"],
 					str(master_image["keywords"]).replace("[", "{").replace("]", "}"),
 					# str(master_image["general"]).replace("[", "{").replace("]", "}"),
 					figure_id,

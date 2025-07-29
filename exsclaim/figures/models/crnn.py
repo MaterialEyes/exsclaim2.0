@@ -39,16 +39,16 @@ class CRNN(nn.Module):
                 convolution_layers. If None, defaults to in_channels defined
                 below.
             batch_normalization (list): list of ints, where each int is a
-                convultional layer after which batch normalization should
+                convolutional layer after which batch normalization should
                 occur. Each element of the list should be
                 <= convolution_layers. If False, no batch normalization will
                 occur.
             max_pooling (list): list of ints, where each int is a
-                convultional layer after which max pooling should occur. Each
+                convolutional layer after which max pooling should occur. Each
                 element of the list should be <= convolution_layers. If False,
                 no max_pooling will occur.
             dropout (list): list of ints, where each int is a
-                convultional layer after which batch normalization should
+                convolutional layer after which batch normalization should
                 occur. Each element of the list should be
                 <= convolution_layers. If False, no dropout will occur.
             activation_type (string): Activation function to be applied after

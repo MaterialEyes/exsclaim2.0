@@ -1,10 +1,13 @@
 """Functions for interacting with postgres database"""
 from .models import *
 
+from asyncpg.exceptions import FeatureNotSupportedError
 from configparser import ConfigParser, NoSectionError
+from logging import exception
 from os import PathLike, getenv
 from pathlib import Path
 from shutil import copy
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -87,8 +90,12 @@ class Database:
 		self.async_engine = create_async_engine(
 			db_url,
 			echo=True,
-			future=True
+			future=True,
 		)
+
+	async def ensure_connection(self):
+		async with self.async_engine.connect() as connection:
+			print(f"Connection successful.")
 
 	async def upload(self, csv_info: dict[str, list[Any]], run_id:UUID):
 		cls_mapping = dict(
@@ -101,8 +108,8 @@ class Database:
 		)
 
 		async with AsyncSession(self.async_engine) as session:
-			for _type, rows in csv_info.items():
-				cls = cls_mapping[_type]
+			for _type, cls in cls_mapping.items():
+				rows = csv_info[_type]
 				# Converts each of the objects from JSON form into their respective SQLModel classes, dynamically mapping each attribute to the given value
 				objects = (
 					cls(run_id=run_id, **dict(zip(tuple(cls.model_fields.keys())[1:], row)))
@@ -110,16 +117,34 @@ class Database:
 				)
 
 				async with session.begin():
-					session.add_all(objects)
+					try:
+						session.add_all(objects)
+						await session.commit()
+					except SQLAlchemyError:
+						exception(f"SQLAlchemy error found when uploading the results.")
+						await session.rollback()
+						break
+					except BaseException:
+						exception(f"Non-SQLAlchemy error found when uploading the results.")
+						await session.rollback()
+						break
 
-	async def initialize_database(self):
+	async def initialize_database(self, ignore_uuid7: bool = True):
 		from sqlalchemy.schema import CreateSchema
 		from sqlalchemy.sql import text, select
 		from ..api.models import Results
 
 		async with self.async_engine.begin() as conn:
+			try:
+				await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"pg_uuidv7\";"))
+			except SQLAlchemyError as e:
+				if not ignore_uuid7:
+					raise FeatureNotSupportedError("Please add UUIDv7 support for Postgres. https://pgxn.org/dist/pg_uuidv7/") from e
+				await conn.rollback()
+
+		async with self.async_engine.begin() as conn:
 			await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
-			await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"pg_uuidv7\";"))
+
 			await conn.execute(CreateSchema("results", if_not_exists=True))
 			await conn.run_sync(SQLModel.metadata.create_all, checkfirst=True)
 
@@ -131,6 +156,7 @@ class Database:
 			ClassificationCodes(code="IL", name="illustration"),
 			ClassificationCodes(code="UN", name="unclear"),
 			ClassificationCodes(code="PT", name="parent"),
+			ClassificationCodes(code="SB", name="subfigure"),
 		)
 
 		async with AsyncSession(self.async_engine) as session:

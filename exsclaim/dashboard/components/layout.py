@@ -4,6 +4,10 @@ Converted from React Layout.js component.
 """
 
 import dash_bootstrap_components as dbc
+
+from .api_client import *
+
+from exsclaim.api import Status
 from certifi import where
 from dash import html, dcc, callback, clientside_callback, Output, Input, State
 from httpx import AsyncClient, Client
@@ -225,6 +229,7 @@ def create_license_component():
 def create_scale_component():
 	"""Create scale component."""
 	def get_pixel_adornment(_id:int):
+		# TODO: Replace this with dbc.InputGroup (https://www.dash-bootstrap-components.com/docs/components/input_group/)
 		return html.Div(["px"], key=f"pix-{_id}", className="px-unit")
 
 	style = {"position": "relative"}
@@ -321,56 +326,6 @@ def create_images_page_component():
 	])
 
 
-# API Functions
-async def fetch_status(client:AsyncClient, base_url: str, result_id: str) -> bool:
-	"""Fetch the status of a result from the API."""
-	try:
-		response = await client.get(f"{base_url}/status/{result_id}")
-		if response.status_code == 200:
-			data = response.json()
-			return data.get("status") == "Finished."
-		return False
-	except Exception as e:
-		print(f"Error fetching status: {e}")
-		return False
-
-
-async def fetch_articles(client:AsyncClient, base_url: str, result_id: str) -> List[Dict[str, Any]]:
-	"""Fetch articles from the API."""
-	try:
-		response = await client.get(f"{base_url}/results/v1/{result_id}/articles")
-		if response.status_code == 200:
-			return response.json()
-		return []
-	except Exception as e:
-		print(f"Error fetching articles: {e}")
-		return []
-
-
-async def fetch_figures(client:AsyncClient, base_url: str, result_id: str, page: int = 1) -> List[Dict[str, Any]]:
-	"""Fetch figures from the API."""
-	try:
-		response = await client.get(f"{base_url}/results/v1/{result_id}/figures/?page={page}")
-		if response.status_code == 200:
-			return response.json()
-		return []
-	except Exception as e:
-		print(f"Error fetching figures: {e}")
-		return []
-
-
-async def fetch_subfigures(client:AsyncClient, base_url: str, result_id: str, page: int = 1) -> List[Dict[str, Any]]:
-	"""Fetch subfigures from the API."""
-	try:
-		response = await client.get(f"{base_url}/results/v1/{result_id}/subfigures/?page={page}")
-		if response.status_code == 200:
-			return response.json()
-		return []
-	except Exception as e:
-		print(f"Error fetching subfigures: {e}")
-		return []
-
-
 # Callbacks for API integration and layout functionality
 @callback(
 	[
@@ -397,10 +352,23 @@ async def update_layout_state(n_intervals, current_data:dict, data):
 	fast_api_url = data["fast_api_url"]
 
 	ssl_context = create_default_context(cafile=where())
+	updated_data = current_data.copy()
+
 	async with AsyncClient(verify=ssl_context) as client:
 		# Check if results are ready
-		if not await fetch_status(client, fast_api_url, result_id):
-			return current_data, False, *results_pending  # Still loading, return current state
+		match await fetch_status(client, fast_api_url, result_id):
+			case Status.RUNNING | Status.KILLED:
+				return current_data, False, *results_pending  # Still loading, return current state
+			case Status.FINISHED:
+				pass
+			case Status.ERROR:
+				updated_data.update({
+					"results_available": False,
+					"articles_loaded": True,
+					"figures_loaded": True,
+					"subfigures_loaded": True
+				})
+				return updated_data, True, *results_loaded
 
 		# Results are ready, fetch all data
 		articles = await fetch_articles(client, fast_api_url, result_id)
@@ -408,10 +376,10 @@ async def update_layout_state(n_intervals, current_data:dict, data):
 		subfigures = await fetch_subfigures(client, fast_api_url, result_id)
 
 	# Update the state
-	updated_data = current_data.copy()
 	all_subfigures = updated_data.get("all_subfigures", [])
 	all_subfigures.extend(subfigures)
 	updated_data.update({
+		"results_available": True,
 		"articles": articles,
 		"figures": figures,
 		"all_subfigures": all_subfigures,
@@ -497,12 +465,15 @@ async def update_images(data, n_clicks, keywords, classifications, license_only)
 	if not data:
 		return html.Div("No data available", className="text-center")
 
+	if not data.get("results_available", True):
+		return html.Div("The results for this run are unavailable due to an error interrupting the pipeline. Please re-submit your query later.", className="text-center")
+
 	subfigures = data.get("subfigures", [])
 	figures = data.get("figures", [])
 	articles = data.get("articles", [])
 
 	if not subfigures:
-		return html.Div("No articles/figures available", className="text-center")
+		return html.Div("No articles/figures available.", className="text-center")
 
 	# Apply filters
 	filtered_subfigures = subfigures

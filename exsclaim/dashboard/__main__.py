@@ -38,7 +38,7 @@ def error_handler(exception:Exception) -> None:
 
 
 title = "EXSCLAIM Dashboard"
-app = Dash(title, title=title, on_error=error_handler, suppress_callback_exceptions=True,
+app = Dash(title, title=title, on_error=error_handler,
 		   external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME])
 server = app.server
 
@@ -51,6 +51,7 @@ show_api_key = {llm["model_name"]: llm["needs_api_key"] for llm in available_llm
 
 journal_families = [name for name, cls in JournalFamily]
 fastapi_url = getenv("FAST_API_URL", "http://localhost:8000").rstrip('/')
+public_fastapi_url = getenv("PUBLIC_FAST_API_URL", fastapi_url).rstrip('/')
 
 # Use the new Dash HomePage layout instead of React components
 home_page = create_homepage_layout(title, journal_families, available_llms)
@@ -71,7 +72,8 @@ app.layout = html.Div([
 		data=dict(
 			fast_api_url=fastapi_url,
 			available_llms=available_llms,
-			show_api_key=show_api_key
+			show_api_key=show_api_key,
+			public_fastapi_url=public_fastapi_url
 		)),
 	dcc.Location(id="url", refresh=False),
 	html.Div(id="page-content"),

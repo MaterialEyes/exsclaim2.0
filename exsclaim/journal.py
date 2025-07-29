@@ -799,7 +799,10 @@ class ACS(JournalFamilyDynamic):
 		return figure.select_one("img")["src"]
 
 	async def get_page_info(self, soup:BeautifulSoup):
-		total_results = int(soup.select_one("span.result__count").get_text())
+		try:
+			total_results = int(soup.select_one("span.result__count").get_text())
+		except AttributeError as e:
+			raise JournalScrapeError("Could not get the page info for the ACS article.") from e
 		total_results = min(total_results, 2020)
 
 		page_counter = soup.select(".pagination")
@@ -836,7 +839,7 @@ class ACS(JournalFamilyDynamic):
 			await self.turn_page(url, page_number + 1)
 		return article_paths
 
-	def get_additional_url_arguments(self, soup:BeautifulSoup):
+	async def get_additional_url_arguments(self, soup:BeautifulSoup):
 		# rsc allows unlimited results, so no need for additional args # TODO: Check if ACS has unlimited results
 		return [""], {""}, [""]
 
@@ -1127,7 +1130,7 @@ class RSC(JournalFamilyDynamic):
 		captions = figure.select("span")
 		return captions[1:]
 
-	def get_additional_url_arguments(self, page):
+	async def get_additional_url_arguments(self, page):
 		# rsc allows unlimited results, so no need for additional args
 		return [""], {""}, [""]
 
@@ -1170,13 +1173,13 @@ class Wiley(JournalFamilyStatic):
 			return (True, open_access.text)
 		return (False, "unknown")
 
-	async def get_authors(self, soup:BeautifulSoup) -> str:
+	async def get_authors(self, soup:BeautifulSoup) -> tuple[str]:
 		authors = soup.select("p.author-name")
 		# Each author's name is repeated in the HTML in the same order, this will only look at each name once
 		author = authors[len(authors)//2]
 
 		author_map = map(lambda tag: tag.get_text(), authors)
-		return ", ".join(author_map)
+		return tuple(author_map)
 
 	def get_page_info(self, soup):
 		totalResults = soup.select_one("span.result__count").get_text()
@@ -1186,7 +1189,7 @@ class Wiley(JournalFamilyStatic):
 		page = 0
 		return page, totalPages, totalResults
 
-	def get_additional_url_arguments(self, soup):
+	async def get_additional_url_arguments(self, soup):
 		current_year = datetime.now().year
 		journal_list = soup.find(id="Published in").parent.next_sibling
 		journal_link_tags = journal_list.select("a[href]")

@@ -13,12 +13,15 @@ services:
         env_file: .env
         environment:
             - POSTGRES_HOST=db
+            - YOLO_CONFIG_DIR=/exsclaim/yolo
+            - EXSCLAIM_CHECKPOINTS=/opt/exsclaim/exsclaim/figures/checkpoints
         volumes:
-#            - ./exsclaim:/usr/local/lib/python3.13/site-packages/exsclaim
+            - ./exsclaim:/usr/local/lib/python3.13/site-packages/exsclaim
             - ./:/opt/exsclaim
             - ./output:/exsclaim/results
             - ./logs:/exsclaim/logs
             - /etc/localtime:/etc/localtime:ro
+            - /usr/share/ollama/.ollama/models:/opt/ollama
         ports:
             - "127.0.0.1:3000:3000"
             - "127.0.0.1:8000:8000"
@@ -46,7 +49,7 @@ services:
             target: pycharm
         image: exsclaim/pycharm
         command: [ "python3" ]
-        ports: []
+#        ports: !reset []
         secrets:
             - db_password
 

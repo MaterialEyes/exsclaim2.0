@@ -7,7 +7,7 @@ ARG UNAME=exsclaim
 ARG GNAME=exsclaim
 
 ARG GECKODRIVER_VERSION=0.36
-ARG CHROMEDRIVER_VERSION=137.0.7151.68
+ARG CHROMEDRIVER_VERSION=138.0.7204.157
 # This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
 ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
 
@@ -40,6 +40,7 @@ ARG UNAME=exsclaim
 ARG GNAME=exsclaim
 
 ENV OLLAMA_MODELS=/opt/ollama
+ENV CUDA_LAUNCH_BLOCKING=1
 
 ENV FAST_API_PORT=8000
 ENV FAST_API_URL=http://localhost:$FAST_API_PORT
@@ -58,10 +59,10 @@ RUN groupadd -g $GID $GNAME && \
     mkdir -p /exsclaim/{logs,results}/ && \
     chown -R $UID:$GID /exsclaim && \
     apt update && \
-    apt install -y curl libglib2.0-0 libnss3 libgconf-2-4 libfontconfig1 \
-        libxcb1 libx11-6 libx11-xcb1 libxcomposite1 \
+    apt install -y curl ffmpeg libglib2.0-0 libnss3 libgconf-2-4 \
+        libfontconfig1 libxcb1 libx11-6 libx11-xcb1 libxcomposite1 \
         libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 \
-        libxrender1 libxss1 libxtst6 libpango1.0-0 \
+        libxrender1 libxss1 libxtst6 libpango1.0-0 libsm6 \
         libcairo2 libcups2 libdbus-1-3 libexpat1 libuuid1 libxkbcommon0 \
         libxshmfence1 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libgbm1 \
         libasound2 libgdk-pixbuf2.0-0 libgtk-3-0 jq lsof nano && \

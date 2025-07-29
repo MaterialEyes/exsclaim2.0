@@ -5,14 +5,9 @@ import dash_bootstrap_components as dbc
 from dash import html, clientside_callback, Output, Input, State
 
 
-def create_header_component(alert=False, alert_content="", alert_severity="success"):
+def create_header_component():
 	"""
 	Create the header component with logo, welcome message, and notification.
-	
-	Args:
-		alert (bool): Whether to show the alert
-		alert_content (str): Content of the alert message
-		alert_severity (str): Severity of alert ('success', 'error', 'warning', 'info')
 	
 	Returns:
 		dbc.Container: Header component
@@ -68,49 +63,22 @@ def create_header_component(alert=False, alert_content="", alert_severity="succe
 		]),
 
 		# Notification component
-		create_notification_component(alert, alert_content, alert_severity)
+		create_notification_component()
 	], fluid=True)
 
 
-def create_notification_component(alert=False, alert_content="", alert_severity="success"):
+def create_notification_component() -> dbc.Alert:
 	"""
 	Create notification component for alerts.
-	
-	Args:
-		alert (bool): Whether to show the alert
-		alert_content (str): Content of the alert message
-		alert_severity (str): Severity of alert
-	
+
 	Returns:
 		dbc.Alert: Notification component
 	"""
-	if not alert:
-		return html.Div(style={"display": "none"})
-	
-	# Map severity to Bootstrap alert types
-	severity_map = {
-		"success": "success",
-		"error": "danger", 
-		"warning": "warning",
-		"info": "info"
-	}
-	
-	alert_type = severity_map.get(alert_severity, "info")
-	
+
 	return dbc.Alert(
-		[
-			html.Span(alert_content, dangerouslySetInnerHTML={"__html": alert_content}),
-			dbc.Button(
-				"×",
-				id="close-alert",
-				className="btn-close",
-				style={"float": "right"}
-			)
-		],
 		id="notification",
-		color=alert_type,
 		dismissable=True,
-		is_open=alert
+		is_open=False
 	)
 
 

@@ -98,6 +98,10 @@ body {
     background-color: var(--accent-color);
 }
 
+.button-link:disabled {
+    background-color: #940720;
+}
+
 #scale-threshold {
     padding: 4px 10px;
 }
@@ -126,11 +130,6 @@ div.Select-placeholder {
 }
 
 @media screen and (min-width:500px) {
-    .classification-checklist {
-        column-count: 2;
-        column-gap: 1.5rem;
-    }
-
     .px-unit {
         transform: translateX(-200%);
     }
@@ -140,7 +139,14 @@ div.Select-placeholder {
     }
 }
 
-@media screen and (min-width:900px) {
+@media screen and (min-width:700px) {
+    .classification-checklist {
+        column-count: 2;
+        column-gap: 1.5rem;
+    }
+}
+
+    @media screen and (min-width:900px) {
     .classification-checklist {
         column-count: 3;
         column-gap: 1.5rem;
