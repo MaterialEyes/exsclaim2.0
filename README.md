@@ -1,21 +1,24 @@
 # EXSCLAIM2.0: LLM-powered Automatic **EX**traction, **S**eparation, and **C**aption-based natural **L**anguage **A**nnotation of **IM**ages from scientific figures
 [![License](https://img.shields.io/github/license/MaterialEyes/exsclaim2.0.svg?color=blue)](https://github.com/MaterialEyes/exsclaim2.0/blob/main/LICENSE)
-[![Website](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim-dev.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Website)
-](https://exsclaim-dev.materialeyes.org)
+[![Production Website](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Production%20Website)](https://exsclaim.materialeyes.org)
+[![Production API](https://img.shields.io/website?url=https%3A%2F%2Fapi.exsclaim.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Production%20API)](https://api.exsclaim.materialeyes.org)
+[![Development Website](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim-dev.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Development%20Website)](https://exsclaim-dev.materialeyes.org)
+[![Development API](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim-dev.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Development%20API)](https://api.exsclaim-dev.materialeyes.org)
 [![Release](https://img.shields.io/github/release/MaterialEyes/exsclaim2.0.svg)](https://github.com/MaterialEyes/exsclaim2.0/releases)
 [![DOI](https://zenodo.org/badge/DOI/10.48550/arXiv.2103.10631.svg)](https://arxiv.org/abs/2103.10631)
 
 ## 🤔 Consider Collaboration
 
-If you find this tool or any of its derived capabilities useful, please consider registering as a user of Center for Nanoscale Materials. We will keep you posted of latest developments, as well as opportunities for computational resources, relevant data, and collaboration. Please contact Maria Chan (mchan@anl.gov) for details.
+If you find this tool or any of its derived capabilities useful, please consider registering as a user of Center for Nanoscale Materials. We will keep you posted of latest developments, as well as opportunities for computational resources, relevant data, and collaboration. Please contact Maria Chan ([mchan@anl.gov](mailto:mchan@anl.gov)) for details.
 
 ## Introduction to EXSCLAIM2.0
 
 EXSCLAIM2.0 is a Python package combining EXSCLAIM! code with Large Language models (LLMs) that can be used for the automatic generation of datasets of labeled images from published papers.
 There are four main steps:
-1. [JournalScraper](https://github.com/MaterialEyes/exsclaim2.0/wiki/JournalScraper): scrap journal websites, acquiring figures, captions, and metadata
+1. [JournalScraper](https://github.com/MaterialEyes/exsclaim2.0/wiki/JournalScraper): scrape journal websites, acquiring figures, captions, and metadata
 2. [CaptionDistributor](https://github.com/MaterialEyes/exsclaim2.0/wiki/CaptionDistributor): separate figure captions into the component chunks that refer to the figure's subfigures using LLMs and prompt engineering
 3. [FigureSeparator](https://github.com/MaterialEyes/exsclaim2.0/wiki/FigureSeparator): separate figures into subfigures, detect scale information, label, and type of image
+4. [PDFScraper](https://github.com/MaterialEyes/exsclaim2.0/wiki/PDFScraper): scrape journal articles in PDF form, acquiring figures, captions and metadata.
 
 ## Examples and tutorials
 We provide several tutorials demonstrating how to use EXSCLAIM2.0:
@@ -46,9 +49,7 @@ More extensive guides can be found within the [wiki](https://github.com/Material
 ### Using Docker Compose
 To use Docker Compose to host the service, run the following commands in the base directory:
 ```shell
-docker compose build base
-docker compose build {service(s) here}
-docker compose up {service(s) here}
+docker compose up --build python
 ```
 
 ## Acknowledgements
