@@ -39,7 +39,7 @@ class SaveMethods(Flag):
 
 	@classmethod
 	def from_str(cls, string:str):
-		match(string):
+		match string.lower():
 			case "save_subfigures" | "subfigures":
 				return cls.SUBFIGURES
 			case "visualization" | "visualize":
@@ -299,7 +299,7 @@ class Pipeline:
 			return self.exsclaim_dict
 
 	@staticmethod
-	def assign_captions(figure:dict) -> tuple[list[dict], dict]:
+	def assign_captions(figure: dict) -> tuple[list[dict], dict]:
 		"""Assigns all captions to master_images JSONs for single figure
 
 		Args:
@@ -349,8 +349,6 @@ class Pipeline:
 			# no pairing found, create empty fields
 			master_image.setdefault("caption", [])
 			master_image.setdefault("keywords", [])
-			# master_image.setdefault("context", [])
-			# master_image.setdefault("general", [])
 			masters.append(master_image)
 
 		# update unassigned captions
@@ -696,15 +694,20 @@ class Pipeline:
 					continue
 
 				subfigures.add(subfigure_id)
+				caption = str(master_image.get("caption", ""))
+				if caption == "[]":
+					caption = ""
 				csv_info["subfigure"].append([
 					subfigure_id,
 					classification_codes[master_image["classification"]],
+					master_image.get("classification_confidence", None),
+					master_image.get("confidence", None),
 					master_image.get("height", None),
 					master_image.get("width", None),
 					master_image.get("nm_height", None),
 					master_image.get("nm_width", None),
 					*subfigure_coords,
-					str(master_image.get("caption", "")),
+					caption,
 					master_image.get("keywords", []),
 					figure_id,
 				])

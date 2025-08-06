@@ -20,8 +20,6 @@ def create_resultpage_layout(result_id: UUID, base_url:str) -> html.Div:
         html.Div: ResultPage layout
     """
     return html.Div([
-		html.Title(f"EXSCLAIM Results: {result_id}"),
-
         # Header
         create_header_component(),
 

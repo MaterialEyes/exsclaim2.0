@@ -34,6 +34,18 @@ class FigureSeparator(ExsclaimTool):
 		kwargs.setdefault("logger_name", __name__ + ".FigureSeparator")
 		super().__init__(search_query, **kwargs)
 		self.exsclaim_json = {}
+		self._get_unrecognized_image_folders()
+
+	def _get_unrecognized_image_folders(self):
+		from os import getenv
+		images = getenv("EXSCLAIM_UNDETECTED_SUBFIGURES_PATH", None)
+		self.undetected_path = Path(images).resolve() if images is not None else None
+
+		subimages = getenv("EXSCLAIM_UNCLASSIFIED_SUBFIGURES_PATH", None)
+		self.unclassified_path = Path(subimages).resolve() if subimages is not None else None
+		for path in (self.undetected_path, self.unclassified_path):
+			if path is not None:
+				path.mkdir(parents=True, exist_ok=True)
 
 	async def load(self):
 		"""Load relevant models for the object detection tasks"""
@@ -48,15 +60,20 @@ class FigureSeparator(ExsclaimTool):
 		self.device = torch.device("cuda" if self.cuda else "cpu")
 
 		yolov11_load = figures_path / "checkpoints" / "yolov11_finetuned_augmentation_best.pt"
+		yolov11_subfigure = figures_path / "checkpoints" / "yolov11_classification.pt"
 
-		if not yolov11_load.is_file():
-			await download_model_checkpoint(yolov11_load)
+		for model_file in (yolov11_load, yolov11_subfigure):
+			if not model_file.is_file():
+				await download_model_checkpoint(model_file)
 
 		try:
 			self.yolo_model = YOLO(yolov11_load)
 			self.yolo_model.to(self.device)
+
+			self.classification_model = YOLO(yolov11_subfigure)
+			self.classification_model.to(self.device)
 		except BaseException as e:
-			self.logger.exception("Error loading YOLO model.")
+			self.logger.exception("Error loading YOLO models.")
 			raise ExsclaimToolException from e
 
 		# Common YOLO settings if needed
@@ -90,7 +107,7 @@ class FigureSeparator(ExsclaimTool):
 
 	async def unload(self):
 		torch.cuda.empty_cache()
-		for model in (self.yolo_model, self.scale_bar_detection_model, self.scale_label_recognition_model):
+		for model in (self.yolo_model, self.classification_model, self.scale_bar_detection_model, self.scale_label_recognition_model):
 			# Remove the model from the GPU
 			if self.cuda:
 				model.to("cpu")
@@ -100,9 +117,6 @@ class FigureSeparator(ExsclaimTool):
 		figure_name = figure["figure_name"].split("/")[-1]
 
 		exsclaim_dict[figure_name]["master_images"].extend(figure["master_images"])
-
-		# for key, value in figure["unassigned"].items():
-		# 	exsclaim_dict[figure_name]["unassigned"][key].extend(value)
 
 		return exsclaim_dict
 
@@ -216,7 +230,7 @@ class FigureSeparator(ExsclaimTool):
 			))
 		return master_image, unassigned_scale_objects
 
-	def detect_scale_objects(self, image:Image) -> list[ScalebarInfo]:
+	def detect_scale_objects(self, image: Image) -> list[ScalebarInfo]:
 		"""Detects bounding boxes of scale bars and scale bar labels
 
 		Args:
@@ -366,6 +380,8 @@ class FigureSeparator(ExsclaimTool):
 
 		if results[0].boxes.shape[0] == 0:
 			self.logger.info(f"{figure_path} could not detect any subfigures.")
+			if self.undetected_path is not None:
+				cv2.imwrite(str(self.undetected_path / figure_path.name), img)
 
 		for result in results:
 			for box in result.boxes:
@@ -398,11 +414,31 @@ class FigureSeparator(ExsclaimTool):
 			if dx < 64 and dy < 64:
 				binary_img[y1:y2, x1:x2] = 255
 
-			# TODO: Reimplement classify_subfigures with this update method
+			# Get the subfigure classification
+			classification_results = self.classification_model.predict(
+				source=img[y1:y2, x1:x2],
+				imgsz=self.image_size,
+				conf=0.6,
+				iou=0.45,
+				max_det=100,
+				agnostic_nms=False
+			)
+
+			try:
+				results = classification_results[0]
+				classification = results.names[results.probs.top1]
+				class_conf = float(results.probs.top1conf)
+			except BaseException:
+				self.logger.exception(f"Could not classify subfigure {figure_path} ({label}).")
+				classification = "unclear"
+				class_conf = 0
+				if self.unclassified_path is not None:
+					cv2.imwrite(str(self.unclassified_path / f"{figure_path.stem}-{label}{figure_path.suffix}"), img)
 
 			# Create master_image_info
 			master_image_info = {
-				"classification": "subfigure",
+				"classification": classification,
+				"classification_confidence": float(class_conf),
 				"confidence": float(conf),
 				"height": dy,
 				"width": dx,

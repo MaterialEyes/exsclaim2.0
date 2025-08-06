@@ -15,11 +15,14 @@ services:
             - POSTGRES_HOST=db
             - YOLO_CONFIG_DIR=/exsclaim/yolo
             - EXSCLAIM_CHECKPOINTS=/opt/exsclaim/exsclaim/figures/checkpoints
+            - EXSCLAIM_UNDETECTED_SUBFIGURES_PATH=/opt/exsclaim/training/undetected
+            - EXSCLAIM_UNCLASSIFIED_SUBFIGURES_PATH=/opt/exsclaim/training/unclassified
         volumes:
             - ./exsclaim:/usr/local/lib/python3.13/site-packages/exsclaim
             - ./:/opt/exsclaim
             - ./output:/exsclaim/results
             - ./logs:/exsclaim/logs
+            - ./data:/exsclaim/data
             - /etc/localtime:/etc/localtime:ro
 #            - /usr/share/ollama/.ollama/models:/opt/ollama
         ports:

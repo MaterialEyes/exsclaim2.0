@@ -122,6 +122,30 @@ async def init_db():
 	await db.initialize_database()
 
 
+async def train_model(**kwargs):
+	from .figures.train import train_model
+
+	del kwargs["command"]
+
+	for (argname, actual_name) in (
+		("json", "json_file_path"),
+		("detection_output_model", "detection_save_path"),
+		("classification_output_model", "classification_save_path"),
+	):
+		kwargs[actual_name] = kwargs[argname]
+		del kwargs[argname]
+
+	await train_model(**kwargs)
+
+
+async def upload_results(json_path:str):
+	json_path = Path(json_path).resolve()
+	if not json_path.is_file():
+		raise FileNotFoundError(f"Could not find file {json_path}.")
+
+	raise NotImplementedError("Have not finished implementing upload_results")
+
+
 async def launch(args=None):
 	parser = ArgumentParser(prog="exsclaim")
 
@@ -146,7 +170,23 @@ async def launch(args=None):
 	view_subparser.add_argument("-ac", "--api_configuration", help="The path to the gunicorn configuration file for the api.")
 	view_subparser.add_argument("-B", "--blocking", action="store_true", help="If the program should wait for the subprocesses to finish before closing.")
 
-	db_subparser = subparsers.add_parser("initialize_db", help="Initializes the PostgreSQL database.")
+	subparsers.add_parser("initialize_db", help="Initializes the PostgreSQL database.")
+
+	results_subparsers = subparsers.add_parser("upload_results", help="Upload the EXSCLAIM results to the PostgreSQL database if they results weren't fully uploaded.")
+	results_subparsers.add_argument("json", help="The path to the `exsclaim.json` file.")
+
+	train_subparser = subparsers.add_parser("train", help="Train a new YOLOv11 model.")
+	train_subparser.add_argument("json", help="The json file holding the training data.")
+	train_subparser.add_argument("-di", "--detection_input_model", default=None, help="The path to the detection YOLOv11 model that is being used to train.")
+	train_subparser.add_argument("-do", "--detection_output_model", default=None, help="The path where the refined model should be saved.")
+	train_subparser.add_argument("-dn", "--detector_name", default=None, help="The name of the detector.")
+	train_subparser.add_argument("-ci", "--classification_input_model", default=None, help="The path to the classification YOLOv11 model that is being used to train.")
+	train_subparser.add_argument("-co", "--classification_output_model", default=None, help="The path where the refined model should be saved.")
+	train_subparser.add_argument("-cn", "--classifier_name", default=None, help="The name of the classifier.")
+	train_subparser.add_argument("-ts", "--test_size", default=1_164, help="The size of the test set.")
+	train_subparser.add_argument("-r", "--random_state", type=int, default=42, help="The random state to use.")
+	train_subparser.add_argument("-d", "--dataset_dir", default=None, help="The path to the dataset directory.")
+	train_subparser.add_argument("-p", "--project", default=None, help="The name of the wandb project.")
 
 	for subparser in (query_subparser, view_subparser):
 		subparser.add_argument("--force_ollama", action="store_true", help="Fails if EXSCLAIM can't connect to the Ollama API.")
@@ -170,7 +210,9 @@ async def launch(args=None):
 		case "initialize_db":
 			exit_code = await init_db()
 		case "train":
-			...
+			exit_code = await train_model(**args)
+		case "upload_results":
+			exit_code = await upload_results(args["json"])
 
 	return exit_code
 

@@ -28,8 +28,6 @@ def create_homepage_layout(title, journal_families, available_llms):
 		# Query form
 		create_query_component(journal_families, available_llms),
 
-		html.Div(style={"margin": "60px"}),
-
 		# Footer
 		create_footer_component()
     ], id="exsclaim-app")

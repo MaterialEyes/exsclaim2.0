@@ -169,7 +169,7 @@ class JournalScraper(ExsclaimTool):
 			filename (string): File in which to store the updated EXSCLAIM JSON
 			exsclaim_json (dict): Updated EXSCLAIM JSON
 		"""
-		super()._appendJSON(exsclaim_json, data=map(lambda article: article.split('/')[-1], self.new_articles_visited), filename="articles")
+		super()._appendJSON(exsclaim_json, data=map(lambda article: article.split('/')[-1], self.new_articles_visited), filename="_articles")
 
 	def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
 		return exsclaim_json
@@ -209,6 +209,19 @@ class JournalScraper(ExsclaimTool):
 		journal_family_name = search_query["journal_family"]
 		exsclaim_json = exsclaim_json or dict()
 
+		# List of objects (articles) that have already been separated
+		already_done = self.results_directory / "_articles"
+
+		if already_done.is_file():
+			with open(already_done, "r", encoding="utf-8") as f:
+				separated = {line.strip() for line in f.readlines()}
+		else:
+			separated = set()
+
+		with open(already_done, "w", encoding="utf-8") as f:
+			for figure in separated:
+				f.write(f"{Path(figure).name}\n")
+
 		self.display_info(f"Running Journal Scraper\n")
 
 		async with JournalFamily(journal_family_name, search_query,
@@ -236,6 +249,7 @@ class CaptionDistributor(ExsclaimTool):
 	def __init__(self, search_query:dict, **kwargs):
 		kwargs.setdefault("logger_name", __name__ + ".CaptionDistributor")
 		super().__init__(search_query, **kwargs)
+		self.llm: LLM = LLM.from_search_query(search_query)
 
 	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter,
 						 caption_dict: dict[str, str], keywords: tuple[str]):
@@ -272,10 +286,10 @@ class CaptionDistributor(ExsclaimTool):
 		super()._appendJSON(exsclaim_json, data=map(lambda figure: figure.split('/')[-1], data), filename=filename)
 
 	async def load(self):
-		await LLM.from_search_query(self.search_query).load()
+		await self.llm.load()
 
 	async def unload(self):
-		await LLM.from_search_query(self.search_query).unload()
+		await self.llm.unload()
 
 	async def _runner(self, exsclaim_json:dict, search_query:dict, figure:str, new_separated:set, lock:Lock,
 					 semaphore:Semaphore, i:int, num_captions:int):
@@ -293,10 +307,8 @@ class CaptionDistributor(ExsclaimTool):
 
 				delimiter = "0"
 
-				llm = LLM.from_search_query(search_query)
-
-				caption_dict = await llm.separate_captions(caption_text)
-				keywords = await llm.get_keywords(caption_text)
+				caption_dict = await self.llm.separate_captions(caption_text)
+				keywords = await self.llm.get_keywords(caption_text)
 
 			if caption_dict is not None:
 				self.logger.debug(f"Full caption dict: \"{caption_dict}\".")

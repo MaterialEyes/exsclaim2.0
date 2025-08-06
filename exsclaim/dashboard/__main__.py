@@ -29,7 +29,7 @@ logging.basicConfig(level=logging.DEBUG,
 					force=True)
 
 logger = logging.getLogger(__name__)
-DEBUG = getenv("EXSCLAIM_DEBUG") is not None
+DEBUG = getenv("EXSCLAIM_DEBUG", "0").strip() != "0"
 
 
 def error_handler(exception:Exception) -> None:

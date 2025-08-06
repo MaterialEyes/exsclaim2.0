@@ -392,13 +392,11 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 		except TypeError as e:
 			self.logger.exception(f"{search_query=}")
 			raise e
-		search_product = list(product(*search_list))
+		search_product = product(*search_list)
 
 		search_urls = []
 		for term in search_product:
-			url_parameters = "&".join(
-				[self.term_param + self.join.join(term), self.max_page_size]
-			)
+			url_parameters = "&".join([self.term_param + self.join.join(term), self.max_page_size])
 			search_url = self.domain + self.search_path + self.pub_type + url_parameters
 			if self.open:
 				search_url += f"&{self.open_param}&"
@@ -625,7 +623,6 @@ class JournalFamilyStatic(JournalFamily, ABC):
 			"User-Agent": 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
 		})
 
-		proxy_url = getenv("http_proxy", "http://172.17.0.1:8080")
 		async with self.session.get(url, headers=headers) as response:
 			try:
 				response.raise_for_status()

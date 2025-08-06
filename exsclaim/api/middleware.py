@@ -7,7 +7,7 @@ from hashlib import sha256
 from starlette.concurrency import iterate_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import Response, StreamingResponse
+from starlette.responses import Response
 from starlette.types import ASGIApp
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker

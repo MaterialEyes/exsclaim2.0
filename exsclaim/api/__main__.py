@@ -11,12 +11,9 @@ from asyncpg import UndefinedTableError
 from contextlib import asynccontextmanager
 from datetime import datetime as dt
 from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
-from fastapi import FastAPI, Request, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import Response, FileResponse, JSONResponse
 from io import BytesIO
 from json import dump
 from logging.handlers import TimedRotatingFileHandler
@@ -27,7 +24,11 @@ from sqlmodel import select, update, insert
 from sqlmodel.ext.asyncio.session import AsyncSession
 from shutil import make_archive, rmtree, get_archive_formats
 from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.requests import Request
+from starlette.responses import Response, FileResponse, JSONResponse
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
 from typing import Literal
@@ -113,46 +114,38 @@ async def lifespan(app:FastAPI):
 
 
 def get_middleware() -> list[Middleware]:
-	middleware = [
+	# region CORS Middleware
+	origins = [
+		"https://exsclaim.materialeyes.org",
+		"https://exsclaim-dev.materialeyes.org",
+		getenv("DASHBOARD_URL", "http://localhost:3000").rstrip('/')
+	]
+
+	return [
 		Middleware(RequestLoggerMiddleware, logger=logger),
 		Middleware(PreflightCacheMiddleware),
+		Middleware(
+			CORSMiddleware,
+			allow_origins=origins,
+			allow_credentials=True,
+			allow_methods=["GET", "POST", "OPTIONS"],
+			allow_headers=["*"],
+		),
+		Middleware(
+			TrustedHostMiddleware,
+			allowed_hosts=[
+				"exsclaim.materialeyes.org",
+				"*.exsclaim.materialeyes.org",
+				"exsclaim-dev.materialeyes.org",
+				"*.exsclaim-dev.materialeyes.org",
+				"localhost",
+				"127.0.0.1",
+			]
+		),
+		Middleware(GZipMiddleware, minimum_size=1_000),
+		Middleware(SQLAlchemyMiddleware, logger=logger),
+		Middleware(HashMiddleware),
 	]
-
-	# region CORS Middleware
-	origins = ["https://exsclaim.materialeyes.org", "https://exsclaim-dev.materialeyes.org"]
-	if settings.DEBUG:
-		origins.append(getenv("DASHBOARD_URL", "http://localhost:3000").rstrip('/'))
-
-	middleware.append(Middleware(
-		CORSMiddleware,
-		allow_origins=origins,
-		allow_credentials=True,
-		allow_methods=["GET", "POST"],
-		allow_headers=["*"],
-	))
-	# endregion
-
-	# region Trusted Host Middleware
-	trusted_hosts = [
-		"exsclaim.materialeyes.org",
-		"*.exsclaim.materialeyes.org",
-		"exsclaim-dev.materialeyes.org",
-		"*.exsclaim-dev.materialeyes.org",
-		"localhost",
-		"127.0.0.1",
-	]
-
-	middleware.append(Middleware(
-		TrustedHostMiddleware,
-		allowed_hosts=trusted_hosts
-	))
-	# endregion
-
-	middleware.append(Middleware(GZipMiddleware, minimum_size=1_000))
-	middleware.append(Middleware(SQLAlchemyMiddleware, logger=logger))
-	middleware.append(Middleware(HashMiddleware))
-
-	return middleware
 
 
 logger = create_logger()
@@ -502,7 +495,6 @@ async def query(request:Request, search_query: Query, background_tasks:Backgroun
 		for sanitized_keys in ("name", "term", "synonyms"):
 			... # TODO: Sanitize these user inputs
 
-		# "INSERT INTO results(id, search_query, extension) VALUES(%s, %s, %s);", (uuid, dumps(db_json), "tar.gz")
 		await session.exec(insert(Results).values(id=uuid, search_query=db_json, extension=SaveExtensions.TAR))
 		await session.commit()
 
@@ -925,7 +917,7 @@ async def download(request:Request, result_id:UUID, compression:str = "default",
 				 }
 			 }
 		 })
-async def get_possible_compressions(request:Request, compression_type:str = None) -> Response:
+async def get_possible_compressions(request: Request, compression_type: str = None) -> Response:
 	send_json = request.headers.get("accept", "") == "application/json"
 	compression_types = frozenset(map(lambda i: i[0], get_archive_formats()))
 
@@ -944,14 +936,14 @@ async def get_possible_compressions(request:Request, compression_type:str = None
 
 
 @app.get("/classification_codes", tags=["Using EXSCLAIM"], response_model=list[ClassificationCodes])
-async def classification_codes(request:Request) -> Response:
+async def classification_codes(request: Request) -> Response:
 	session = request.state.session
 	results = await session.exec(select(ClassificationCodes))
 	return results.all()
 
 
 @app.get("/checkpoints/{checkpoint}", tags=["EXSCLAIM Model Checkpoints"])
-async def download_checkpoint(checkpoint:str) -> Response:
+async def download_checkpoint(checkpoint: str) -> Response:
 	checkpoint_folder = Path(getenv("EXSCLAIM_CHECKPOINTS", "/exsclaim/checkpoints")).resolve()
 
 	if not checkpoint_folder.exists() or not checkpoint_folder.is_dir():

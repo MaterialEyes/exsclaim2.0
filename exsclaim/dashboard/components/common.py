@@ -15,16 +15,19 @@ def create_header_component():
 	return dbc.Container([
 		# Logo section
 		html.Div([
-			html.Img(
-				id="exsclaim-logo",
-				src="/assets/ExsclaimLogo-Inverted.png",
-				alt="EXSCLAIM Logo",
-				style={
-					"maxWidth": "350px",
-					"height": "auto",
-					"display": "block",
-					"margin": "0 auto"
-				},
+			html.A(
+				html.Img(
+					id="exsclaim-logo",
+					src="/assets/ExsclaimLogo-Inverted.png",
+					alt="EXSCLAIM Logo",
+					style={
+						"maxWidth": "350px",
+						"height": "auto",
+						"display": "block",
+						"margin": "0 auto"
+					},
+				),
+				href="/"
 			)
 		], style={"textAlign": "center", "marginBottom": "20px"}),
 

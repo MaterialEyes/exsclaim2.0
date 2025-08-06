@@ -7,6 +7,7 @@ import dash_bootstrap_components as dbc
 
 from .api_client import fetch_status
 from dash import html, dcc, callback, Output, Input, State
+from exsclaim import SaveMethods
 from exsclaim.api import Status
 from httpx import AsyncClient
 from typing import Optional
@@ -23,7 +24,13 @@ def create_query_component(journal_families, available_llms, debounce=True):
 	Returns:
 		dbc.Container: Query form component
 	"""
-	return dbc.Container([
+	return dbc.Container(fluid=True, style={
+		"width": "95%",
+		"padding": "20px",
+		"margin": "20px",
+		"justifyContent": "center",
+		"display": "flex"
+	}, children=[
 		# Interval to check if the results are ready
 		dcc.Interval(
 			id="results-finished",
@@ -58,18 +65,12 @@ def create_query_component(journal_families, available_llms, debounce=True):
 				create_journal_family_component(journal_families),
 				create_sort_by_component(),
 				create_open_access_component(),
+				create_save_methods_component(),
 				create_model_component(available_llms, debounce=debounce),
 				create_submit_button_component(),
 			], width=6)
 		])
-	], fluid=True, style={
-		"width": "95%",
-		"height": "450px",
-		"padding": "20px",
-		"margin": "20px",
-		"justifyContent": "center",
-		"display": "flex"
-	})
+	])
 
 
 def create_output_name_component(debounce=True):
@@ -156,7 +157,7 @@ def create_journal_family_component(journal_families):
 def create_sort_by_component():
 	"""Create sort by radio buttons component."""
 	return html.Div([
-		dbc.Label("Sort By"),
+		dbc.Label("Sort By *"),
 		dbc.RadioItems(
 			id="sort-by",
 			options=[
@@ -209,6 +210,27 @@ def create_model_component(available_llms, debounce=True):
 			debounce=debounce,
 		)
 	], className="mb-3")
+
+
+def create_save_methods_component():
+	"""Create save_methods component."""
+	methods = [
+		dict(label="Subfigures", value="subfigures"),
+		dict(label="Visualization", value="visualize"),
+		dict(label="Bounding Boxes", value="boxes"),
+		dict(label="Upload to Database", value="postgres", disabled=True),
+		dict(label="CSV", value="csv", disabled=True),
+	]
+
+	return html.Div([
+		dbc.Label("Save Methods:", html_for="save-methods"),
+		dbc.Checklist(
+			id="save-methods",
+			options=methods,
+			value=tuple(map(lambda code: code["value"], methods)),
+		)
+	], className="mb-3 exsclaim-checklist")
+
 
 
 def create_submit_button_component():
@@ -345,12 +367,13 @@ def enable_submit_button(*invalidity):
 		State("input-synonyms", "value"),
 		State("open-access", "value"),
 		State("model-select", "value"),
-		State("model-key", "value")
+		State("model-key", "value"),
+		State("save-methods", "value"),
 	],
 	prevent_initial_call=True
 )
 async def handle_submit_query(n_clicks, stored_data, output_name, journal_family, num_articles,
-					   sort_by, term, synonyms, open_access, model, model_key):
+					   sort_by, term, synonyms, open_access, model, model_key, save_formats):
 	"""Handle form submission and API call."""
 	if not n_clicks:
 		return True, False, "", "success", stored_data
@@ -372,7 +395,7 @@ async def handle_submit_query(n_clicks, stored_data, output_name, journal_family
 		"sortby": sort_by or "relevant",
 		"term": term.strip(),
 		"synonyms": synonyms_list,
-		"save_format": ["postgres"],
+		"save_format": save_formats,
 		"open_access": open_access or False,
 		"llm": model or "llama3.2",
 		"model_key": model_key or ""

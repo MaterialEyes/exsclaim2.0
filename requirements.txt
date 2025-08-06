@@ -4,21 +4,20 @@ loguru==0.7.3
 numpy==2.2.6
 opencv-contrib-python-headless==4.12.0.88
 Pillow==11.3.0
-ultralytics==8.3.170
+ultralytics==8.3.174
 
-# Asynchronous HTTP requests
+# HTTP requests
 aiohttp==3.12.15
 httpx==0.28.1
 brotli==1.1.0
 selenium==4.34.2
 selenium-stealth==1.0.6
 urllib3==2.5.0
+beautifulsoup4==4.13.4
+soupsieve==2.7
 
 # Connecting to the PostgreSQL database
 asyncpg==0.30.0
-
-beautifulsoup4==4.13.4
-soupsieve==2.7
 
 # Testing differences in dictionaries
 deepdiff==8.5.0
@@ -35,13 +34,16 @@ torch==2.7.1
 torchvision==0.22.1
 pytorch-model-summary==0.1.2
 
+# Training new YOLO models
+scikit-learn==1.7.1
+
 # Run LLMs
 ollama==0.5.1
-openai==1.97.1
+openai==1.98.0
 asksageclient==1.31
 
 # Used with the API
-dash[async]==3.1.1
+dash[async]==3.2.0
 fastapi[standard]==0.116.1
 pydantic==2.11.7
 starlette==0.47.2
@@ -55,4 +57,4 @@ uuid-utils==0.11.0
 # Used with the Dashboard
 dash_bootstrap_components==2.0.3
 gunicorn[gevent]==23.0.0
-certifi==2025.7.14
+certifi==2025.8.3
