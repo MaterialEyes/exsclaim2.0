@@ -38,7 +38,7 @@ def error_handler(exception:Exception) -> None:
 
 
 title = "EXSCLAIM Dashboard"
-app = Dash(title, title=title, on_error=error_handler,
+app = Dash(title, title=title, on_error=error_handler, suppress_callback_exceptions=True, compress=True,
 		   external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME])
 server = app.server
 

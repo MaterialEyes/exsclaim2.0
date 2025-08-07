@@ -9,6 +9,7 @@ temp*
 test*.py
 TODO*
 *.passwd
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

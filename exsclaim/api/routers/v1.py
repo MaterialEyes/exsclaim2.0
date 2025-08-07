@@ -128,7 +128,7 @@ async def articles(request: Request, results_id:UUID):
 		 responses=get_items_responses("Figure", "figures", []))
 async def figures(request: Request, results_id:UUID, page=None):
 	session = request.state.session
-	return await Figure.get_items(results_id, session)
+	return await Figure.get_items(results_id, session, page)
 
 
 @router.get("/{results_id}/subfigures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Subfigure],

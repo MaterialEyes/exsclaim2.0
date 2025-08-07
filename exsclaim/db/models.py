@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, ARRAY, ForeignKeyConstraint
 from sqlmodel import Field, SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import Optional
+from typing import Optional, Sequence
 from uuid import UUID
 
 
@@ -17,13 +17,15 @@ class ExsclaimSQLModel(SQLModel):
 	)
 
 	@classmethod
-	async def get_items(cls, results_id:UUID, session: AsyncSession) -> list["ExsclaimSQLModel"]:
+	async def get_items(cls, results_id:UUID, session: AsyncSession, page: Optional[int] = None) -> Sequence["ExsclaimSQLModel"]:
 		statement = select(cls).where(cls.run_id == results_id)
+		if isinstance(page, int) and page != -1:
+			statement = statement.limit(50).offset(page * 50)
 		results = await session.exec(statement)
 		return results.all()
 
 	@classmethod
-	async def get_item(cls, results_id:UUID, _id:str, session: AsyncSession):
+	async def get_item(cls, results_id:UUID, _id:str, session: AsyncSession) -> "ExsclaimSQLModel":
 		statement = select(cls).where(cls.id == _id).where(cls.run_id == results_id)
 		results = await session.exec(statement)
 		return results.scalar_one_or_none()
@@ -44,6 +46,9 @@ class ClassificationCodes(SQLModel, table=True):
 		max_length=12,
 		description="The name of the classification code.",
 	)
+
+	def __hash__(self) -> int:
+		return hash(f"{self.code}:{self.name}")
 
 
 class Article(ExsclaimSQLModel, table=True):
@@ -198,11 +203,11 @@ class Scale(ExsclaimSQLModel, table=True):
 		default=None,
 		nullable=True,
 	)
-	label_line_distance: Optional[float] = Field(# TODO: Make this DOUBLE PRECISION
+	label_line_distance: Optional[float] = Field(
 		default=None,
 		nullable=True,
 	)
-	confidence: Optional[float] = Field(# TODO: Make this DOUBLE PRECISION
+	confidence: Optional[float] = Field(
 		default=None,
 		nullable=True,
 	)
@@ -228,11 +233,11 @@ class SubfigureLabel(ExsclaimSQLModel, table=True):
 	y1: int
 	x2: int
 	y2: int
-	label_confidence: Optional[float] = Field(# TODO: Make this DOUBLE PRECISION
+	label_confidence: Optional[float] = Field(
 		default=None,
 		nullable=True,
 	)
-	box_confidence: Optional[float] = Field(# TODO: Make this DOUBLE PRECISION
+	box_confidence: Optional[float] = Field(
 		default=None,
 		nullable=True,
 	)

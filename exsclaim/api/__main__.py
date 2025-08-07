@@ -14,6 +14,7 @@ from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
+from hashlib import sha256
 from io import BytesIO
 from json import dump
 from logging.handlers import TimedRotatingFileHandler
@@ -936,10 +937,18 @@ async def get_possible_compressions(request: Request, compression_type: str = No
 
 
 @app.get("/classification_codes", tags=["Using EXSCLAIM"], response_model=list[ClassificationCodes])
-async def classification_codes(request: Request) -> Response:
+async def classification_codes(request: Request, response: Response) -> tuple[ClassificationCodes]:
 	session = request.state.session
-	results = await session.exec(select(ClassificationCodes))
-	return results.all()
+	results = await session.exec(select(ClassificationCodes).order_by(ClassificationCodes.code))
+	results = tuple(results.all())
+
+	hash_string = ""
+	for result in results:
+		hash_string += f"{result.code}:{result.name}\n"
+
+	etag = sha256(hash_string.encode()).hexdigest()
+	response.headers["ETag"] = etag
+	return results
 
 
 @app.get("/checkpoints/{checkpoint}", tags=["EXSCLAIM Model Checkpoints"])

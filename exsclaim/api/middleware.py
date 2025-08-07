@@ -24,7 +24,7 @@ request_id_ctx = ContextVar("request_id")
 
 
 def format_response(_id, request:Request) -> str:
-	log = f"[{request_id_ctx.get()}] {request.url.path}"
+	log = f"[{request_id_ctx.get()}] {{{request.headers.get('X-Forwarded-For', 'Unknown IP')}}} {request.url.path}"
 	if request.url.query:
 		log += f"?{request.url.query}"
 
@@ -160,6 +160,7 @@ class HashMiddleware(BaseHTTPMiddleware):
 			digest = hash_obj.hexdigest()
 			self.hashes[path_with_params] = digest
 
+		response.headers["ETag"] = digest
 		response.headers["X-Sha256-Hash"] = digest
 
 		return response

@@ -7,7 +7,7 @@ import dash_bootstrap_components as dbc
 
 from .api_client import fetch_status
 from dash import html, dcc, callback, Output, Input, State
-from exsclaim import SaveMethods
+from dash.exceptions import PreventUpdate
 from exsclaim.api import Status
 from httpx import AsyncClient
 from typing import Optional
@@ -216,7 +216,7 @@ def create_save_methods_component():
 	"""Create save_methods component."""
 	methods = [
 		dict(label="Subfigures", value="subfigures"),
-		dict(label="Visualization", value="visualize"),
+		dict(label="Visualization", value="visualization"),
 		dict(label="Bounding Boxes", value="boxes"),
 		dict(label="Upload to Database", value="postgres", disabled=True),
 		dict(label="CSV", value="csv", disabled=True),
@@ -230,7 +230,6 @@ def create_save_methods_component():
 			value=tuple(map(lambda code: code["value"], methods)),
 		)
 	], className="mb-3 exsclaim-checklist")
-
 
 
 def create_submit_button_component():
@@ -448,6 +447,6 @@ async def check_results_status(n_intervals, data, current_url):
 		match await fetch_status(client, fast_api_url, query_id):
 			case Status.RUNNING:
 				# Not ready
-				return current_url, False
+				raise PreventUpdate
 			case Status.FINISHED | Status.ERROR | Status.KILLED:
 				return f"/results/{query_id}", True

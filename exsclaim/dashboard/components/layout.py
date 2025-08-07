@@ -5,14 +5,13 @@ Converted from React Layout.js component.
 
 import dash_bootstrap_components as dbc
 
-from .api_client import *
+from certifi import where
+from dash import html, dcc, callback, clientside_callback, ClientsideFunction, Output, Input, State, no_update
+from dash.exceptions import PreventUpdate
 
 from exsclaim.api import Status
-from certifi import where
-from dash import html, dcc, callback, clientside_callback, Output, Input, State
-from httpx import AsyncClient, Client
+from httpx import Client
 from re import sub
-from typing import Dict, List, Any
 from uuid import UUID
 from ssl import create_default_context
 
@@ -86,7 +85,7 @@ def create_layout_component(result_id: UUID, base_url: str):
 								html.H5("Menu", className="text-center text-white label-column")
 							])
 						]),
-						create_search_page_component(base_url)
+						create_search_page_component(base_url, result_id)
 					]),
 
 					# Right side - Images display
@@ -110,24 +109,26 @@ def create_layout_component(result_id: UUID, base_url: str):
 
 def create_loading_component():
 	"""Create loading component."""
-	return dbc.Container([
+	return dbc.Container(style={"display": "block", "padding-bottom": "1.25em"}, children=[
 		dbc.Row([
 			dbc.Col([
 				dcc.Loading(
-					[html.Div("Loading results...", className="text-center")],
+					html.Div("Loading results...", className="text-center"),
 					color="#93fad9",
-					fullscreen=True
+					display="show",
+					fullscreen=False,
+					type="circle"
 				)
 			], width=12, className="text-center")
 		])
-	], fluid=True)
+	])
 
 
-def create_search_page_component(base_url):
+def create_search_page_component(base_url, result_id: UUID):
 	"""Create the search page component (left side menu)."""
 	return html.Div(id="filter-components", style={"width": "100%"}, children=[
 		# Result ID display
-		create_result_id_component(),
+		create_result_id_component(result_id),
 
 		# Keywords section
 		dbc.Card([
@@ -166,11 +167,11 @@ def create_search_page_component(base_url):
 	])
 
 
-def create_result_id_component():
+def create_result_id_component(result_id: UUID):
 	"""Create result ID display component."""
 	return html.Div([
 		dbc.Label("Result ID"),
-		html.Div(id="result-id-display", className="form-control")
+		html.Div(str(result_id), id="result-id-display", className="form-control")
 	], className="mb-3")
 
 
@@ -234,7 +235,7 @@ def create_scale_component():
 	def create_input(text:str, html_id:str, num:int, value:int=0) -> dbc.Col:
 		return dbc.Col(children=[
 			dbc.Label(text, html_for=html_id),
-			dbc.InputGroup(className="mb-2", children=[
+			dbc.InputGroup(className="mb-2 image_size_filter", children=[
 				dbc.Input(
 					id=html_id,
 					value=value,
@@ -302,7 +303,11 @@ def create_images_page_component():
 
 
 # Callbacks for API integration and layout functionality
-@callback(
+clientside_callback(
+	ClientsideFunction(
+		namespace="clientside",
+		function_name="update_layout_state"
+	)
 	[
 		Output("layout-state", "data"),
 		Output("api-polling-interval", "disabled"),
@@ -317,72 +322,6 @@ def create_images_page_component():
 		State("exsclaim-store", "data"),
 	]
 )
-async def update_layout_state(n_intervals, current_data:dict, data):
-	"""Update layout state by fetching data from API."""
-	results_pending = {"display": "block"}, {"display": "none"}
-	results_loaded = {"display": "none"}, {"display": "block"}
-
-	if not current_data:
-		return current_data, False, *results_pending
-
-	result_id = current_data.get("results_id")
-	fast_api_url = data["fast_api_url"]
-
-	ssl_context = create_default_context(cafile=where())
-	updated_data = current_data.copy()
-
-	async with AsyncClient(verify=ssl_context) as client:
-		# Check if results are ready
-		match (status := await fetch_status(client, fast_api_url, result_id)):
-			case Status.RUNNING:
-				return current_data, False, *results_pending  # Still loading, return current state
-			case Status.FINISHED:
-				pass
-			case Status.ERROR | Status.KILLED:
-				updated_data.update({
-					"status": status,
-					"results_available": False,
-					"articles_loaded": True,
-					"figures_loaded": True,
-					"subfigures_loaded": True
-				})
-				return updated_data, True, *results_loaded
-
-		# Results are ready, fetch all data
-		articles = await fetch_articles(client, fast_api_url, result_id)
-		figures = await fetch_figures(client, fast_api_url, result_id)
-		subfigures = await fetch_subfigures(client, fast_api_url, result_id)
-
-	for subfigure in subfigures:
-		figure = next(filter(lambda figure: subfigure["figure_id"] == figure["id"], figures), None)
-		article = dict()
-		if figure:
-			article = next(filter(lambda article: figure["article_id"] == article["id"], articles), article)
-		subfigure["article"] = article
-		subfigure["figure"] = figure
-
-	# Update the state
-	all_subfigures = updated_data.get("all_subfigures", [])
-	all_subfigures.extend(subfigures)
-	updated_data.update({
-		"results_available": True,
-		"articles": articles,
-		"figures": figures,
-		"all_subfigures": all_subfigures,
-		"subfigures": subfigures,
-		"articles_loaded": True,
-		"figures_loaded": True,
-		"subfigures_loaded": True
-	})
-
-	articles_loaded = updated_data.get("articles_loaded", False)
-	figures_loaded = updated_data.get("figures_loaded", False)
-	subfigures_loaded = updated_data.get("subfigures_loaded", False)
-
-	if articles_loaded and figures_loaded and subfigures_loaded:
-		return updated_data, True, *results_loaded
-	else:
-		return updated_data, False, *results_pending
 
 
 @callback(
@@ -394,7 +333,7 @@ def update_result_id(data):
 	"""Update result ID display."""
 	if data and "results_id" in data:
 		return data["results_id"]
-	return ""
+	raise PreventUpdate
 
 
 @callback(
@@ -434,13 +373,6 @@ def update_keywords(keyword_type, data):
 	return [{"label": kw, "value": kw} for kw in unique_keywords]
 
 
-def get_figure_results_text(images:int=0) -> str:
-	text = "Figure Results"
-	if images:
-		text += f" ({images:,})"
-	return text
-
-
 @callback(
 	[
 		Output("images-container", "children"),
@@ -460,23 +392,22 @@ def get_figure_results_text(images:int=0) -> str:
 async def update_images(data, max_width, max_height):
 	"""Update images display based on filters."""
 	if not data:
-		return [html.Div("No data available", className="text-center")], max_width, max_height
+		return [html.Div("No data available", className="text-center")], no_update, no_update
 
 	if not data.get("results_available", True):
 		match data.get("status", Status.ERROR):
 			case Status.KILLED:
-				return [html.Div("This run was stopped by the user or admin, please re-submit your query.", className="text-center")], max_width, max_height
+				return [html.Div("This run was stopped by the user or admin, please re-submit your query.", className="text-center")], no_update, no_update
 			case Status.ERROR:
-				return [html.Div("The results for this run are unavailable due to an error interrupting the pipeline. Please re-submit your query later.", className="text-center")], max_width, max_height
+				return [html.Div("The results for this run are unavailable due to an error interrupting the pipeline. Please re-submit your query later.", className="text-center")], no_update, no_update
 
 	all_subfigures = data.get("all_subfigures", [])
 
 	if not all_subfigures:
-		return html.Div("No articles/figures available.", className="text-center"), max_width, max_height
+		return html.Div("No articles/figures available.", className="text-center"), no_update, no_update
 
 	# Create image grid
 	image_items = []
-	# figure_sizes = dict()
 	for subfigure in all_subfigures:
 		figure = subfigure["figure"]
 		article = subfigure["article"]
@@ -512,10 +443,10 @@ async def update_images(data, max_width, max_height):
 					),
 					html.Small(
 						html.A(
-							article.get("title", "Unknown"),
+							article.get("title", "Unknown Article"),
 							href=article.get("url", "#"),
 							target="_blank"
-						) if article else "Unknown",
+						) if article else "Unknown Article",
 						className="card-text"
 					)
 				])
@@ -528,115 +459,10 @@ async def update_images(data, max_width, max_height):
 
 
 clientside_callback(
-	"""
-	function filterImages(n_clicks, children, keywords, keyword_type, classifications, license_only, data, min_width, max_width, min_height, max_height, confidence) {
-		const subfigures = data.all_subfigures;
-		let filtered_subfigures = subfigures;
-
-		// Remove message from previous filter if needed
-		document.getElementById("filter-error")?.remove();
-
-		// Filter by keywords:
-		if (keywords !== undefined) {
-			switch (keyword_type) {
-				case "caption":
-					filtered_subfigures = filtered_subfigures.filter((subfigure) => {
-						const caption = subfigure.caption.toLowerCase();
-						let includes_keyword = false;
-						keywords.forEach((kw) => {
-							if(caption.includes(kw.toLowerCase())){
-								includes_keyword = true;
-								return true;
-							}
-						});
-						return includes_keyword;
-					});
-					break;
-				case "title":
-					filtered_subfigures = filtered_subfigures.filter((subfigure) => {
-						const caption = subfigure.article?.title.toLowerCase();
-						if(caption === undefined){
-							return false;
-						}
-						let includes_keyword = false;
-						keywords.forEach((kw) => {
-							if(caption.includes(kw.toLowerCase())){
-								includes_keyword = true;
-								return true;
-							}
-						});
-						return includes_keyword;
-					});
-					break;
-			}
-		}
-
-		// Filter by classification
-		if (classifications) {
-			filtered_subfigures = filtered_subfigures.filter(
-				subfigure => classifications.includes(subfigure.classification_code)
-			);
-		}
-
-		// Filter by license
-		if (license_only) {
-			filtered_subfigures = filtered_subfigures.filter(
-				subfigure => subfigure.article?.open
-			);
-		}
-	
-		// Filter by Image Shape
-		if (min_width !== undefined){
-			filtered_subfigures = filtered_subfigures.filter(subfigure => subfigure.width >= min_width);
-		}
-		
-		if (max_width !== undefined){
-			filtered_subfigures = filtered_subfigures.filter(subfigure => subfigure.width <= max_width);
-		}
-		
-		if (min_height !== undefined){
-			filtered_subfigures = filtered_subfigures.filter(subfigure => subfigure.height >= min_height);
-		}
-		
-		if (max_height !== undefined){
-			filtered_subfigures = filtered_subfigures.filter(subfigure => subfigure.height <= max_height);
-		}
-		
-		// Filter by Confidence
-		if (confidence !== undefined && confidence !== 0) {
-			filtered_subfigures = filtered_subfigures.filter(
-				subfigure => subfigure.confidence !== undefined && subfigure.confidence >= confidence
-			);
-		}
-		
-		data.subfigures = filtered_subfigures;
-		
-		filtered_subfigures = new Set(filtered_subfigures.map(subfigure => subfigure.id));
-		
-		let visibleFigures = 0;
-		children.props.children.forEach((subfigure) => {
-			const subfigure_id = subfigure.props.children.props.id;
-			const subfigure_html = document.getElementById(subfigure_id).parentElement;
-			if(filtered_subfigures.has(subfigure_id)){
-				subfigure_html.hidden = false;
-				visibleFigures++;
-			}
-			else {
-				subfigure_html.hidden = true;
-			}
-		});
-		
-		if(visibleFigures === 0) {
-			const child = document.createElement("div");
-			child.id = "filter-error";
-			child.className = "text-center";
-			child.innerText = "No results match the selected filters";
-			const container = document.getElementById("images-container");
-			container.appendChild(child);
-		}
-		return children;
-	}
-	""",
+	ClientsideFunction(
+		namespace="clientside",
+		function_name="filterImages"
+	),
 	Output("images-container", "children", allow_duplicate=True),
 	[
 		Input("apply-filters", "n_clicks"),
@@ -660,54 +486,30 @@ clientside_callback(
 
 
 clientside_callback(
-	"""
-		function updateBanner(children){
-			try{
-				children = document.getElementById("images-container").children[0].children;
-				let count = Array.from(children).filter(e => !e.hidden).length;
-				return updateBannerNumber(count);
-			} catch (e) {
-				return updateBannerNumber();
-			}
-		}
-	""",
+	ClientsideFunction(
+		namespace="clientside",
+		function_name="update_banner"
+	),
 	Output("figure-results-header", "children"),
 	Input("images-container", "children"),
 )
 
 
 clientside_callback(
-	"""
-	function updateTitle(result_id){
-		document.querySelector("title").innerText = `EXSCLAIM Results: ${result_id}`;
-		return false;
-	}
-	""",
+	ClientsideFunction(
+		namespace="clientside",
+		function_name="update_title"
+	),
 	Output("result-id-display", "draggable"),
 	Input("result-id-display", "children")
 )
 
 
 clientside_callback(
-	"""
-	function updateImagePageHeight(images, style){
-		const filter_components = document.querySelector("#filter-components");
-		style = style !== undefined ? style : {};
-		style.overflowX = "auto"; //hidden
-	
-		const children = images.props.children;
-		let count = Array.from(images.props.children.length).slice(1).filter(e => window.getComputedStyle(e).display !== 'none').length;
-
-		if(count > 1){
-			style.overflowY = "scroll";
-			style.maxHeight = filter_components.clientHeight;
-		} else {
-			delete style.overflowY;
-		}
-
-		return style;
-	}
-	""",
+	ClientsideFunction(
+		namespace="clientside",
+		function_name="updateImagePageHeight"
+	),
 	Output("images-container", "style"),
 	Input("images-container", "children"),
 	State("images-container", "style"),
@@ -716,16 +518,10 @@ clientside_callback(
 
 # Fixes an issue with the padding on the slider
 clientside_callback(
-	"""
-	function updateScalePadding(value){
-		const scale = document.querySelector("#scale-threshold");
-		if(scale === undefined){ return; }
-
-		scale.removeAttribute("style");
-
-		return {};
-	}
-	""",
+	ClientsideFunction(
+		namespace="clientside",
+		function_name="updateScalePadding"
+	),
 	Output("scale-threshold", "style"),
 	Input("page-load", "n_intervals"),
 	prevent_initial_call=True

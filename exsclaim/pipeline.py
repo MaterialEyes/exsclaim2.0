@@ -65,11 +65,14 @@ class SaveMethods(Flag):
 		# return reduce(lambda x, y: x | y, filter(lambda x: x is not None, map(get_values, lst)))
 
 
-def chmod(path:Path, permissions=None):
+def chmod(path:Path, permissions=None, output: Callable[[PermissionError], None] = print):
 	if permissions is None:
 		permissions = path.stat().st_mode
 	else:
-		path.chmod(permissions)
+		try:
+			path.chmod(permissions)
+		except PermissionError as e:
+			output(e)
 
 	for directory, _, files in path.walk():
 		directory.chmod(permissions)
@@ -289,7 +292,11 @@ class Pipeline:
 			message = f"An error occurred at {dt.now():%Y-%m-%dT%H:%M%z} running{' the' if _id is None else ''} EXSCLAIM! query{f' `{_id}`' if _id is not None else ''}."
 			raise PipelineInterruptionException from e
 		finally:
-			chmod(tools[0].results_directory, query_dict.get("permissions", 0o775))
+			if len(tools):
+				try:
+					chmod(tools[0].results_directory, query_dict.get("permissions", 0o775))
+				except PermissionError:
+					self.logger.exception("Could not change permissions of the result directory.")
 			for notifier in self.notifications:
 				try:
 					await notifier.notify(message, name=self.query_dict["name"])
