@@ -5,7 +5,7 @@ from torchvision import transforms
 __all__ = ["resize_transform"]
 
 
-def resize_transform(image:Image):
+def resize_transform(image: Image.Image):
 	transform = transforms.Compose(
 		[
 			transforms.Resize((128, 512)),

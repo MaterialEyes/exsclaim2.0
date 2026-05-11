@@ -16,12 +16,13 @@ from uuid import UUID
 from ssl import create_default_context
 
 
-def create_layout_component(result_id: UUID, base_url: str):
+def create_layout_component(result_id: UUID, base_url: str, public_api_url: str):
 	"""
 	Create the main layout component for the results page.
 
 	Args:
 		result_id (UUID): The result ID to fetch data for
+		base_url (str): The API's URL
 
 	Returns:
 		html.Div: Layout component
@@ -85,7 +86,7 @@ def create_layout_component(result_id: UUID, base_url: str):
 								html.H5("Menu", className="text-center text-white label-column")
 							])
 						]),
-						create_search_page_component(base_url, result_id)
+						create_search_page_component(base_url, public_api_url, result_id)
 					]),
 
 					# Right side - Images display
@@ -124,11 +125,14 @@ def create_loading_component():
 	])
 
 
-def create_search_page_component(base_url, result_id: UUID):
+def create_search_page_component(base_url, public_api_url: str, result_id: UUID):
 	"""Create the search page component (left side menu)."""
 	return html.Div(id="filter-components", style={"width": "100%"}, children=[
 		# Result ID display
 		create_result_id_component(result_id),
+
+		# Download Button
+		create_download_component(public_api_url, result_id),
 
 		# Keywords section
 		dbc.Card([
@@ -175,6 +179,19 @@ def create_result_id_component(result_id: UUID):
 	], className="mb-3")
 
 
+def create_download_component(public_api_url: str, result_id: UUID):
+	return html.A( # TODO: Get the correct URL (this is using private, not public)
+		href=f"{public_api_url}/results/{result_id}",
+		children=[
+			dbc.Card([
+				dbc.CardBody([
+					html.H6("Download Results", className="text-center", style={"color": "var(--text)"})
+				])
+			], color="info", outline=True, className="mb-3", style={"background-color": "#00000000"}),
+		],
+	)
+
+
 def create_keywords_component():
 	"""Create keywords component."""
 	return html.Div([
@@ -205,7 +222,7 @@ def create_classification_component(base_url):
 	with Client(verify=ssl_context) as client:
 		response = client.get(f"{base_url}/classification_codes")
 		if not response.is_success:
-			raise ValueError(f"Could not get classification codes from the API: {response.text}.")
+			raise ValueError(f"Could not get classification codes from the API: {response.text}")
 		codes = response.json()
 
 	codes = [{"label": code["name"].replace("_", ' ').title(), "value": code["code"]} for code in codes]
@@ -232,7 +249,7 @@ def create_license_component():
 
 def create_scale_component():
 	"""Create scale component."""
-	def create_input(text:str, html_id:str, num:int, value:int=0) -> dbc.Col:
+	def create_input(text: str, html_id: str, num: int, value: int = 0) -> dbc.Col:
 		return dbc.Col(children=[
 			dbc.Label(text, html_for=html_id),
 			dbc.InputGroup(className="mb-2 image_size_filter", children=[
@@ -262,7 +279,7 @@ def create_scale_component():
 				   id="scale-threshold",
 				   value=0,
 				   className="form-control mb-2 slider",
-				   marks={f"{num/10:.1f}": "" for num in range(11)},
+				   marks={f"{num / 10:.1f}": "" for num in range(11)},
 				   tooltip={"placement": "top", "always_visible": False},
 				   ),
 	], className="mb-3")
@@ -307,7 +324,7 @@ clientside_callback(
 	ClientsideFunction(
 		namespace="clientside",
 		function_name="update_layout_state"
-	)
+	),
 	[
 		Output("layout-state", "data"),
 		Output("api-polling-interval", "disabled"),
@@ -396,7 +413,7 @@ async def update_images(data, max_width, max_height):
 
 	if not data.get("results_available", True):
 		match data.get("status", Status.ERROR):
-			case Status.KILLED:
+			case Status.STOPPED:
 				return [html.Div("This run was stopped by the user or admin, please re-submit your query.", className="text-center")], no_update, no_update
 			case Status.ERROR:
 				return [html.Div("The results for this run are unavailable due to an error interrupting the pipeline. Please re-submit your query later.", className="text-center")], no_update, no_update

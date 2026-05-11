@@ -1,4 +1,5 @@
 from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform
+from .config import settings
 from .exceptions import ExsclaimToolException
 from .tool import ExsclaimTool
 from .utilities import boxes, load_model_from_checkpoint, download_model_checkpoint
@@ -7,18 +8,18 @@ import cv2
 import numpy as np
 import torch
 
-from contextlib import suppress
-from json import load
 from pathlib import Path
 from PIL import Image
-from torchvision import transforms
-from torchvision.models.detection import fasterrcnn_resnet50_fpn
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
-from typing import Any
-from ultralytics import YOLO
+from typing import Any, Optional
 
 
 __all__ = ["FigureSeparator"]
+
+
+def get_optional_path(path: Optional[str]) -> Optional[Path]:
+	if path is None:
+		return None
+	return Path(path).resolve()
 
 
 class FigureSeparator(ExsclaimTool):
@@ -37,20 +38,21 @@ class FigureSeparator(ExsclaimTool):
 		self._get_unrecognized_image_folders()
 
 	def _get_unrecognized_image_folders(self):
-		from os import getenv
-		images = getenv("EXSCLAIM_UNDETECTED_SUBFIGURES_PATH", None)
-		self.undetected_path = Path(images).resolve() if images is not None else None
+		self.undetected_path = settings.UNDETECTED_SUBFIGURES_PATH
+		self.unclassified_path = settings.UNCLASSIFIED_SUBFIGURES_PATH
 
-		subimages = getenv("EXSCLAIM_UNCLASSIFIED_SUBFIGURES_PATH", None)
-		self.unclassified_path = Path(subimages).resolve() if subimages is not None else None
 		for path in (self.undetected_path, self.unclassified_path):
 			if path is not None:
 				path.mkdir(parents=True, exist_ok=True)
 
 	async def load(self):
 		"""Load relevant models for the object detection tasks"""
+		from ultralytics import YOLO
+		from torchvision.models.detection import fasterrcnn_resnet50_fpn
+		from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
+
 		# Set configuration variables
-		figures_path = Path(__file__).resolve().parent / "figures"
+		figures_path = Path(__file__).parent.resolve() / "figures"
 		self.cuda = torch.cuda.is_available()
 
 		self.dtype = torch.cuda.FloatTensor if self.cuda else torch.FloatTensor
@@ -96,7 +98,8 @@ class FigureSeparator(ExsclaimTool):
 		# Load scale label recognition model
 		config_path = figures_path / "config" / "scale_label_reader.json"
 		with open(config_path, "r") as f:
-			configuration_file = load(f)
+			from orjson import loads
+			configuration_file = loads(f.read())
 
 		configuration = configuration_file["theta"]
 		scale_label_recognition_model = CRNN(configuration=configuration)
@@ -113,7 +116,7 @@ class FigureSeparator(ExsclaimTool):
 				model.to("cpu")
 			del model
 
-	def _update_exsclaim(self, exsclaim_dict:dict, figure:dict):
+	def _update_exsclaim(self, exsclaim_dict: dict, figure: dict):
 		figure_name = figure["figure_name"].split("/")[-1]
 
 		exsclaim_dict[figure_name]["master_images"].extend(figure["master_images"])
@@ -172,7 +175,7 @@ class FigureSeparator(ExsclaimTool):
 		self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 		return exsclaim_dict
 
-	def read_scale_bar(self, cropped_image:Image) -> tuple[float, str, float]:
+	def read_scale_bar(self, cropped_image: Image.Image) -> tuple[float, str, float]:
 		"""Outputs the text of an image cropped to a scale bar label bbox
 
 		Args:
@@ -190,7 +193,7 @@ class FigureSeparator(ExsclaimTool):
 		return magnitude, unit, float(confidence)
 
 	@staticmethod
-	def assign_scale_objects_to_subfigures(master_image:dict, scale_objects:list[dict]) -> tuple[dict, list[dict]]:
+	def assign_scale_objects_to_subfigures(master_image: dict, scale_objects: list[dict]) -> tuple[dict, list[dict]]:
 		"""Assign scale bar objects to master images
 
 		Args:
@@ -230,11 +233,11 @@ class FigureSeparator(ExsclaimTool):
 			))
 		return master_image, unassigned_scale_objects
 
-	def detect_scale_objects(self, image: Image) -> list[ScalebarInfo]:
+	def detect_scale_objects(self, image: torch.Tensor) -> list[ScalebarInfo]:
 		"""Detects bounding boxes of scale bars and scale bar labels
 
 		Args:
-			image (PIL Image): A PIL image object
+			image (torch.Tensor): An image tensor
 		Returns:
 			scale_bar_info (list): A list of lists with the following
 				pattern: [[x1,y1,x2,y2, confidence, label],...] where
@@ -265,7 +268,7 @@ class FigureSeparator(ExsclaimTool):
 		)
 		return scale_bar_info
 
-	def determine_scale(self, figure_path:Path, figure_json:dict[str, Any]) -> dict[str, Any]:
+	def determine_scale(self, figure_path: Path, figure_json: dict[str, Any]) -> dict[str, Any]:
 		"""Adds scale information to figure by reading and measuring scale bars
 
 		Args:
@@ -276,6 +279,8 @@ class FigureSeparator(ExsclaimTool):
 			figure_json (dict): A dictionary with classified image_objects
 				extracted from figure
 		"""
+		from torchvision import transforms
+
 		convert_to_nm = {
 			"a":              0.1,
 			"nm":             1.0,
@@ -337,7 +342,7 @@ class FigureSeparator(ExsclaimTool):
 
 		return figure_json
 
-	def extract_image_objects(self, figure_path:str) -> dict:
+	def extract_image_objects(self, figure_path: str) -> dict:
 		"""Separate and classify subfigures in an article figure
 
 		Args:
@@ -347,6 +352,8 @@ class FigureSeparator(ExsclaimTool):
 			figure_json (dict): A dictionary with classified image_objects
 				extracted from figure
 		"""
+		from contextlib import suppress
+
 		# Get full path to figure
 		figure_path = self.results_directory / "figures" / figure_path
 
@@ -364,7 +371,8 @@ class FigureSeparator(ExsclaimTool):
 			conf=0.6,
 			iou=0.45,
 			max_det=100,
-			agnostic_nms=False
+			agnostic_nms=False,
+			stream=True
 		)
 
 		# Initialize variables
@@ -377,18 +385,20 @@ class FigureSeparator(ExsclaimTool):
 
 		# Process detections
 		detections_per_class = {}
+		first_result = None
 
-		if results[0].boxes.shape[0] == 0:
-			self.logger.info(f"{figure_path} could not detect any subfigures.")
-			if self.undetected_path is not None:
-				cv2.imwrite(str(self.undetected_path / figure_path.name), img)
-
-		for result in results:
+		for i, result in enumerate(results):
+			first_result = first_result or result
 			for box in result.boxes:
 				cls_id = int(box.cls[0])
 				conf = box.conf[0]
 				if cls_id not in detections_per_class or conf > detections_per_class[cls_id].conf[0]:
 					detections_per_class[cls_id] = box
+
+		if first_result is None or first_result.boxes.shape[0] == 0:
+			self.logger.info(f"{figure_path} could not detect any subfigures.")
+			if self.undetected_path is not None:
+				cv2.imwrite(str(self.undetected_path / figure_path.name), img)
 
 		# Process each final detection
 		for cls_id, box in detections_per_class.items():
@@ -421,15 +431,16 @@ class FigureSeparator(ExsclaimTool):
 				conf=0.6,
 				iou=0.45,
 				max_det=100,
-				agnostic_nms=False
+				agnostic_nms=False,
+				stream=True
 			)
 
 			try:
-				results = classification_results[0]
+				results = next(classification_results)
 				classification = results.names[results.probs.top1]
 				class_conf = float(results.probs.top1conf)
-			except BaseException:
-				self.logger.exception(f"Could not classify subfigure {figure_path} ({label}).")
+			except BaseException as e:
+				self.logger.exception(f"Could not classify subfigure {figure_path} ({label}).", exc_info=e)
 				classification = "unclear"
 				class_conf = 0
 				if self.unclassified_path is not None:

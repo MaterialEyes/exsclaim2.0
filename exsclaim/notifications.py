@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from aiohttp import ClientSession, ClientConnectionError
 from logging import getLogger
-from typing import Type
+from typing import Optional, Type
+from uuid import UUID
 
 
 __all__ = ["Notifications", "NTFY", "Email", "CouldNotNotifyException"]
@@ -22,7 +23,7 @@ class Notifications(ABC):
 		...
 
 	@abstractmethod
-	async def notify(self, data: dict | str, name:str, exception: Exception = None):
+	async def notify(self, data: dict | str, name:str, id: Optional[UUID] = None, exception: Exception = None):
 		...
 
 	@classmethod
@@ -32,11 +33,18 @@ class Notifications(ABC):
 
 	@staticmethod
 	def notifiers() -> dict[str, Type["Notifications"]]:
-		return {notifier.json_name(): notifier for notifier in Notifications.__subclasses__()}
+		def get_subclasses(cls) -> set:
+			subclasses = set()
+			for subclass in cls.__subclasses__():
+				subclasses.add(subclass)
+				subclasses.update(get_subclasses(subclass))
+			return subclasses
+
+		return {notifier.json_name(): notifier for notifier in get_subclasses(Notifications)}
 
 
 class NTFY(Notifications):
-	def __init__(self, url:str, access_token:str=None, **kwargs):
+	def __init__(self, url: str, access_token: str = None, **kwargs):
 		super().__init__(**kwargs)
 		self._ntfy_url = url
 		self._access_token = access_token
@@ -55,7 +63,9 @@ class NTFY(Notifications):
 		priority = json.get("priority", "3")
 		return cls(url, access_token, priority=priority)
 
-	async def notify(self, data: dict | str, name:str, exception: Exception = None):
+	async def notify(self, data: dict | str, name:str, id: Optional[UUID] = None, exception: Exception = None):
+		from .config import ui_settings
+
 		if isinstance(data, dict):
 			from json import dumps
 			data = dumps(data)
@@ -69,6 +79,9 @@ class NTFY(Notifications):
 			"Title": f"EXSCLAIM: `{name}` Notification",
 			"Priority": self._priority,
 		}
+
+		if id is not None and ui_settings.DASHBOARD_URL is not None:
+			headers["Actions"] = f"view, Open Results, {ui_settings.DASHBOARD_URL}/results/{id}"
 
 		if self._access_token is not None:
 			headers["Authorization"] = f"Bearer {self._access_token}"
@@ -101,5 +114,5 @@ class Email(Notifications):
 			recipients = json.get("recipients", tuple())
 		return cls(recipients)
 
-	async def notify(self, data: dict | str, name:str, exception: Exception = None):
+	async def notify(self, data: dict | str, name: str, id: Optional[UUID] = None, exception: Exception = None):
 		self.logger.error(f"Setup notifications through email.")

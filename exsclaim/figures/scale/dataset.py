@@ -14,7 +14,7 @@ from ...utilities import convert_labelbox_to_coords
 __all__ = ["ScaleLabelDataset", "ScaleBarDataset", "draw_text_on_image", "get_unit", "get_number", "no_pattern", "find_color"]
 
 
-def draw_text_on_image(image:Image, text:str) -> Image:
+def draw_text_on_image(image: Image.Image, text:str) -> Image.Image:
     """generates an image with text and a txt file with text's coordinates"""
     width, height = image.size
 

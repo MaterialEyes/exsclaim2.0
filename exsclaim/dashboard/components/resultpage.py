@@ -9,7 +9,7 @@ from .common import create_header_component, create_footer_component
 from .layout import create_layout_component
 
 
-def create_resultpage_layout(result_id: UUID, base_url:str) -> html.Div:
+def create_resultpage_layout(result_id: UUID, base_url: str, public_api_url: str) -> html.Div:
     """
     Create the ResultPage layout.
     
@@ -24,7 +24,7 @@ def create_resultpage_layout(result_id: UUID, base_url:str) -> html.Div:
         create_header_component(),
 
         # Layout component (contains the main results interface)
-        create_layout_component(result_id, base_url),
+        create_layout_component(result_id, base_url, public_api_url),
 
         # Footer
         create_footer_component()

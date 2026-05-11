@@ -1,16 +1,15 @@
 """Functions for interacting with postgres database"""
 from .models import *
 
-from asyncpg.exceptions import FeatureNotSupportedError
 from configparser import ConfigParser, NoSectionError
 from logging import exception
 from os import PathLike, getenv
 from pathlib import Path
 from shutil import copy
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.dialects.postgresql.asyncpg import AsyncAdapt_asyncpg_dbapi
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlmodel import SQLModel
-from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import Any
 from uuid import UUID
 
@@ -18,7 +17,9 @@ from uuid import UUID
 __all__ = ["async_engine", "modify_database_configuration", "get_database_connection_string", "Database"]
 
 
-def get_database_connection_string(configuration_file:PathLike[str] = None, section:str = "Postgres", password_file:PathLike[str]=None) -> str:
+# TODO: Turn this into a BaseSettings class?
+def get_database_connection_string(configuration_file: PathLike[str] = None, section: str = "Postgres",
+								   password_file: PathLike[str] = None) -> str:
 	"""
 	Creates a Postgres database connection string from a configuration file.
 	:param PathLike[str] configuration_file:
@@ -94,10 +95,10 @@ class Database:
 		)
 
 	async def ensure_connection(self):
-		async with self.async_engine.connect() as connection:
+		async with self.async_engine.connect() as _:
 			print(f"Connection successful.")
 
-	async def upload(self, csv_info: dict[str, list[Any]], run_id:UUID):
+	async def upload(self, csv_info: dict[str, list[Any]], run_id: UUID):
 		cls_mapping = dict(
 			article=Article,
 			figure=Figure,
@@ -120,7 +121,7 @@ class Database:
 					try:
 						session.add_all(objects)
 						await session.commit()
-					except IntegrityError as e:
+					except (IntegrityError, AsyncAdapt_asyncpg_dbapi.IntegrityError) as e:
 						if "duplicate key value" in str(e):
 							exception("Attempted to add duplicate primary keys to the database.")
 							await session.rollback()
@@ -133,30 +134,28 @@ class Database:
 						exception(f"SQLAlchemy error found when uploading the results.")
 						await session.rollback()
 						break
-					except BaseException:
-						exception(f"Non-SQLAlchemy error found when uploading the results.")
+					except BaseException as e:
+						exception(f"Non-SQLAlchemy error found when uploading the results.", exc_info=e)
 						await session.rollback()
 						break
 
-	async def initialize_database(self, ignore_uuid7: bool = True):
+	async def initialize_database(self):
 		from sqlalchemy.schema import CreateSchema
-		from sqlalchemy.sql import text, select
-		from ..api.models import Results
-
-		async with self.async_engine.begin() as conn:
-			try:
-				await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"pg_uuidv7\";"))
-			except SQLAlchemyError as e:
-				if not ignore_uuid7:
-					raise FeatureNotSupportedError("Please add UUIDv7 support for Postgres. https://pgxn.org/dist/pg_uuidv7/") from e
-				await conn.rollback()
+		from sqlalchemy.sql import text, select, insert
+		from ..api.models import Results, User, Sessions, get_guest_uuid
 
 		async with self.async_engine.begin() as conn:
 			await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
 
-			await conn.execute(CreateSchema("results", if_not_exists=True))
+			for schema in ("results", "users"):
+				await conn.execute(CreateSchema(schema, if_not_exists=True))
 			await conn.run_sync(SQLModel.metadata.create_all, checkfirst=True)
 
+			result = await conn.execute(text("SELECT COUNT(id) FROM users.users WHERE email IS NULL;"))
+			if not result.fetchone()[0]:
+				await conn.execute(insert(User).values(id=get_guest_uuid(), name="Default User"))
+
+		# Insert classification codes into the database
 		classification_codes = (
 			ClassificationCodes(code="MC", name="microscopy"),
 			ClassificationCodes(code="DF", name="diffraction"),
@@ -169,7 +168,7 @@ class Database:
 		)
 
 		async with AsyncSession(self.async_engine) as session:
-			existing_codes = await session.exec(select(ClassificationCodes))
+			existing_codes = await session.execute(select(ClassificationCodes))
 			existing_codes = existing_codes.all()
 
 			if not len(existing_codes):

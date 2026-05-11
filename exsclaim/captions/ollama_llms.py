@@ -3,7 +3,7 @@ from logging import warning, exception, info
 from ollama import AsyncClient, ChatResponse, ResponseError
 from pydantic import ValidationError
 from re import compile
-from typing import Any, Type, Iterable
+from typing import Any, Type, Self
 
 __all__ = ["Ollama"]
 
@@ -17,16 +17,11 @@ class Ollama(LLM):
 		self.client = AsyncClient()
 
 	@staticmethod
-	def available_models(silent_fail:bool = True):
+	def available_models(silent_fail: bool = True):
 		try:
 			from ollama import list as model_list
 			models = model_list()["models"]
-		except ConnectionError as e:
-			if silent_fail:
-				warning(f"Could not connect to Ollama. This may cause issues down the line if Ollama-based LLMs are required.")
-				return tuple()
-			raise e
-		except ResponseError as e:
+		except (ConnectionError, ResponseError) as e:
 			if silent_fail:
 				warning(f"Could not connect to Ollama. This may cause issues down the line if Ollama-based LLMs are required.")
 				return tuple()
@@ -40,15 +35,24 @@ class Ollama(LLM):
 
 		return tuple((model, False, label.title()) for model, label in zip(models, labels))
 
-	async def load(self):
+	@staticmethod
+	def request_concurrency() -> int:
+		from os import getenv
+
+		different_models = int(getenv("OLLAMA_MAX_LOADED_MODELS", '1'))
+		num_parallel_requests = int(getenv("OLLAMA_NUM_PARALLEL", '1'))
+		return different_models * num_parallel_requests
+
+	async def load(self) -> Self:
 		await self.client.generate(model=self.model)
 		info(f"Loaded {self.model}.")
+		return self
 
 	async def unload(self):
 		await self.client.generate(model=self.model, keep_alive=0)
 		info(f"Unloaded {self.model}.")
 
-	def format_messages(self, messages: Iterable[ChatMessage]) -> list[dict[str, Any]]:
+	def format_messages(self, messages: tuple[ChatMessage]) -> list[dict[str, Any]]:
 		new_messages = [None] * len(messages)
 
 		for i, message in enumerate(messages):
@@ -67,13 +71,13 @@ class Ollama(LLM):
 
 		return new_messages
 
-	async def get_response(self, prompt:list[ChatMessage], response_format:Type[ResponseBase] = str) -> ResponseBase:
+	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str) -> ResponseBase:
 		await super().get_response(prompt, response_format)
 
 		_format = response_format.model_json_schema() if response_format != str else None
 		messages = self.format_messages(prompt)
 
-		response:ChatResponse = await self.client.chat(model=self.model, messages=messages, format=_format)
+		response: ChatResponse = await self.client.chat(model=self.model, messages=messages, format=_format)
 
 		output_string = response.message.content
 
@@ -83,5 +87,5 @@ class Ollama(LLM):
 		try:
 			return response_format.model_validate_json(output_string)
 		except ValidationError as e:
-			exception(f"Error validating to type: {response_format}.")
+			exception(f"Error validating to type: {response_format}.", exc_info=e)
 			raise e

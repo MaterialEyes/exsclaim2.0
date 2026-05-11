@@ -5,12 +5,13 @@ Converted from React Query.js component.
 
 import dash_bootstrap_components as dbc
 
-from .api_client import fetch_status
-from dash import html, dcc, callback, Output, Input, State
+from dash import html, dcc, callback, Output, Input, State, clientside_callback, ClientsideFunction
 from dash.exceptions import PreventUpdate
-from exsclaim.api import Status
-from httpx import AsyncClient
+from re import compile
 from typing import Optional
+
+
+name_regex = compile(r"^[\w_\-]+$")
 
 
 def create_query_component(journal_families, available_llms, debounce=True):
@@ -19,7 +20,7 @@ def create_query_component(journal_families, available_llms, debounce=True):
 	
 	Args:
 		journal_families (list): List of available journal families
-		available_llms (list): List of available LLM models
+		available_llms (dict[str, dict[str, str | bool]]): List of available LLM models
 
 	Returns:
 		dbc.Container: Query form component
@@ -29,7 +30,8 @@ def create_query_component(journal_families, available_llms, debounce=True):
 		"padding": "20px",
 		"margin": "20px",
 		"justifyContent": "center",
-		"display": "flex"
+		"display": "flex",
+		"flex-direction": "column",
 	}, children=[
 		# Interval to check if the results are ready
 		dcc.Interval(
@@ -48,8 +50,29 @@ def create_query_component(journal_families, available_llms, debounce=True):
 			# Header box
 			dbc.Card(color="primary", className="mb-3 label-column", children=[
 				dbc.CardBody([
-					html.H4("Input Query", className="text-center text-white")
-				])
+					html.H4([
+						"Input Query",
+						html.Button(
+							html.Img(
+								src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDMwMCAzMDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+Cgk8Y2lyY2xlIGN4PSI1MCUiIGN5PSI1MCUiIHI9IjUwJSIgZmlsbD0icmdiYSgxMywgMTEwLCAyNTMsIDEpIiAvPgoJPHJlY3QgeD0iMjAlIiB5PSIzMCUiIHdpZHRoPSI2MCUiIGhlaWdodD0iOCUiIHJ4PSIzJSIgZmlsbD0icmdiYSgyNTUsIDI1NSwgMjU1LCAxKSIgLz4KCTxyZWN0IHg9IjIwJSIgeT0iNDYuNjclIiB3aWR0aD0iNjAlIiBoZWlnaHQ9IjglIiByeD0iMyUiIGZpbGw9InJnYmEoMjU1LCAyNTUsIDI1NSwgMSkiIC8+Cgk8cmVjdCB4PSIyMCUiIHk9IjYzLjMzJSIgd2lkdGg9IjYwJSIgaGVpZ2h0PSI4JSIgcng9IjMlIiBmaWxsPSJyZ2JhKDI1NSwgMjU1LCAyNTUsIDEpIiAvPgo8L3N2Zz4K",
+								alt="Menu for advanced options.",
+								style=dict(
+									height="60px",
+								)
+							),
+							style={
+								"background-color": "rgba(13, 110, 253, 0)",
+								"border-width": "0",
+								"height": "100%",
+								"position": "absolute",
+								"top": 0,
+								"right": "10px",
+								"margin": 0
+							},
+							id="advanced-options-button",
+						)
+					], className="text-center text-white")
+				]),
 			]),
 
 			# Left column - Basic inputs
@@ -59,16 +82,36 @@ def create_query_component(journal_families, available_llms, debounce=True):
 				create_input_term_component(debounce=debounce),
 				create_input_synonyms_component(debounce=debounce),
 			]),
-			
+
 			# Right column - Advanced inputs
-			dbc.Col([
+			dbc.Col(width=6, children=[
 				create_journal_family_component(journal_families),
 				create_sort_by_component(),
 				create_open_access_component(),
 				create_save_methods_component(),
 				create_model_component(available_llms, debounce=debounce),
+			])
+		]),
+
+		# Advanced controls for the pipeline
+		dbc.Collapse([
+			html.Hr(style=dict(color="rgb(255, 255, 255)")),
+			dbc.Row([
+				dbc.Col(width=6, children=[
+					create_ntfy_component(),
+				]),
+				dbc.Col(width=6, children=[]),
+			]),
+			],
+			id="advanced-options",
+			is_open=False,
+		),
+
+		dbc.Row([
+			dbc.Col(width=6),
+			dbc.Col(width=6, children=[
 				create_submit_button_component(),
-			], width=6)
+			]),
 		])
 	])
 
@@ -76,10 +119,20 @@ def create_query_component(journal_families, available_llms, debounce=True):
 def create_output_name_component(debounce=True):
 	"""Create output name input component."""
 	return html.Div([
-		dbc.Label("Output Name *"),
+		dbc.Tooltip(
+			"Allowed characters: letters, numbers, '-', '_'.",
+			id="output-name-tooltip",
+			target="output-name",
+			is_open=False,
+		),
+		dbc.Label(
+			"Output Name *",
+			html_for="output-name",
+		),
 		dbc.Input(
 			id="output-name",
 			type="text",
+			pattern=r"[\w_\-]+",
 			placeholder="Enter output file name...",
 			className="form-control",
 			debounce=debounce,
@@ -91,11 +144,21 @@ def create_output_name_component(debounce=True):
 def create_num_articles_component(debounce=True):
 	"""Create number of articles input component."""
 	return html.Div([
-		dbc.Label("Max Number of Articles *"),
+		dbc.Tooltip(
+			"Number of articles must be between 1 and 200 (inclusive).",
+			id="num-articles-tooltip",
+			target="num-articles",
+			is_open=False,
+		),
+		dbc.Label(
+			"Max Number of Articles *",
+			html_for="num-articles",
+		),
 		dbc.Input(
 			id="num-articles",
 			type="number",
-			min=0,
+			min=1,
+			max=200,
 			value=5,
 			inputmode="numeric",
 			placeholder="Enter number of articles...",
@@ -109,7 +172,16 @@ def create_num_articles_component(debounce=True):
 def create_input_term_component(debounce=True):
 	"""Create search term input component."""
 	return html.Div([
-		dbc.Label("Search Term *"),
+		dbc.Tooltip(
+			"The search term must have 1 non-whitespace character.",
+			id="input-term-tooltip",
+			target="input-term",
+			is_open=False,
+		),
+		dbc.Label(
+			"Search Term *",
+			html_for="input-term",
+		),
 		dbc.Input(
 			id="input-term",
 			type="text",
@@ -124,7 +196,10 @@ def create_input_term_component(debounce=True):
 def create_input_synonyms_component(debounce=True):
 	"""Create synonyms input component."""
 	return html.Div([
-		dbc.Label("Synonyms"),
+		dbc.Label(
+			"Synonyms",
+			html_for="input-synonyms",
+		),
 		dbc.Textarea(
 			id="input-synonyms",
 			placeholder="Enter synonyms (one per line)...",
@@ -137,14 +212,31 @@ def create_input_synonyms_component(debounce=True):
 
 def create_journal_family_component(journal_families):
 	"""Create journal family dropdown component."""
+	if not len(journal_families):
+		raise ValueError("At least one journal family option is required.")
+
 	options = [{"label": family, "value": family} for family in journal_families]
-	
+	initial_value = None
+	for i, option in enumerate(options):
+		name = option["label"].lower()
+		if name == "acs" or name == "wiley":
+			options[i]["disabled"] = True
+		else:
+			if initial_value is None:
+				initial_value = option["value"]
+
+	if initial_value is None:
+		raise ValueError("At least one valid journal family option is required.")
+
 	return html.Div([
-		dbc.Label("Journal Family *"),
-		dbc.Select(
+		dbc.Label(
+			"Journal Family *",
+			html_for="journal-family",
+		),
+		dbc.Select( # TODO: MIght be able to use dcc.DropDown using Dash==4.0.0
 			id="journal-family",
 			options=options,
-			value=journal_families[0] if journal_families else "Nature",
+			value=initial_value,
 			className="form-control",
 			valid=True,
 			invalid=False,
@@ -184,20 +276,32 @@ def create_open_access_component():
 
 def create_model_component(available_llms, debounce=True):
 	"""Create model selection component."""
-	options = [
-		{"label": llm["display_name"], "value": llm["model_name"]}
-		for llm in available_llms
-	]
-	
+	# options = [
+	# 	{"label": llm["display_name"], "value": llm["model_name"]}
+	# 	for llm in available_llms
+	# ]
+
+	options = []
+	for i, (provider, llms) in enumerate(available_llms.items()):
+		options.append(dict(value=provider, label=provider, disabled=True))
+		options.extend((dict(value=llm["model_name"], label=llm["display_name"]) for llm in llms))
+
+		# dbc.Select currently doesn't support html.Option and html.Optgroup
+		# options[i] = html.Optgroup(
+		# 	label=provider,
+		# 	children=[html.Option(value=llm["model_name"], label=llm["display_name"]) for llm in llms]
+		# )
+
 	return html.Div([
 		dbc.Label("Model *", html_for="model-select"),
 		dbc.Select(
 			id="model-select",
 			options=options,
-			value=available_llms[0]["model_name"] if available_llms else "llama3.2",
+			value=available_llms["Ollama"][0]["model_name"] if available_llms else "llama3.2",
 			className="form-control",
 			valid=True,
 			invalid=False,
+			required=True,
 			persistence=True,
 			persistence_type="local"
 		),
@@ -214,16 +318,16 @@ def create_model_component(available_llms, debounce=True):
 
 def create_save_methods_component():
 	"""Create save_methods component."""
-	methods = [
+	methods = (
 		dict(label="Subfigures", value="subfigures"),
 		dict(label="Visualization", value="visualization"),
 		dict(label="Bounding Boxes", value="boxes"),
 		dict(label="Upload to Database", value="postgres", disabled=True),
 		dict(label="CSV", value="csv", disabled=True),
-	]
+	)
 
 	return html.Div([
-		dbc.Label("Save Methods:", html_for="save-methods"),
+		dbc.Label("Save Methods:"),
 		dbc.Checklist(
 			id="save-methods",
 			options=methods,
@@ -245,7 +349,85 @@ def create_submit_button_component():
 	], className="mb-3")
 
 
+def create_ntfy_component(debounce=True):
+	"""Creates the components that would correspond to NTFY information."""
+	return html.Div([
+		dbc.Tooltip(
+			html.P([
+				"The URL to send notifications to your ",
+				html.A(
+					"NTFY",
+					href="https://docs.ntfy.sh/",
+					target="blank"
+				),
+				" server."
+
+			]),
+			id="ntfy-url-tooltip",
+			target="ntfy-url",
+			is_open=False,
+		),
+		dbc.Label(
+			[
+				html.A(
+					"NTFY",
+					href="https://docs.ntfy.sh/",
+					target="blank"
+				),
+				" URL:"
+			],
+			html_for="ntfy-url",
+		),
+		dbc.Input(
+			id="ntfy-url",
+			type="text",
+			placeholder="https://ntfy.sh/exsclaim",
+			className="form-control",
+			required=False,
+			debounce=debounce
+		),
+		dbc.Tooltip(
+			"The priority of the message in your server.",
+			id="ntfy-priority-tooltip",
+			target="ntfy-priority",
+			is_open=False,
+		),
+		dbc.Label(
+			[
+				html.A(
+					"NTFY",
+					href="https://docs.ntfy.sh/publish/?h=priority#message-priority",
+					target="blank"
+				),
+				" Priority:"
+			],
+			html_for="ntfy-priority",
+		),
+		dbc.Input(
+			id="ntfy-priority",
+			type="number",
+			placeholder="3",
+			max=5,
+			min=1,
+			className="form-control",
+			required=False,
+			debounce=debounce
+		)
+	], className="mb-3")
+
+
 # Callbacks for form handling
+@callback(
+	Output("advanced-options", "is_open"),
+	Input("advanced-options-button", "n_clicks"),
+	State("advanced-options", "is_open"),
+)
+def collapse_advanced_options(n_clicks, is_open):
+	if n_clicks is None:
+		raise PreventUpdate
+	return not is_open
+
+
 @callback(
 	[
 		Output("api-key-label", "disabled"),
@@ -263,7 +445,7 @@ def create_submit_button_component():
 		State("exsclaim-store", "data")
 	]
 )
-def show_api_key(selected_model:str, key:Optional[str], data) -> tuple[bool, bool, bool, bool, bool, dict[str, str]]:
+def show_api_key(selected_model: str, key: Optional[str], data) -> tuple[bool, bool, bool, bool, bool, dict[str, str]]:
 	needs_key = data["show_api_key"].get(selected_model, True)
 
 	disabled = not needs_key
@@ -283,49 +465,61 @@ def show_api_key(selected_model:str, key:Optional[str], data) -> tuple[bool, boo
 	[
 		Output("output-name", "valid"),
 		Output("output-name", "invalid"),
+		Output("output-name-tooltip", "is_open"),
 	],
 	[
 		Input("output-name", "value")
-	]
+	],
+	prevent_initial_call=True
 )
-def valid_output_name(name: Optional[str]) -> tuple[bool, bool]:
-	valid_name = name and bool(name.strip())
+def valid_output_name(name: Optional[str]) -> tuple[bool, bool, bool]:
+	if name is None:
+		return False, True, True
+	valid_name = name_regex.match(name) is not None
 
-	return valid_name, not valid_name
+	return valid_name, not valid_name, not valid_name
 
 
 @callback(
 	[
 		Output("num-articles", "valid"),
 		Output("num-articles", "invalid"),
+		Output("num-articles-tooltip", "is_open"),
 	],
 	[
 		Input("num-articles", "value")
-	]
+	],
+	prevent_initial_call=True
 )
-def valid_number_of_articles(num_articles: Optional[int]) -> tuple[bool, bool]:
+def valid_number_of_articles(num_articles: Optional[int]) -> tuple[bool, bool, bool]:
 	if num_articles is None:
-		return False, True
+		return False, True, True
 
-	valid_num = num_articles > 0
+	valid_num = 1 <= num_articles <= 200
 
-	return valid_num, not valid_num
+	return valid_num, not valid_num, not valid_num
 
 
 @callback(
 	[
 		Output("input-term", "valid"),
 		Output("input-term", "invalid"),
+		Output("input-term-tooltip", "is_open"),
 	],
 	[
 		Input("input-term", "value")
-	]
-)
-def valid_search_term(search_term: Optional[int]) -> tuple[bool, bool]:
-	"""Disable submit button if no search term is provided."""
+	],
 
-	# These have the same requirements as of now
-	return valid_output_name(search_term)
+	prevent_initial_call=True
+)
+def valid_search_term(search_term: Optional[str]) -> tuple[bool, bool, bool]:
+	"""Disable submit button if no search term is provided."""
+	if search_term is None:
+		return False, True, True
+
+	valid_name = bool(search_term.strip())
+
+	return valid_name, not valid_name, not valid_name
 
 
 @callback(
@@ -345,11 +539,15 @@ def enable_submit_button(*invalidity):
 	return any(invalidity)
 
 
-@callback(
+clientside_callback(
+	ClientsideFunction(
+		namespace="query",
+		function_name="submit_query"
+	),
 	[
 		Output("results-finished", "disabled"),
 		Output("notification", "is_open"),
-		Output("notification", "children"),
+		Output("notification-html", "html"),
 		Output("notification", "color"),
 		Output("exsclaim-store", "data"),
 	],
@@ -368,66 +566,18 @@ def enable_submit_button(*invalidity):
 		State("model-select", "value"),
 		State("model-key", "value"),
 		State("save-methods", "value"),
+		State("ntfy-url", "value"),
+		State("ntfy-priority", "value"),
 	],
 	prevent_initial_call=True
 )
-async def handle_submit_query(n_clicks, stored_data, output_name, journal_family, num_articles,
-					   sort_by, term, synonyms, open_access, model, model_key, save_formats):
-	"""Handle form submission and API call."""
-	if not n_clicks:
-		return True, False, "", "success", stored_data
-	
-	# Validate required fields
-	if not term or term.strip() == "":
-		return True, True, "A search term is required.", "danger", stored_data
-
-	# Process synonyms
-	synonyms_list = []
-	if synonyms:
-		synonyms_list = [s.strip() for s in synonyms.split('\n')]
-	
-	# Prepare data for API
-	input_data = {
-		"name": output_name or "",
-		"journal_family": journal_family or "Nature",
-		"maximum_scraped": num_articles or 0,
-		"sortby": sort_by or "relevant",
-		"term": term.strip(),
-		"synonyms": synonyms_list,
-		"save_format": save_formats,
-		"open_access": open_access or False,
-		"llm": model or "llama3.2",
-		"model_key": model_key or ""
-	}
-
-	api_url = stored_data["fast_api_url"]
-
-	async with AsyncClient() as client:
-		response = await client.post(f"{api_url}/query", json=input_data, headers={
-			"Accept": "application/json",
-			"Access-Control-Allow-Origin": "*",
-			"Access-Control-Allow-Headers": "Accept, Content-Type, mode",
-			"Content-Type": "application/json",
-		})
-
-		if not response.is_success:
-			return True, True, response.text, "error", stored_data
-
-		json = response.json()
-		result_id = json["result_id"]
-		stored_data["query_id"] = result_id
-
-	status_link = f"{stored_data['public_fastapi_url']}/status/{result_id}"
-	return False, True, html.P([
-			"Query: ",
-			html.A(result_id, href=f"/results/{result_id}"),
-			" was submitted to the server. This page will automatically update when the results are available. You can also check the run's status at ",
-			html.A(status_link, href=status_link, target="blank"),
-			"."
-		]), "success", stored_data
 
 
-@callback(
+clientside_callback(
+	ClientsideFunction(
+		namespace="query",
+		function_name="check_results_status"
+	),
 	[
 		Output("new_url", "href"),
 		Output("new_url", "refresh")
@@ -435,18 +585,7 @@ async def handle_submit_query(n_clicks, stored_data, output_name, journal_family
 	Input("results-finished", "n_intervals"),
 	[
 		State("exsclaim-store", "data"),
-		State("new_url", "href")
+		# State("new_url", "href")
 	],
 	prevent_initial_call=True
 )
-async def check_results_status(n_intervals, data, current_url):
-	query_id = data["query_id"]
-	fast_api_url = data["fast_api_url"]
-
-	async with AsyncClient() as client:
-		match await fetch_status(client, fast_api_url, query_id):
-			case Status.RUNNING:
-				# Not ready
-				raise PreventUpdate
-			case Status.FINISHED | Status.ERROR | Status.KILLED:
-				return f"/results/{query_id}", True

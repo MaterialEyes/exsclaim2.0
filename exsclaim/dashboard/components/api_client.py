@@ -6,7 +6,7 @@ from typing import Any, Optional
 __all__ = ["fetch_status", "fetch_articles", "fetch_figures", "fetch_subfigures"]
 
 
-async def fetch_status(client:AsyncClient, base_url: str, result_id: str) -> Status:
+async def fetch_status(client: AsyncClient, base_url: str, result_id: str) -> Status:
 	"""Fetch the status of a result from the API."""
 	try:
 		response = await client.get(f"{base_url}/status/{result_id}")
@@ -16,7 +16,7 @@ async def fetch_status(client:AsyncClient, base_url: str, result_id: str) -> Sta
 				case "Finished.":
 					return Status.FINISHED
 				case "Killed.":
-					return Status.KILLED
+					return Status.STOPPED
 			return Status.RUNNING
 
 		return Status.ERROR

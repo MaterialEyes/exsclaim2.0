@@ -8,20 +8,18 @@ from .common import create_header_component, create_footer_component
 from .query import create_query_component
 
 
-def create_homepage_layout(title, journal_families, available_llms):
-    """
-    Create the complete HomePage layout.
-    
-    Args:
-        journal_families (list): List of available journal families
-        available_llms (list): List of available LLM models
+def create_homepage_layout(journal_families, available_llms) -> html.Div:
+	"""
+	Create the complete HomePage layout.
+	
+	Args:
+		journal_families (list): List of available journal families
+		available_llms (dict[str, dict[str, str | bool]]): List of available LLM models
 
-    Returns:
-        html.Div: Complete HomePage layout
-    """
-    return html.Div([
-		html.Title(title),
-
+	Returns:
+		html.Div: Complete HomePage layout
+	"""
+	return html.Div([
 		# Header
 		create_header_component(),
 
@@ -30,4 +28,4 @@ def create_homepage_layout(title, journal_families, available_llms):
 
 		# Footer
 		create_footer_component()
-    ], id="exsclaim-app")
+	], id="exsclaim-app")

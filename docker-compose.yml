@@ -8,7 +8,6 @@ services:
                 - UID=${UID}
                 - GID=${GID}
                 - UNAME=${UNAME}
-                - UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX}
         image: exsclaim/core
         env_file: .env
         environment:
@@ -17,20 +16,22 @@ services:
             - EXSCLAIM_CHECKPOINTS=/opt/exsclaim/exsclaim/figures/checkpoints
             - EXSCLAIM_UNDETECTED_SUBFIGURES_PATH=/opt/exsclaim/training/undetected
             - EXSCLAIM_UNCLASSIFIED_SUBFIGURES_PATH=/opt/exsclaim/training/unclassified
+            - EXSCLAIM_UNSCRAPED_HTML=/opt/exsclaim/output/failed_html
         volumes:
             - ./exsclaim:/usr/local/lib/python3.13/site-packages/exsclaim
             - ./:/opt/exsclaim
             - ./output:/exsclaim/results
             - ./logs:/exsclaim/logs
             - ./data:/exsclaim/data
+            - /usr/share/ollama/.ollama/models:/opt/ollama
             - /etc/localtime:/etc/localtime:ro
-#            - /usr/share/ollama/.ollama/models:/opt/ollama
         ports:
             - "127.0.0.1:3000:3000"
             - "127.0.0.1:8000:8000"
             - "127.0.0.1:11434:11434"
         links:
             - postgres:db
+        command: ["exsclaim", "ui", "--force_ollama", "--blocking"]
         depends_on:
             postgres:
                 condition: service_healthy
@@ -69,10 +70,39 @@ services:
             - "8888:8888"
 
     postgres:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         env_file: .env
         ports:
             - "127.0.0.1:6543:5432"
+        environment:
+            - POSTGRES_PORT=5432
+            - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+        volumes:
+            - ./sql-data-2:/var/lib/postgresql:Z
+            - /etc/localtime:/etc/localtime:ro
+        healthcheck:
+            test: ["CMD-SHELL", "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p 5432 && exit 0 || exit 1'"]
+            interval: 6s
+            timeout: 4s
+            start_period: 6s
+            retries: 6
+        secrets:
+            - db_password
+
+    nginx:
+        image: nginx:1.29.4-alpine
+        volumes:
+            - "./nginx:/etc/nginx/conf.d"
+        restart: "unless-stopped"
+        ports:
+            - "443:443"
+            - "80:80"
+
+    postgres-17:
+        image: postgres:17-alpine
+        env_file: .env
+        ports:
+            - "127.0.0.1:6544:5432"
         environment:
             - POSTGRES_PORT=5432
             - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
@@ -87,7 +117,6 @@ services:
             retries: 6
         secrets:
             - db_password
-
 
 secrets:
     db_password:

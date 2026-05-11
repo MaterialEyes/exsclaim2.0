@@ -24,5 +24,6 @@ include exsclaim/dashboard/assets/*.png
 include exsclaim/dashboard/assets/*.ico
 include exsclaim/dashboard/assets/*.css
 include exsclaim/dashboard/assets/*.js
+include exsclaim/dashboard/assets/*.svg
 
 include exsclaim/dashboard/components

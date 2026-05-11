@@ -1,0 +1,777 @@
+from ...config import ExsclaimSettings
+from ..models import *
+
+import logging
+
+from asyncio import all_tasks, create_task, CancelledError, Task
+from datetime import datetime as dt
+from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
+from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi.responses import ORJSONResponse
+from json import dump
+from os import listdir
+from pathlib import Path
+from sqlalchemy import select, update, insert
+from sqlalchemy.ext.asyncio import AsyncSession
+from shutil import make_archive, rmtree, get_archive_formats
+from starlette.requests import Request
+from starlette.responses import Response, FileResponse
+from tarfile import open as tar_open
+from tempfile import TemporaryDirectory
+from typing import Literal
+from uuid import UUID
+
+
+router = APIRouter()
+settings = ExsclaimSettings()
+_EXAMPLE_UUID = get_guest_uuid()
+cache = dict()
+ARCHIVE_FORMATS = set(map(lambda _format: _format[0], get_archive_formats()))
+
+
+async def get_temp_dir():
+	"""Creates a temporary directory that won't be destroyed until after the response has been sent."""
+	tmp_dir = TemporaryDirectory()
+	try:
+		yield tmp_dir.name
+	finally:
+		tmp_dir.cleanup()
+
+
+def get_pipeline_task_name(result_id: UUID) -> str:
+	return f"pipeline_{result_id}"
+
+
+async def run_exsclaim(_id: UUID, search_query_location: Path, session: AsyncSession, logger: logging.Logger, profile: bool = False):
+	db_result: Status = Status.ERROR
+	result_code = -1
+
+	pipeline_task = create_task(exsclaim_pipeline(query=search_query_location, journal_scraper=True,
+												  caption_distributor=True, figure_separator=True,
+												  compress="gztar",
+												  compress_location=str(settings.RESULTS_PATH / str(_id)),
+												  verbose=settings.DEBUG, run_id=_id),
+								name=get_pipeline_task_name(_id))
+
+	try:
+		result_code = await pipeline_task
+		if result_code == 0:
+			db_result = Status.FINISHED
+
+		results_dir = search_query_location.parent
+		if results_dir.is_dir():
+			rmtree(results_dir.absolute(), ignore_errors=True)
+	except (KeyboardInterrupt, CancelledError) as e:
+		db_result = Status.STOPPED # FIXME: Stopping the run using the endpoint doesn't set it with the proper status
+		logging.info(f"Run {_id} was stopped during processing: {e}")
+		result_code = 1
+	except Exception as e:
+		db_result = Status.ERROR
+		logging.getLogger(f"run_exsclaim_{_id}").exception(e)
+		result_code = -1
+	finally:
+		await session.execute(update(Results).where(Results.id == _id).values(status=db_result, end_time=dt.now()))
+		await session.commit()
+
+	return result_code
+
+
+@router.post("/query", responses={
+	202: {
+		"description": "Query successfully submitted.",
+		"content": {
+			"application/json": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"message": {
+							"type": "string",
+						},
+						"result_id": {
+							"type": "string",
+							"format": "uuid"
+						},
+					}
+				},
+				"example": {
+					"message": "Thank you, your request is currently being processed.",
+					"result_id": str(_EXAMPLE_UUID)
+				}
+			},
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": f"Thank you, your request is currently being processed, and the results can be found using id: {_EXAMPLE_UUID}."
+			}
+		}
+	},
+	500: {
+		"description": "An internal database error stopped the query from being submitted.",
+		"content": {
+			"application/json": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"message": {
+							"type": "string",
+						},
+					}
+				},
+				"example": {
+					"message": "An error occurred connecting to the database. Please try again later.",
+				}
+			},
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": "An error occurred connecting to the database. Please try again later."
+			}
+		}
+	},
+	503: {
+		"description": "An internal error stopped the query from being submitted.",
+		"content": {
+			"application/json": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"message": {
+							"type": "string",
+						},
+					}
+				},
+				"example": {
+					"message": "An unknown error occurred within the EXSCLAIM! API. Please try again later.",
+				}
+			},
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": "An unknown error occurred within the EXSCLAIM! API. Please try again later."
+			}
+		}
+	}
+}, tags=["Using EXSCLAIM"])
+async def query(request: Request, search_query: Query, background_tasks: BackgroundTasks) -> Response:
+	session = request.state.session
+	logger: logging.Logger = request.state.logger
+
+	send_json = request.headers.get("accept", "") == "application/json"
+	try:
+		uuid = gen_uuid7()
+		str_uuid = str(uuid)
+
+		results_dir = Path("/exsclaim") / "results" / str_uuid
+		results_dir.mkdir(exist_ok=True, parents=True)
+
+		exsclaim_input = {
+			"name": search_query.name if search_query else "exsclaim_results",
+			"run_id": str_uuid,
+			"journal_family": search_query.journal_family.lower(),
+			"maximum_scraped": search_query.maximum_scraped,
+			"sortby": search_query.sortby,
+			"query": {
+				"search_field_1": {
+					"term": search_query.term,
+					"synonyms": search_query.synonyms
+				}
+			},
+			"llm": search_query.llm,
+			"model_key": search_query.model_key,
+			"open": search_query.open_access,
+			"save_format": search_query.save_format,
+			"logging": ["exsclaim.log"],
+			"results_dir": str(results_dir),
+			"notifications": {
+				"ntfy": list(map(lambda ntfy: ntfy.to_json(), search_query.ntfy)),
+				"emails": search_query.emails,
+			},
+			**search_query.tools,
+		}
+
+		# profile = request.headers.get("X-Profile-Request", "0") == "1"
+		profile = False
+		logger = request.app.logger
+		with open(results_dir / "search_query.json", "w") as f:
+			dump(exsclaim_input, f, indent='\t')
+
+		background_tasks.add_task(run_exsclaim, uuid, results_dir / "search_query.json", session, logger, profile)
+
+		db_json = exsclaim_input.copy()
+		db_json["model_key"] = "model_key" in db_json.keys()
+		for unnecessary_key in ["notifications", "results_dir", "logging"]:
+			if unnecessary_key in db_json:
+				db_json.pop(unnecessary_key)
+
+		for sanitized_keys in ("name", "term", "synonyms"):
+			...  # TODO: Sanitize these user inputs
+
+		await session.execute(insert(Results).values(id=uuid, user_id=request.state.user_id, search_query=db_json,
+												  extension=SaveExtensions.TAR))
+		await session.commit()
+
+		if send_json:
+			response = ORJSONResponse(
+				{"message": "Thank you, your request is currently being processed.", "result_id": str_uuid},
+				status_code=status.HTTP_202_ACCEPTED, media_type="application/json")
+		else:
+			response = Response(
+				f"Thank you, your request is currently being processed, and the results can be found using id: {str_uuid}.",
+				status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
+	except OSError as e:
+		logger.exception(e)
+		message = "An error occurred connecting to the database. Please try again later."
+		if send_json:
+			response = ORJSONResponse({"message": message}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="application/json")
+		else:
+			response = Response(message, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="text/plain")
+	except Exception as e:
+		print(f"{logger=}, {e}")
+		logger.exception(e)
+		message = "An unknown error occurred within the EXSCLAIM! API. Please try again later."
+		if send_json:
+			response = ORJSONResponse({"message": message}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="application/json")
+		else:
+			response = Response(message, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
+
+	return response
+
+
+@router.get("/status/{result_id}", tags=["Using EXSCLAIM"],
+		 responses={
+			 200: {
+				 "description": "Status Found for ID.",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "results_status": {
+									 "type": "string",
+								 },
+								 "start_time": {
+									 "type": "string",
+									 "format": "date-time"
+								 },
+								 "end_time": {
+									 "type": "string",
+									 "format": "date-time"
+								 },
+								 "run_time": {
+									 "type": "number",
+									 "format": "float"
+								 },
+							 }
+						 },
+						 "example": {
+							 "results_status": "Finished.",
+							 "start_time": "2024-07-15T13:00:12.712358+00:00",
+							 "end_time": "2024-07-15T13:06:58.928669+00:00",
+							 "run_time": 3641.92811
+						 }
+					 }
+				 }
+			 },
+			 404: {
+				 "description": "ID Not Found.",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "results_status": {
+									 "type": "string"
+								 },
+								 "message": {
+									 "type": "string"
+								 }
+							 }
+						 },
+						 "example": {
+							 "results_status": "Finished",
+							 "message": f"There is no query recorded in our database with id: \"{_EXAMPLE_UUID}\".",
+						 }
+					 }
+				 }
+			 },
+			 422: {
+				 "description": "Improper UUID Format for ID.",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "results_status": {
+									 "type": "null"
+								 },
+								 "message": {
+									 "type": "string"
+								 }
+							 }
+						 },
+						 "example": {
+							 "results_status": None,
+							 "message": f"\"{_EXAMPLE_UUID}\"is not a valid UUID.",
+						 }
+					 }
+				 }
+			 },
+			 500: {
+				 "description": "Unknown Internal Server Error.",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "results_status": {
+									 "type": "string"
+								 },
+								 "start_time": {
+									 "type": "string"
+								 },
+								 "end_time": {
+									 "type": "string"
+								 },
+								 "run_time": {
+									 "type": "number",
+									 "format": "float"
+								 },
+							 }
+						 },
+						 "example": {
+							 "results_status": "Closed due to an error.",
+							 "start_time": "2024-07-15T13:00:12.712358+00:00",
+							 "end_time": "2024-07-15T13:06:58.928669+00:00",
+							 "run_time": 3641.92811
+						 }
+					 }
+				 }
+			 },
+			 503: {
+				 "description": "Internal Database Error.",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "results_status": {
+									 "type": "string"
+								 },
+								 "message": {
+									 "type": "string"
+								 }
+							 }
+						 },
+						 "example": {
+							 "results_status": "Unknown",
+							 "message": "An unknown error has occurred within the database. Please try again later.",
+						 }
+					 }
+				 }
+			 },
+		 })
+async def status_def(request: Request, result_id: UUID):
+	session: AsyncSession = request.state.session
+	logger: logging.Logger = request.state.logger
+	results = await session.execute(select(Results).where(Results.id == result_id))
+	result: Results = results.scalar_one_or_none()
+
+	if not User.has_permission(request.state.user_id, result):
+		return ORJSONResponse({
+			"results_status": "Not Found",
+			"message": f"There is no query recorded in our database with id: {result_id}."
+		}, status_code=status.HTTP_404_NOT_FOUND, media_type="application/json")
+
+	results_status, start_time, end_time = result.status, result.start_time, result.end_time
+
+	time_diff = (end_time or dt.now(tz=start_time.tzinfo)) - start_time
+
+	match results_status:
+		case Status.RUNNING | Status.FINISHED | Status.STOPPED:
+			status_code = status.HTTP_200_OK
+		case Status.ERROR:
+			status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+		case _:
+			logger.exception(f"Unknown results_status {results_status} when checking results_status of {result_id}.")
+			return ORJSONResponse(dict(message="An unknown results_status was saved in our database. Try again later."),
+								  status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="application/json")
+
+	json = dict(
+		status=f"{results_status}.",
+		start_time=start_time,
+		end_time=end_time,
+		run_time=time_diff.total_seconds()
+	)
+
+	headers = {}
+	if results_status == Status.FINISHED:
+		headers = {"Location": f"/results/{result_id}"}
+
+	return ORJSONResponse(json, status_code=status_code, media_type="application/json", headers=headers)
+
+
+@router.get("/stop/{result_id}", tags=["Using EXSCLAIM"])
+async def stop_run(request: Request, result_id: UUID):
+	session: AsyncSession = request.state.session
+	results = await session.execute(select(Results).where(Results.id == result_id))
+	result: Results = results.scalar_one_or_none()
+
+	if result.user_id != request.state.user_id:
+		return ORJSONResponse({
+			"status": "Not Found",
+			"message": f"There is no query recorded in our database with id: {result_id}."
+		}, status_code=status.HTTP_404_NOT_FOUND)
+
+	match result.status:
+		case Status.FINISHED:
+			return ORJSONResponse({
+				"message": f"Run {result_id} has already finished running."
+			}, status_code=status.HTTP_406_NOT_ACCEPTABLE)
+		case Status.ERROR:
+			return ORJSONResponse({
+				"message": f"Run {result_id} has already stopped running due to an error."
+			}, status_code=status.HTTP_412_PRECONDITION_FAILED)
+		case Status.STOPPED:
+			return ORJSONResponse({
+				"message": f"Run {result_id} has already stopped running due to an error."
+			}, status_code=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+	# The pipeline is still running for the pipeline
+	task_name = get_pipeline_task_name(result_id)
+	tasks = tuple(filter(lambda task: task.get_name() == task_name, all_tasks()))
+
+	if len(tasks) == 0:
+		return ORJSONResponse({
+			"message": f"Could not find a running pipeline for {result_id}. Please try again later."
+		}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+	elif len(tasks) > 1:
+		return ORJSONResponse({
+			"message": f"Found too many running pipelines for {result_id}. Please try again later."
+		}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+	task: Task = tasks[0]
+	task.cancel("Pipeline stopped upon user request.")
+	return ORJSONResponse({
+		"message": f"Stopped the pipeline for {result_id}."
+	}, status_code=status.HTTP_200_OK)
+
+
+
+@router.get("/results/{result_id}", tags=["Using EXSCLAIM"],
+		 responses={
+			 200: {
+				 "description": "Results Compressed and Included.",
+				 "content": {
+					 "application/octet-stream": {
+						 "schema": {
+							 "type": "string"
+						 },
+						 "example": ""
+					 }
+				 }
+			 },
+			 202: {
+				 "description": "Query Currently Running.",
+				 "content": {
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": "The results are still being compiled.",
+					 }
+				 }
+			 },
+			 404: {
+				 "description": "ID Not Found.",
+				 "content": {
+					 "text/plain": {
+						 "schema": {
+							 "type": "string"
+						 },
+						 "example": f"There is no query recorded in our database with id: \"{_EXAMPLE_UUID}\"."
+					 }
+				 }
+			 },
+			 422: {
+				 "description": "Improper UUID Format for ID or Improper Compression Value.",
+				 "content": {
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": "unknown archive format 'gztar21'",
+					 }
+				 }
+			 },
+			 501: {
+				 "description": "Internal Database Error.",
+				 "content": {
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": f"The database has an unknown status for id \"{_EXAMPLE_UUID}\" and cannot send the results at this time."
+					 }
+				 }
+			 },
+			 503: {
+				 "description": "Error caused the query to not finish which results in no results.",
+				 "content": {
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": "The results could not be compiled due to an error. Please submit your query again."
+					 }
+				 }
+			 },
+		 })
+async def download(request: Request, result_id: UUID, compression: str = "default",
+				   filename: Literal["name", "id"] = "id", tmp_dir_name: str = Depends(get_temp_dir)) -> Response:
+	session = request.state.session
+
+	results = await session.execute(select(Results).where(Results.id == result_id))
+	result: Results = results.scalar_one_or_none()
+
+	if not User.has_permission(request.state.user_id, result):
+		return Response(f"There is no query recorded in our database with id: {result_id}.", status_code=status.HTTP_404_NOT_FOUND,
+						media_type="text/plain")
+
+	# Set the filename to be id by default
+	if compression != "default":
+		if compression not in ARCHIVE_FORMATS:
+			return Response(
+				f"Unknown archive format '{compression}'. Check /compression_types to see what values are allowed.",
+				status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, media_type="text/plain")
+
+	else:  # compression == "default"
+		if platform := request.headers.get("sec-ch-ua-platform", ""):
+			match platform.replace('"', ""):
+				case "Linux":
+					compression = "gztar"
+				case "Android" | "Chrome OS" | "Chromium OS" | "iOS" | "macOS" | "Windows" | "Unknown" | _:
+					compression = "zip"
+		else:
+			os = request.headers.get("user-agent", "")
+			if "Linux" in os:
+				compression = "gztar"
+			else:
+				compression = "zip"
+
+	match result.status:
+		case Status.RUNNING:
+			return Response("The results are still being compiled.", status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
+		case Status.STOPPED:
+			return Response("The results were closed by user or admin intervention.",
+							status_code=status.HTTP_200_OK, media_type="text/plain")
+		case Status.ERROR:
+			return Response("The results could not be compiled due to an error. Please submit your query again.",
+							status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
+		case Status.FINISHED:
+			...
+		case _:
+			return Response(
+				f"The database has an unknown status for id \"{result_id}\" and cannot send the results at this time.",
+				status_code=status.HTTP_501_NOT_IMPLEMENTED, media_type="text/plain")
+
+	results_file = (Path("/exsclaim") / "results" / str(result_id)).with_suffix(".tar.gz")
+	if not results_file.exists():
+		return Response(
+			"The result id was found in our database, but the corresponding results file could not be found. Please try again later.",
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="text/plain")
+
+	# last_modified = results_file.stat().st_mtime
+	if compression == "gztar":
+		# buffer = BytesIO()
+		# with open(results_file, "rb") as f:
+		# 	buffer.write(f.read())
+		# return streaming_response_with_hash(buffer, results_file.name, last_modified)
+
+		return FileResponse(str(results_file), media_type="text/plain", status_code=status.HTTP_200_OK)
+
+	tmp_dir = Path(tmp_dir_name)
+
+	with tar_open(results_file) as f:
+		f.extractall(tmp_dir)
+
+	name = [file for file in listdir(tmp_dir) if "." not in file][0]
+
+	results_file = Path(
+		make_archive(str(tmp_dir / str(result_id)), compression, root_dir=str(tmp_dir), base_dir=name)
+	)
+
+	# buffer = BytesIO()
+
+	# with open(results_file, "rb") as f:
+	# 	buffer.write(f.read())
+
+	if filename == "name":
+		filename = results_file.with_stem(name).name
+	elif filename == "id":
+		filename = results_file.name
+
+	response = FileResponse(str(results_file), media_type="text/plain", status_code=status.HTTP_200_OK,
+						headers={"Content-Disposition": f"inline ; filename = \"{filename}\""})
+	return response
+	# return streaming_response_with_hash(buffer, filename, last_modified)
+
+
+@router.get("/compression_types", tags=["Using EXSCLAIM"],
+		 responses={
+			 200: {
+				 "description": "Possible Compression Algorithms/Extensions",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "compression_types": {
+									 "type": "object"
+								 }
+							 }
+						 },
+						 "example": {
+							 "compression_types": ["tar", "gztar", "zip", "bztar", "xztar"],
+						 }
+					 },
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": '["tar","gztar","zip","bztar","xztar"]'
+					 }
+				 }
+			 },
+			 202: {
+				 "description": "The given compression type is allowed.",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "allowed": {
+									 "type": "boolean"
+								 }
+							 }
+						 },
+						 "example": {
+							 "allowed": True,
+						 }
+					 },
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": "zip is an allowed value."
+					 }
+				 }
+			 },
+			 404: {
+				 "description": "The given compression type is not allowed.",
+				 "content": {
+					 "application/json": {
+						 "schema": {
+							 "type": "object",
+							 "properties": {
+								 "allowed": {
+									 "type": "boolean"
+								 }
+							 }
+						 },
+						 "example": {
+							 "allowed": False,
+						 }
+					 },
+					 "text/plain": {
+						 "schema": {
+							 "type": "string",
+						 },
+						 "example": "zip is NOT an allowed value."
+					 }
+				 }
+			 }
+		 })
+async def get_possible_compressions(request: Request, compression_type: str = None) -> Response:
+	send_json = request.headers.get("accept", "") == "application/json"
+	compression_types = frozenset(map(lambda i: i[0], get_archive_formats()))
+
+	if compression_type is None: # TODO: Add E-Tag header for compression types
+		compression_types = list(compression_types)
+		if send_json:
+			return ORJSONResponse({"compression_types": compression_types}, status_code=status.HTTP_200_OK,
+								  media_type="application/json")
+		return Response(str(compression_types), status_code=status.HTTP_200_OK, media_type="text/plain")
+
+	allowed = compression_type in compression_types
+	status_code = status.HTTP_202_ACCEPTED if allowed else status.HTTP_404_NOT_FOUND
+	if send_json:
+		return ORJSONResponse({"allowed": allowed}, status_code=status_code, media_type="application/json")
+
+	return Response(f"{compression_type} is {'NOT ' if not allowed else ''}an available compression type.",
+					status_code=status_code, media_type="text/plain")
+
+
+@router.get("/classification_codes", tags=["Using EXSCLAIM"], response_model=list[ClassificationCodes])
+async def classification_codes(request: Request, response: Response) -> tuple[ClassificationCodes]:
+	from base64 import b64encode
+	session: AsyncSession = request.state.session
+	results = await session.execute(select(ClassificationCodes).order_by(ClassificationCodes.code))
+
+	results = tuple(results.scalars().all())
+
+	hash_string = ";".join(map(lambda result: result.code, results))
+
+	etag = b64encode(hash_string.encode("utf-8")).decode()
+	response.headers["ETag"] = etag
+	return results
+
+
+@router.get("/checkpoints/{checkpoint}", tags=["EXSCLAIM Model Checkpoints"])
+async def download_checkpoint(checkpoint: str) -> Response:
+	checkpoint_folder = settings.CHECKPOINTS_PATH
+
+	if not checkpoint_folder.exists() or not checkpoint_folder.is_dir():
+		return Response("Could not find any checkpoints. Please try again later.",
+						status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
+
+	checkpoint_path = checkpoint_folder / checkpoint
+	if not checkpoint_path.exists():
+		return Response(f"Could not find checkpoint \"{checkpoint}\".", status_code=status.HTTP_404_NOT_FOUND,
+						media_type="text/plain")
+
+	return FileResponse(str(checkpoint_path), media_type="application/octet-stream", status_code=status.HTTP_200_OK)
+	# with open(checkpoint_path, "rb") as f:
+	# 	buffer = BytesIO(f.read())
+	# return streaming_response_with_hash(buffer, checkpoint, checkpoint_path.stat().st_mtime)
+
+
+# def streaming_response_with_hash(buffer: BytesIO, filename: str, last_modified: Optional[str | float] = None) -> StreamingResponse:
+# 	from email.utils import formatdate
+# 	from hashlib import sha256
+#
+# 	hash_obj = sha256()
+# 	for part in buffer:
+# 		hash_obj.update(part)
+# 	digest = hash_obj.hexdigest()
+# 	buffer.seek(0)
+#
+# 	def streamer():
+# 		while True:
+# 			yield from buffer
+#
+# 	headers = {
+# 		"Accept-Ranges": "bytes",
+# 		"Content-Disposition": f"inline ; filename = \"{filename}\"",
+# 		"Content-Length": str(len(buffer.getvalue())),
+# 		"Etag": digest
+# 	}
+#
+# 	if last_modified is not None:
+# 		if isinstance(last_modified, float):
+# 			last_modified = formatdate(last_modified, usegmt=True)
+# 		headers["Last-Modified"] = last_modified
+#
+# 	return StreamingResponse(streamer(), media_type="application/octet-stream", status_code=status.HTTP_200_OK, headers=headers)

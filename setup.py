@@ -1,21 +1,23 @@
-from os.path import dirname
+# from os.path import dirname
 from pathlib import Path
+from re import search
 from setuptools import setup
-from setuptools.command.build_py import build_py as _build_py
+from setuptools.command.build_py import build_py
 from subprocess import Popen, PIPE
 
 # build with python setup.py bdist_wheel
 # upload to testpypi w/ python3 -m twine upload --repository testpypi dist/*
 
 
-class CustomBuildCommand(_build_py):
+class CustomBuildCommand(build_py):
 	def run(self):
 		here = Path(__file__).parent.resolve()
-		version_dct = dict()
 		with open(here / "exsclaim" / "version.py") as f:
 			# version will be loaded in from the minimal version file
-			exec(original_version := f.read(), globals(), version_dct)
-		version = version_dct['version']
+			version_info = f.read()
+
+		version_number = search(r"_?_?version_?_?\s*=\s*['\"]([\d.b]+)['\"]", version_info)
+		version = version_number.group(1) if version_number else "None"
 
 		here = Path(__file__).parent.resolve()
 
@@ -26,7 +28,7 @@ class CustomBuildCommand(_build_py):
 			p = Popen(["git", "log", "-1", "--format=\"%H\""],
 					  stdout=PIPE,
 					  stderr=PIPE,
-					  cwd=dirname(__file__))
+					  cwd=here)# dirname(__file__)
 		except FileNotFoundError:
 			pass
 		else:
@@ -44,7 +46,7 @@ class CustomBuildCommand(_build_py):
 
 		super().run()
 		with open(here / "exsclaim" / "version.py", 'w', encoding="utf-8") as f:
-			f.write(original_version)
+			f.write(version_info)
 
 
 setup(

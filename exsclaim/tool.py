@@ -9,6 +9,7 @@ interchangeable.
 """
 
 from .caption import LLM
+from .config import settings
 from .exceptions import JournalScrapeError
 from .journal import JournalFamily
 from .utilities import initialize_results_dir, PrinterFormatter
@@ -171,10 +172,17 @@ class JournalScraper(ExsclaimTool):
 		"""
 		super()._appendJSON(exsclaim_json, data=map(lambda article: article.split('/')[-1], self.new_articles_visited), filename="_articles")
 
-	def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
-		return exsclaim_json
+	async def _handle_scrape_error(self, e: JournalScrapeError):
+		self.logger.exception("An error occurred during the journal scraping.", exc_info=e)
+		if (error_dir := settings.UNSCRAPED_HTML_PATH) is not None:
+			if e.url is not None and e.html is not None:
+				error_dir.mkdir(parents=True, exist_ok=True)
 
-	async def runner(self, exsclaim_json:dict, search_query:dict, article:str, journal_family_name:str, lock:Lock):
+				with open(error_dir / f"{e.url.split('/')[-1]}.html", 'w') as f:
+					f.write(await e.html.prettify())
+		
+	async def runner(self, exsclaim_json:dict, search_query:dict, article:str, journal_family_name:str, html_directory: Path,
+					 lock:Lock):
 		# Extract figures, captions, and metadata from each article
 		t0 = self._start_timer()
 		self.display_info(f">>> Extracting figures from: {article.split('/')[-1]}")
@@ -183,19 +191,23 @@ class JournalScraper(ExsclaimTool):
 								 scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
 				url = journal.domain + article
 				try:
-					article_dict = await journal.get_article_figures(url)
+					article_dict = await journal.get_article_figures(url, html_directory)
 
-					async with lock:
-						self._update_exsclaim(exsclaim_json, article_dict)
+					if article_dict:
+						async with lock:
+							self._update_exsclaim(exsclaim_json, article_dict)
 					self.new_articles_visited.add(article)
-				except JournalScrapeError:
+				except JournalScrapeError as e:
 					self.logger.exception(f"Could not scrape the details for {url}.")
+					await self._handle_scrape_error(e)
+					raise e
+
 		except Exception as e:
 			self.display_exception(e, article)
 
 		self._end_timer(t0, f"JournalScraper: {article}")
 
-	async def run(self, search_query:dict, exsclaim_json:dict):
+	async def run(self, search_query: dict, exsclaim_json: dict):
 		"""Run the JournalScraper to find relevant article figures
 
 		Args:
@@ -222,15 +234,22 @@ class JournalScraper(ExsclaimTool):
 			for figure in separated:
 				f.write(f"{Path(figure).name}\n")
 
+		html_directory = self.results_directory / "html"
+		html_directory.mkdir(exist_ok=True)
+
 		self.display_info(f"Running Journal Scraper\n")
 
 		async with JournalFamily(journal_family_name, search_query,
 								 scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
-			extensions = await journal.get_article_extensions()
+			try:
+				extensions = await journal.get_article_extensions()
+			except JournalScrapeError as e:
+				await self._handle_scrape_error(e)
+				raise e
 
 		lock = Lock()
 		await gather(*[
-			self.runner(exsclaim_json, search_query, extension, journal_family_name, lock) for extension in extensions
+			self.runner(exsclaim_json, search_query, extension, journal_family_name, html_directory, lock) for extension in extensions
 		])
 
 		return exsclaim_json
@@ -252,7 +271,7 @@ class CaptionDistributor(ExsclaimTool):
 		self.llm: LLM = LLM.from_search_query(search_query)
 
 	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter,
-						 caption_dict: dict[str, str], keywords: tuple[str]):
+						 caption_dict: dict[str, str], keywords: tuple[str, ...]):
 		exsclaim_dict[figure_name]["caption_delimiter"] = delimiter
 
 		# Gets the figure number out of the figure name
@@ -291,24 +310,25 @@ class CaptionDistributor(ExsclaimTool):
 	async def unload(self):
 		await self.llm.unload()
 
-	async def _runner(self, exsclaim_json:dict, search_query:dict, figure:str, new_separated:set, lock:Lock,
-					 semaphore:Semaphore, i:int, num_captions:int):
+	async def _runner(self, exsclaim_json: dict, search_query: dict, figure: str, new_separated: set, lock: Lock,
+					 i: int, num_captions: int):
 		try:
-			if figure == "s41929-023-01090-4_fig4.jpg":
-				self.logger.error(
-					f"There's an extra \"'\" in this {figure}'s caption that causes the JSON to not be parsed properly, skipping for now.")
-				return
+			# if figure == "s41929-023-01090-4_fig4.jpg":
+			# 	self.logger.error(
+			# 		f"There's an extra \"'\" in this {figure}'s caption that causes the JSON to not be parsed properly, skipping for now.")
+			# 	return
 
-			async with semaphore:
-				t0 = self._start_timer()
-				self.display_info(f">>> Parsing captions from: {figure} ({i:,} of {num_captions:,}).")
+			# async with semaphore:
+			t0 = self._start_timer()
+			self.display_info(f">>> Parsing captions from: {figure} ({i:,} of {num_captions:,}).")
 
-				caption_text = exsclaim_json[figure]["full_caption"]
+			caption_text = exsclaim_json[figure]["full_caption"]
 
-				delimiter = "0"
+			delimiter = "0"
 
-				caption_dict = await self.llm.separate_captions(caption_text)
-				keywords = await self.llm.get_keywords(caption_text)
+			# caption_dict = await self.llm.separate_captions(caption_text)
+			# keywords = await self.llm.get_keywords(caption_text)
+			caption_dict, keywords = await self.llm.parse_captions(caption_text)
 
 			if caption_dict is not None:
 				self.logger.debug(f"Full caption dict: \"{caption_dict}\".")
@@ -323,7 +343,7 @@ class CaptionDistributor(ExsclaimTool):
 
 		self._end_timer(t0, f"CaptionDistributor: {figure} ({i:,} of {num_captions:,}).")
 
-	async def run(self, search_query:dict, exsclaim_json:dict, limit_llms_to:Optional[int] = 5):
+	async def run(self, search_query: dict, exsclaim_json: dict, limit_llms_to: Optional[int] = None):
 		"""Run the CaptionDistributor to distribute subfigure captions
 
 		Args:
@@ -334,7 +354,8 @@ class CaptionDistributor(ExsclaimTool):
 			exsclaim_json (dict): Updated with results of search
 		"""
 		exsclaim_json = exsclaim_json or dict()
-		semaphore = Semaphore(limit_llms_to or len(exsclaim_json))
+		# Having -1 will remove the semaphore limit, then Ollama can be 1 since that's all running locally.
+		# semaphore = Semaphore(limit_llms_to or self.llm.request_concurrency())
 
 		self.display_info(f"Running Caption Distributor\n")
 
@@ -364,7 +385,7 @@ class CaptionDistributor(ExsclaimTool):
 		num_figures = len(figures)
 		lock = Lock()
 		await gather(*[
-			self._runner(exsclaim_json, search_query, _path, new_separated, lock, semaphore, i+1, num_figures)
+			self._runner(exsclaim_json, search_query, _path, new_separated, lock, i+1, num_figures)
 			for i, _path in enumerate(figures)
 		])
 

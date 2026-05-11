@@ -1,4 +1,4 @@
-from . import Pipeline, PipelineInterruptionException
+from .pipeline import Pipeline, PipelineInterruptionException
 
 try:
 	from . import __version__
@@ -11,6 +11,7 @@ from os import PathLike, chmod
 from os.path import splitext, isfile
 from pathlib import Path
 from shutil import make_archive
+from uuid import UUID
 
 
 @register
@@ -24,13 +25,11 @@ def on_terminate():
 	logging.shutdown()
 
 
-async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compress_location:str=None, journal_scraper:bool=False,
-				 pdf_scraper:bool=False, caption_distributor:bool=False, figure_separator:bool=False, **kwargs):
+async def run_pipeline(query=None, verbose: bool = False, compress: str = None, compress_location: str = None,
+					   journal_scraper: bool = False, pdf_scraper: bool = False, caption_distributor: bool = False,
+					   figure_separator: bool = False, run_id: UUID = None, **kwargs):
 	if query is None:
 		raise ValueError("The search query is required.")
-
-	# if not any((journal_scraper, pdf_scraper, caption_distributor, figure_separator)):
-	# 	raise ValueError("You must run the pipeline with at least one tool.")
 
 	compress = compress or ""
 
@@ -51,7 +50,7 @@ async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compre
 	pipeline = Pipeline(search_query)
 	try:
 		results = await pipeline.run(caption_distributor=caption_distributor, pdf_scraper=pdf_scraper,
-									 journal_scraper=journal_scraper, figure_separator=figure_separator)
+									 journal_scraper=journal_scraper, figure_separator=figure_separator, run_id=run_id)
 
 		for handler in pipeline.logger.handlers:
 			handler.flush()
@@ -63,9 +62,7 @@ async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compre
 
 			try:
 				chmod(save_location, 0o775)
-				print("Changed the permissions.")
 			except PermissionError:
-				print(f"Could not change the permissions of {save_location} to 775.")
 				pipeline.logger.warning(f"Could not change the permissions of {save_location} to 775.")
 
 	except PipelineInterruptionException as e:
@@ -83,7 +80,7 @@ async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:Pat
 
 	exsclaim_dir = Path(__file__).parent.resolve()
 
-	def get_configuration(configuration:PathLike[str], folder:str) -> str:
+	def get_configuration(configuration: PathLike[str], folder:str) -> str:
 		configuration = configuration or (exsclaim_dir / folder / "config.py")
 
 		if not isfile(configuration):
@@ -96,7 +93,7 @@ async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:Pat
 	api_configuration = get_configuration(api_configuration, "api")
 	dashboard_configuration = get_configuration(dashboard_configuration, "dashboard")
 
-	api = Popen(["/usr/local/bin/hypercorn", "-c", api_configuration, "exsclaim.api:app"])
+	api = Popen(["/usr/local/bin/hypercorn", "-c", api_configuration, "exsclaim.api:get_app()"])
 	dashboard = Popen(["/usr/local/bin/gunicorn", "-c", dashboard_configuration, "exsclaim.dashboard:server"],
 		  cwd=str(exsclaim_dir / "dashboard"))
 
@@ -138,12 +135,39 @@ async def train_model(**kwargs):
 	await train_model(**kwargs)
 
 
-async def upload_results(json_path:str):
-	json_path = Path(json_path).resolve()
-	if not json_path.is_file():
-		raise FileNotFoundError(f"Could not find file {json_path}.")
+async def upload_results(csv_dir: PathLike[str], result_id: UUID, strict: bool = False):
+	from .db import Database
+	from csv import reader
+	from re import compile
 
-	raise NotImplementedError("Have not finished implementing upload_results")
+	csv_path = Path(csv_dir).resolve()
+	if not csv_path.is_dir():
+		raise FileNotFoundError(f"Could not find csv directory {csv_path}.")
+
+	file_regex = compile("_")
+	csv_info = {
+		"article": [],
+		"figure": [],
+		"subfigure": [],
+		"subfigure_label": [],
+		"scale_label": [],
+		"scale": []
+	}
+
+	for key in csv_info.keys():
+		file = csv_path / f"{file_regex.sub('', key)}.csv"
+		if not file.is_file():
+			if strict:
+				raise FileNotFoundError(f"Could not find file {file}.")
+			print(f"Cannot find file {file}, skipping these contents.")
+
+		with open(csv_path / file, "r") as f:
+			csv_reader = reader(f)
+			csv_info[key] = [list(row) for row in csv_reader]
+
+	db = Database()
+	await db.ensure_connection()
+	await db.upload(csv_info, result_id)
 
 
 async def launch(args=None):

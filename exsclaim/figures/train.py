@@ -1,14 +1,15 @@
 from collections import defaultdict
-from json import load
 from os import PathLike
+from orjson import loads
 from pathlib import Path
 from PIL import Image
 from re import compile, IGNORECASE
 from httpx import AsyncClient
-from sklearn.model_selection import train_test_split
 from tempfile import TemporaryDirectory
 from textwrap import dedent
+from torch import Generator
 from torch.cuda import is_available as cuda_available
+from torch.utils.data import random_split
 from typing import Iterable, Literal
 from ultralytics import YOLO
 
@@ -81,7 +82,7 @@ def create_class_id_mapping(subfigure_labels: set[str], priority_labels: Iterabl
 	return class_id_mapping
 
 
-async def process_data(image_path):
+def process_data(image_path):
 	with Image.open(image_path) as image:
 		if image.format == "GIF":
 			image.save(image_path, format="PNG")
@@ -107,7 +108,7 @@ async def process_data_split(data_split: Iterable[dict], split_name: str, images
 			with open(image_path, 'wb') as file:
 				file.write(response.content)
 
-			await process_data(image_path)
+			process_data(image_path)
 
 		image = cv2.imread(str(image_path))
 		image_height, image_width, _ = image.shape
@@ -171,14 +172,14 @@ async def get_model(base_model: Model, save_path: Model, default_model_file:str)
 	return base_model, save_path
 
 
-async def train_model(json_file_path:str | PathLike[str], detection_input_model: Model = None,
+async def train_model(json_file_path: str | PathLike[str], detection_input_model: Model = None,
 					  classification_input_model: Model = None, detection_save_path: Model = None,
 					  classifier_save_path: Model = None, detector_name: str = "exsclaim_subfigure_detection",
 					  classifier_name: str = "exsclaim_subfigure_classification", test_size=1_164, random_state: int = 42,
 					  dataset_dir: str | PathLike[str] = None,
 					  project: str = "exsclaim_finetuning"):
 	with open(json_file_path, 'r') as f:
-		data = load(f)
+		data = loads(f.read())
 
 	detection_input_model, detection_save_path = await get_model(detection_input_model, detection_save_path, "yolov11_finetuned_augmentation_best.pt")
 	classification_input_model, classifier_save_path = await get_model(classification_input_model, classifier_save_path, "yolov11_classification.pt")
@@ -196,7 +197,8 @@ async def train_model(json_file_path:str | PathLike[str], detection_input_model:
 	print(f"Class ID Mapping: {class_id_mapping}")
 
 	# Split data into train and test sets
-	train, test = train_test_split(data, test_size=test_size, random_state=random_state)
+	train, test = random_split(data, [len(subfigure_labels) - test_size, test_size],
+							   generator=Generator().manual_seed(random_state))
 
 	dataset_dir = dataset_dir or TemporaryDirectory()
 	dataset_path = Path(dataset_dir).resolve()

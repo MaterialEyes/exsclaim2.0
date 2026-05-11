@@ -1,15 +1,13 @@
 import pymupdf
 
-from .caption import LLM, ChatMessage, Captions
+from .caption import LLM, ChatMessage, Captions, CaptionEntry
 from .exceptions import PDFScrapeException
 from .tool import ExsclaimTool
 
 from asyncio import gather, Lock
-from base64 import b64encode
 from io import BytesIO
 from pathlib import Path
 from typing import Any
-from textwrap import dedent
 
 
 __all__ = ["PDFScraper"]
@@ -159,12 +157,14 @@ class PDFScraper(ExsclaimTool):
 						image_filename=image_filename,
 						rect=[rect.x0, rect.y0, rect.x1, rect.y1]
 					))
-				except Exception:
-					self.logger.exception(f"Error processing image xref {xref} on page {page_num+1:,}.")
+				except Exception as e:
+					self.logger.exception(f"Error processing image xref {xref} on page {page_num+1:,}.", exc_info=e)
 
 		return image_metadata
 
-	async def read_figure_captions(self, encoded_image:str) -> dict[str, Any]:
+	async def read_figure_captions(self, encoded_image: str) -> list[CaptionEntry]:
+		from textwrap import dedent
+
 		prompt = dedent("""\
 			The provided image is a page from a literature paper. Please perform the following steps as accurately as possible:
 	        1. Identify and return in the correct order they are located (the index 0 figure or scheme is located on the top left of the page) in the page the figure name and the full caption that describe the figure or scheme depicted on this page.
@@ -186,7 +186,9 @@ class PDFScraper(ExsclaimTool):
 		captions = await llm.get_response(messages, Captions)
 		return captions.captions
 
-	async def extract_captions_from_pdf(self, pdf: pymupdf.Document, dpi:int = 300, check_toc: bool = False) -> dict[int, list[str]]:
+	async def extract_captions_from_pdf(self, pdf: pymupdf.Document, dpi: int = 300, check_toc: bool = False) -> dict[int, list[str]]:
+		from base64 import b64encode
+
 		captions = dict()
 
 		for page_num, page in enumerate(pdf.pages()):
@@ -209,7 +211,7 @@ class PDFScraper(ExsclaimTool):
 			page_captions = extracted_data.values()
 			page_captions = [" ".join(caption) if isinstance(caption, list) else caption for caption in page_captions]
 
-			captions[page_num+1] = page_captions
+			captions[page_num + 1] = page_captions
 
 		return captions
 

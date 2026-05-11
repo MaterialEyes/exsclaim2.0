@@ -37,7 +37,7 @@ build/exsclaim/dashboard: build/exsclaim build/venv
 	cp -avr exsclaim/dashboard/components build/exsclaim/dashboard/
 
 build: build/exsclaim/dashboard
-	$(PIP_INSTALL) build
+	$(PIP_INSTALL) build==1.3.0
 	$(BUILD) build
 	cp -avru build/dist ./
 
@@ -47,5 +47,3 @@ install: build
 
 clean:
 	rm -rf ./build
-	rm -rf ./node_modules
-	rm -f ./package.json ./package-lock.json
