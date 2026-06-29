@@ -9,7 +9,7 @@ class JournalScrapeError(ExsclaimToolException):
 	def __init__(self, message: str, status: int = None, headers=None, url: str = None, html=None):
 		self.message = message
 		self.status = status
-		self.headers = headers or {}
+		self.headers = headers or dict()
 		self.html = html
 		self.url = url
 

@@ -3,7 +3,7 @@ from .pdf import PDFScraper
 from .exceptions import *
 from .notifications import *
 from .tool import ExsclaimTool, CaptionDistributor, JournalScraper
-from .utilities import paths, PrinterFormatter, ExsclaimFormatter, convert_labelbox_to_coords
+from .utilities import paths, PrinterFormatter, ExsclaimFormatter, convert_geometry_to_coords
 from .db import Database
 
 import cv2
@@ -140,11 +140,11 @@ class Pipeline:
 		else:
 			self.logger.info("No exsclaim.json file found, starting a new one.")
 			# Keep preset values
-			self.exsclaim_dict = {}
+			self.exsclaim_dict = dict()
 		# endregion
 
 		# region Set up notifications
-		exsclaim_notifications = self.query_dict.get("notifications", {})
+		exsclaim_notifications = self.query_dict.get("notifications", dict())
 		notifications = (_class.from_json(json)
 						 for key, _class in Notifications.notifiers().items()
 						 for json in exsclaim_notifications.get(key, []))
@@ -255,7 +255,7 @@ class Pipeline:
 				exsclaim_dict = await tool.run(query_dict, exsclaim_dict)
 				await tool.unload()
 
-			self.exsclaim_dict = exsclaim_dict
+			self.exsclaim_dict = exsclaim_dict # TODO: Add the version number and reformat appropriately
 
 			# group unassigned objects
 			self.group_objects()
@@ -295,19 +295,13 @@ class Pipeline:
 			message = f"An error occurred at {dt.now():%Y-%m-%dT%H:%M%z} running{' the' if run_id is None else ''} EXSCLAIM! query{f' `{run_id}`' if run_id is not None else ''}."
 			raise PipelineInterruptionException from e
 		finally:
-			if len(tools):
-				try:
-					chmod(tools[0].results_directory, query_dict.get("permissions", 0o775))
-				except PermissionError:
-					self.logger.exception("Could not change permissions of the result directory.")
-
 			for notifier in self.notifications:
 				try:
 					await notifier.notify(message, name=self.query_dict["name"], id=run_id)
 				except CouldNotNotifyException:
 					self.logger.exception(f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".")
 
-			return self.exsclaim_dict
+		return self.exsclaim_dict
 
 	@staticmethod
 	def assign_captions(figure: dict) -> tuple[list[dict], dict]:
@@ -319,14 +313,14 @@ class Pipeline:
 			masters (list of dicts): list of master_images JSONs
 			unassigned (dict): the updated unassigned JSON
 		"""
-		unassigned = figure.get("unassigned", {})
+		unassigned = figure.get("unassigned", dict())
 		masters = []
 
-		captions = unassigned.get("captions", {})
+		captions = unassigned.get("captions", dict())
 		not_assigned = {a["label"] for a in captions}
 
 		for index, master_image in enumerate(figure.get("master_images", [])):
-			label_json = master_image.get("subfigure_label", {})
+			label_json = master_image.get("subfigure_label", dict())
 			subfigure_label = label_json.get("text", index)
 
 			# remove periods or commas from around subfigure label
@@ -397,10 +391,8 @@ class Pipeline:
 		Modifies:
 			Creates directories to save each subfigure
 		"""
-		from .utilities import convert_labelbox_to_coords
-
 		# TODO: Figure_extension and figure should be getting passed into this function
-		def write(figure:np.ndarray, image:dict, directory:Path, figure_extension:str, name_generator:Callable[[str], list[str]], order_c_copy=False):
+		def write(figure: np.ndarray, image: dict, directory: Path, figure_extension: str, name_generator: Callable[[str], list[str]], order_c_copy=False):
 			"""
 			An inner function designed to reduce the amount of needed code in the to_file function.
 
@@ -417,7 +409,7 @@ class Pipeline:
 			_name = '_'.join(name_generator(_class)) + figure_extension
 
 			# save image to file
-			x1, y1, x2, y2 = convert_labelbox_to_coords(image['geometry'])
+			x1, y1, x2, y2 = convert_geometry_to_coords(image['geometry'])
 			patch = figure[y1:y2, x1:x2]
 			if order_c_copy:
 				patch = patch.copy(order='C')
@@ -480,12 +472,12 @@ class Pipeline:
 			showing details about each subfigure
 		"""
 		def draw_box(draw_full_figure, geometry, width=2, outline="green", **kwargs):
-			coords = convert_labelbox_to_coords(geometry)
+			coords = convert_geometry_to_coords(geometry)
 			bounding_box = tuple(map(int, coords))
 			draw_full_figure.rectangle(bounding_box, width=width, outline=outline, **kwargs)
 
 		# def draw_box(image, geometry, thickness=2, outline=(0, 255, 0), **kwargs):
-		# 	x1, y1, x2, y2 = tuple(map(int, convert_labelbox_to_coords(geometry)))
+		# 	x1, y1, x2, y2 = tuple(map(int, convert_geometry_to_coords(geometry)))
 		# 	cv2.rectangle(image, (x1, y1), (x2, y2), outline, thickness=thickness, **kwargs)
 
 		master_images = figure_json.get("master_images", [])
@@ -495,7 +487,7 @@ class Pipeline:
 		# to handle older versions that didn't store height and width
 		for master_image in master_images:
 			if "height" not in master_image or "width" not in master_image:
-				x1, y1, x2, y2 = convert_labelbox_to_coords(master_image["geometry"])
+				x1, y1, x2, y2 = convert_geometry_to_coords(master_image["geometry"])
 				master_image["height"] = y2 - y1
 				master_image["width"] = x2 - x1
 
@@ -511,8 +503,7 @@ class Pipeline:
 		draw = ImageDraw.Draw(labeled_image)
 		try:
 			font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-		except OSError as e:
-			self.display_info(f"Could not create font DejaVuSans.ttf, using default. {e}")
+		except OSError:
 			font = ImageFont.load_default()
 
 		# labeled_image = np.zeros(shape=(image_height, image_width, 3), dtype=np.uint8)
@@ -526,11 +517,11 @@ class Pipeline:
 
 		image_y = 0
 		for subfigure_json in master_images:
-			x1, y1, x2, y2 = tuple(map(int, convert_labelbox_to_coords(subfigure_json["geometry"])))
+			x1, y1, x2, y2 = tuple(map(int, convert_geometry_to_coords(subfigure_json["geometry"])))
 			classification = subfigure_json["classification"]
 			caption: str = subfigure_json.get("caption", "")
 			if isinstance(caption, list):
-				print(f"Caption is somehow a list: {caption}.")
+				print(f"Caption is somehow a list: {caption} for {subfigure_json.get("id", str(subfigure_json))}.")
 				if caption:
 					return
 				caption = ""
@@ -584,7 +575,7 @@ class Pipeline:
 			showing details about each subfigure
 		"""
 		def append_bbox(geometry, lst:list):
-			coords = convert_labelbox_to_coords(geometry)
+			coords = convert_geometry_to_coords(geometry)
 			bounding_box = tuple(map(int, coords))
 			lst.append(bounding_box)
 
@@ -602,7 +593,7 @@ class Pipeline:
 		subfigures = []
 		for subfigure_json in master_images:
 			# collect subfigures
-			subfigures.append(convert_labelbox_to_coords(subfigure_json["geometry"]))
+			subfigures.append(convert_geometry_to_coords(subfigure_json["geometry"]))
 
 			# Collect scale bar objects
 			for scale_bar in subfigure_json.get("scale_bars", []):
@@ -705,7 +696,7 @@ class Pipeline:
 			# loop through subfigures
 			for master_image in figure_json.get("master_images", []):
 				subfigure_label = master_image["subfigure_label"]["text"]
-				subfigure_coords = convert_labelbox_to_coords(master_image["geometry"])
+				subfigure_coords = convert_geometry_to_coords(master_image["geometry"])
 				subfigure_id = f"{figure_id}-{subfigure_label}"
 				if subfigure_id in subfigures:
 					continue
@@ -730,7 +721,7 @@ class Pipeline:
 				])
 
 				if master_image["subfigure_label"].get("geometry", None):
-					subfigure_label_coords = convert_labelbox_to_coords(master_image["subfigure_label"]["geometry"])
+					subfigure_label_coords = convert_geometry_to_coords(master_image["subfigure_label"]["geometry"])
 					csv_info["subfigure_label"].append([
 						master_image["subfigure_label"]["text"],
 						*subfigure_label_coords,
@@ -741,7 +732,7 @@ class Pipeline:
 
 				for i, scale_bar in enumerate(master_image.get("scale_bars", [])):
 					scale_bar_id = f"{subfigure_id}-{i}"
-					scale_bar_coords = convert_labelbox_to_coords(scale_bar["geometry"])
+					scale_bar_coords = convert_geometry_to_coords(scale_bar["geometry"])
 					csv_info["scale"].append([
 						scale_bar_id,
 						*scale_bar_coords,
@@ -755,7 +746,7 @@ class Pipeline:
 						continue
 
 					scale_label = scale_bar["label"]
-					scale_label_coords = convert_labelbox_to_coords(scale_label["geometry"])
+					scale_label_coords = convert_geometry_to_coords(scale_label["geometry"])
 					csv_info["scale_label"].append([
 						scale_label["text"],
 						*scale_label_coords,

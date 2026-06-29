@@ -8,15 +8,16 @@ from asyncpg import UndefinedTableError
 from datetime import datetime as dt
 from fastapi import APIRouter, status
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import JSONResponse
 from pytz import utc
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, HTMLResponse
 from starlette.routing import BaseRoute
 from textwrap import dedent
 from typing import Optional
+from uuid import UUID
 
 __all__ = ["router"]
 
@@ -87,12 +88,12 @@ async def dark_theme(request: Request):
 	return response
 
 
-@router.get("/docs", include_in_schema=False)
+@router.api_route("/docs", methods=["GET", "HEAD"], include_in_schema=False)
 async def docs_redirect() -> Response:
 	return Response(status_code=status.HTTP_301_MOVED_PERMANENTLY, headers={"Location": "/"})
 
 
-@router.get("/redoc", include_in_schema=False)
+@router.api_route("/redoc", methods=["GET", "HEAD"], include_in_schema=False)
 async def redoc(request: Request) -> Response:
 	app = request.app
 	schema = app.openapi()
@@ -103,7 +104,7 @@ async def redoc(request: Request) -> Response:
 	)
 
 
-@router.get("/favicon.ico", include_in_schema=False)
+@router.api_route("/favicon.ico", methods=["GET", "HEAD"], include_in_schema=False)
 async def favicon(request: Request) -> Response:
 	if hasattr(request.app, "favicon"):
 		return Response(request.app.favicon, media_type="image/x-icon", status_code=status.HTTP_200_OK)
@@ -117,17 +118,17 @@ async def favicon(request: Request) -> Response:
 	return Response(content, media_type="image/x-icon", status_code=status.HTTP_200_OK)
 
 
-@router.get("/swagger-dark-ui.css", include_in_schema=False)
+@router.api_route("/swagger-dark-ui.css", methods=["GET", "HEAD"], include_in_schema=False)
 async def get_dark_css() -> Response:
 	return await get_dark_ui(False)
 
 
-@router.get("/swagger-dark-ui.css.map", include_in_schema=False)
+@router.api_route("/swagger-dark-ui.css.map", methods=["GET", "HEAD"], include_in_schema=False)
 async def get_dark_css() -> Response:
 	return await get_dark_ui(True)
 
 
-@router.get("/healthcheck", tags=["System Check"],
+@router.api_route("/healthcheck", methods=["GET", "HEAD"], tags=["System Check"],
 		 responses={
 			 200: {
 				 "description": "API is Healthy.",
@@ -200,13 +201,12 @@ async def healthcheck(request: Request) -> Response:
 							status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
 
 	if request.headers.get("Accept") == "application/json":
-		response = ORJSONResponse({"message": response.body.decode(response.charset)}, status_code=response.status_code,
-								  media_type="application/json")
+		response = JSONResponse({"message": response.body.decode(response.charset)}, status_code=response.status_code)
 
 	return response
 
 
-@router.get("/sitemap.xml")
+@router.api_route("/sitemap.xml", methods=["GET", "HEAD"])
 def sitemap(request: Request) -> Response:
 	if (sitemap := request.app.sitemap) is None:
 		last_mod = dt.now(utc).strftime("%Y-%m-%dT%H:%M:%S.%f%z")
@@ -231,7 +231,7 @@ def sitemap(request: Request) -> Response:
 	return Response(sitemap, media_type="text/xml", status_code=status.HTTP_200_OK)
 
 
-@router.get("/robots.txt")
+@router.api_route("/robots.txt", methods=["GET", "HEAD"])
 def robots(request: Request) -> Response:
 	robots_message = dedent(f"""\
 			User-agent: *
@@ -240,13 +240,13 @@ def robots(request: Request) -> Response:
 			Allow: /sitemap.xml
 			Allow: /classification_codes
 			Allow: /compression_types
-			Allow: /healthcheck
 			Allow: /query
 			Allow: /openapi.json
 			Allow: /docs
 			Allow: /redoc
 			Allow: /user/previous_runs
-			Disallow: /assets
+			Disallow: /healthcheck
+			Disallow: /assets/*
 			Disallow: /results/*
 			Disallow: /status/*
 			Disallow: /user/*
@@ -255,3 +255,16 @@ def robots(request: Request) -> Response:
 			Sitemap: {get_host_from_request(request)}/sitemap.xml
 		""")
 	return Response(robots_message, media_type="text/plain", status_code=status.HTTP_200_OK)
+
+
+@router.api_route("/banner", methods=["GET", "HEAD"])
+async def get_banner_text(request: Request, last_seen_banner: Optional[UUID] = None) -> Response:
+	session: AsyncSession = request.state.session
+	results = await session.execute(select(Banner).order_by(Banner.created.desc()).limit(1))
+
+	banner: Banner = results.scalar_one_or_none()
+
+	if banner is None or banner.id == last_seen_banner:
+		return HTMLResponse(status_code=status.HTTP_204_NO_CONTENT)
+
+	return JSONResponse(dict(id=str(banner.id), content=banner.content), status_code=status.HTTP_200_OK)

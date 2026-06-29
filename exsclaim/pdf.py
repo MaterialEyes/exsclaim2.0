@@ -34,7 +34,7 @@ class PDFScraper(ExsclaimTool):
 	async def unload(self):
 		await LLM.from_search_query(self.search_query).unload()
 
-	def extract_authors_from_pdf(self, pdf:pymupdf.Document) -> list[str]:
+	def extract_authors_from_pdf(self, pdf: pymupdf.Document) -> list[str]:
 		metadata = pdf.metadata
 		authors = metadata.get("author", None)
 

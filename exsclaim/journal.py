@@ -58,6 +58,10 @@ class JournalHtml(ABC):
 		"""Gets the internal text within an element."""
 
 	@abstractmethod
+	async def get_html(self) -> str:
+		"""Gets the html within an element."""
+
+	@abstractmethod
 	async def get(self, attribute: str) -> str:
 		"""Gets the value of a given attribute."""
 
@@ -97,6 +101,9 @@ class StaticHtml(JournalHtml):
 
 	async def get_text(self) -> str:
 		return self.soup.get_text()
+
+	async def get_html(self) -> str:
+		return str(self.soup)
 
 	async def get(self, attribute: str) -> str:
 		return self.soup.get(attribute)
@@ -141,6 +148,9 @@ class DynamicHtml(JournalHtml):
 
 	async def get_text(self) -> str:
 		return await self.locator.inner_text()
+
+	async def get_html(self) -> str:
+		return await self.locator.inner_html()
 
 	async def get(self, attribute: str) -> str:
 		return await self.locator.get_attribute(attribute)
@@ -327,7 +337,7 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 
 		# Check if any articles have already been scraped by checking
 		# results_dir/_articles
-		articles_visited = {}
+		articles_visited: set[str] = set()
 		articles_file = self.results_directory / "_articles"
 		if articles_file.is_file():
 			with open(articles_file, "r") as f:
@@ -627,7 +637,7 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 		# add all results
 		return figure_json, image_url
 
-	async def get_article_figures(self, url:str, html_directory: Path, save_html:bool = True) -> dict:
+	async def get_article_figures(self, url: str, html_directory: Path, save_html:bool = True) -> dict:
 		"""Get all figures from an article.
 		:param str url: The url to the journal article.
 		:param pathlib.Path html_directory: The path where any html files should be written.
@@ -640,8 +650,8 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 			self.logger.error(f"Could not scrape {url} (HTTP Status Code: {e.status}). Reason: \"{e.message}\".")
 			return dict()
 
+		_id = url.split("/")[-1].split("?")[0]
 		if save_html:
-			_id = url.split("/")[-1].split("?")[0]
 			with open(html_directory / f"{_id}.html", 'w') as f:
 				f.write(await html.prettify())
 
@@ -655,8 +665,8 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 		authors = await self.get_authors(html)
 		figure_subtrees = await self.get_figure_list(html)
 
-		self.logger.info(f"Number of subfigures: {len(figure_subtrees):,}.")
-		article_json = {}
+		self.logger.info(f"Number of subfigures: {len(figure_subtrees):,} for {_id}.")
+		article_json = dict()
 
 		for figure_number, figure_subtree in enumerate(figure_subtrees, start=1):
 			captions = await self.find_captions(figure_subtree)
@@ -664,7 +674,7 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 			if len(captions) == 0:
 				continue
 
-			figure_caption = "".join([(await caption.get_text()).strip() for caption in captions])
+			figure_caption = "".join([(await caption.get_html()).strip() for caption in captions])
 
 			if figure_caption.isspace():
 				continue
@@ -1042,7 +1052,7 @@ class Nature(JournalFamilyStatic):
 		parsed = loads(data_layer_json)
 
 		# try to get whether the journal is open
-		_copyright = parsed.get("content", {}).get("attributes", {}).get("copyright")
+		_copyright = parsed.get("content", dict()).get("attributes", dict()).get("copyright")
 		if _copyright is None:
 			return False, "unknown"
 

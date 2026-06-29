@@ -38,11 +38,23 @@ class ExsclaimSettings(BaseSettings):
 		examples=["0", "1", ""],
 	)
 
+	LLAMA_CPP_HOST: Optional[str] = Field(
+		default=None,
+		description="The directory where the checkpoint files for the FigureSeparator should be stored.",
+		examples=["http://localhost:8080", "http://llama-cpp:8080"],
+	)
+
 	LOGS: str = Field(
 		default="/exsclaim/logs",
 		description="The directory where the log files should be stored.",
 		examples=["~/.exsclaim/logs", "/var/logs/exsclaim", "/exsclaim/logs"],
 		env="LOGS"
+	)
+
+	OLLAMA_HOST: Optional[str] = Field(
+		default=None,
+		description="The directory where the checkpoint files for the FigureSeparator should be stored.",
+		examples=["http://localhost:11434", "http://ollama:11434"],
 	)
 
 	@computed_field
@@ -172,7 +184,7 @@ def get_variables(port_env: str, default_port: str, log_subfolder: str) -> dict:
 	errorlog = log_dir / f"error-{time}.log"
 
 	for log in (accesslog, errorlog):
-		log.touch(mode=0o775, exist_ok=True)
+		log.touch(exist_ok=True)
 
 	config = dict(
 		bind=f"0.0.0.0:{getenv(port_env, default_port)}",
@@ -183,6 +195,9 @@ def get_variables(port_env: str, default_port: str, log_subfolder: str) -> dict:
 		accesslog=str(accesslog),
 		errorlog=str(errorlog),
 	)
+
+	if settings.DEBUG:
+		config["workers"] = 1
 
 	return config
 

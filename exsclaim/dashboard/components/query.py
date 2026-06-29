@@ -14,6 +14,28 @@ from typing import Optional
 name_regex = compile(r"^[\w_\-]+$")
 
 
+def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool]]:
+	try:
+		from ...caption import LLMMeta
+	except ImportError:
+		from exsclaim.caption import LLMMeta
+
+	available_llms = dict()
+	for cls in LLMMeta.classes:
+		models = cls.available_models()
+		if not models:
+			continue
+		available_llms[cls.__name__] = [dict(
+			model_name=model_name,
+			needs_api_key=needs_api_key,
+			display_name=label if label is not None else model_name.title()
+		) for model_name, needs_api_key, label in models]
+
+	show_api_key = {llm["model_name"]: llm["needs_api_key"] for models in available_llms.values() for llm in models}
+
+	return available_llms, show_api_key
+
+
 def create_query_component(journal_families, available_llms, debounce=True):
 	"""
 	Create the main query form component.
@@ -269,7 +291,7 @@ def create_open_access_component():
 		dbc.Checkbox(
 			id="open-access",
 			label="Open Access Only",
-			value=False
+			value=True
 		)
 	], className="mb-3")
 
@@ -292,12 +314,19 @@ def create_model_component(available_llms, debounce=True):
 		# 	children=[html.Option(value=llm["model_name"], label=llm["display_name"]) for llm in llms]
 		# )
 
+	if "LlamaCPP" in available_llms and len(available_llms["LlamaCPP"]) > 0:
+		default_llm = available_llms["LlamaCPP"][0]["model_name"]
+	elif "Ollama" in available_llms and len(available_llms["Ollama"]) > 0:
+		default_llm = available_llms["Ollama"][0]["model_name"]
+	else:
+		default_llm = options[0]["value"]
+
 	return html.Div([
 		dbc.Label("Model *", html_for="model-select"),
 		dbc.Select(
 			id="model-select",
 			options=options,
-			value=available_llms["Ollama"][0]["model_name"] if available_llms else "llama3.2",
+			value=default_llm,
 			className="form-control",
 			valid=True,
 			invalid=False,
@@ -430,7 +459,6 @@ def collapse_advanced_options(n_clicks, is_open):
 
 @callback(
 	[
-		Output("api-key-label", "disabled"),
 		Output("model-key", "disabled"),
 		Output("model-key", "valid"),
 		Output("model-key", "invalid"),
@@ -445,7 +473,7 @@ def collapse_advanced_options(n_clicks, is_open):
 		State("exsclaim-store", "data")
 	]
 )
-def show_api_key(selected_model: str, key: Optional[str], data) -> tuple[bool, bool, bool, bool, bool, dict[str, str]]:
+def show_api_key(selected_model: str, key: Optional[str], data) -> tuple[bool, bool, bool, bool, dict[str, str]]:
 	needs_key = data["show_api_key"].get(selected_model, True)
 
 	disabled = not needs_key
@@ -453,12 +481,12 @@ def show_api_key(selected_model: str, key: Optional[str], data) -> tuple[bool, b
 	style = dict(display="block" if needs_key else "none")
 
 	if not needs_key:
-		return disabled, disabled, True, False, False, style
+		return disabled, True, False, False, style
 
 	if needs_key and key is not None and key.strip():
-		return True, True, True, False, True, style
+		return True, True, False, True, style
 
-	return disabled, disabled, False, True, required, style
+	return disabled, False, True, required, style
 
 
 @callback(
@@ -527,10 +555,8 @@ def valid_search_term(search_term: Optional[str]) -> tuple[bool, bool, bool]:
 	[
 		Input("output-name", "invalid"),
 		Input("num-articles", "invalid"),
-		Input("sort-by", "invalid"),
 		Input("input-term", "invalid"),
 		Input("input-synonyms", "invalid"),
-		Input("open-access", "invalid"),
 		Input("model-key", "invalid"),
 	],
 )

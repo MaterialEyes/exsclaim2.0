@@ -1,6 +1,6 @@
 from __future__ import division, print_function
 
-import codecs
+from itertools import pairwise
 from re import findall
 
 
@@ -28,13 +28,13 @@ class LanguageModel:
         self.bigram = {c: {d: 0 for d in classes} for c in classes}
 
         # go through text and add each char bigram
-        codec = codecs.open(fn, "r", "utf8")
-        txt = codec.read()
-        codec.close()
-        for i in range(len(txt) - 1):
-            first = txt[i]
-            second = txt[i + 1]
+        with open(fn, "r", encoding="utf-8") as codec:
+            txt = codec.read()
 
+        # for i in range(len(txt) - 1):
+        #     first = txt[i]
+        #     second = txt[i + 1]
+        for first, second in pairwise(txt):
             # ignore unknown chars
             if first not in self.bigram or second not in self.bigram[first]:
                 continue

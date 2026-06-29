@@ -33,7 +33,7 @@ def get_database_connection_string(configuration_file: PathLike[str] = None, sec
 		value = ini_params.get(ini_name, value)
 		return value
 
-	ini_params = {}
+	ini_params = dict()
 	if configuration_file is not None:
 		parser = ConfigParser()
 		parser.read(configuration_file)

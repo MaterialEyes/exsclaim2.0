@@ -157,7 +157,7 @@ class UserMiddleware(BaseHTTPMiddleware):
 			case False: # Session key is expired
 				headers = {
 					"Location": "/login",
-					"Referer": request.url,
+					"Referer": str(request.url),
 				}
 				return Response(status_code=status.HTTP_303_SEE_OTHER, headers=headers, media_type="text/plain")
 			case _:

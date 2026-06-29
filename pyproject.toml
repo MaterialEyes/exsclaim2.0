@@ -20,6 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Image Processing",
     "Topic :: Text Processing"
 ]
@@ -36,12 +37,18 @@ Paper = "https://arxiv.org/abs/2103.10631"
 [project.scripts]
 exsclaim = "exsclaim.__main__:main"
 
+[project.optional-dependencies]
+ollama = [
+    "ollama~=0.6.2"
+]
+
 [build-system]
 requires = ["setuptools>=80.9.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["exsclaim", "exsclaim.captions", "exsclaim.figures", "exsclaim.tests", "exsclaim.utilities", "exsclaim.api", "exsclaim.dashboard", "exsclaim.dashboard.components"]
+packages = ["exsclaim", "exsclaim.captions", "exsclaim.figures", "exsclaim.tests", "exsclaim.utilities", "exsclaim.api",
+    "exsclaim.dashboard", "exsclaim.dashboard.components", "exsclaim.dashboard.pages"]
 include-package-data = true
 
 [tool.setuptools.dynamic]

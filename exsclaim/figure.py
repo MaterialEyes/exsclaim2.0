@@ -34,7 +34,7 @@ class FigureSeparator(ExsclaimTool):
 	def __init__(self, search_query:dict, **kwargs):
 		kwargs.setdefault("logger_name", __name__ + ".FigureSeparator")
 		super().__init__(search_query, **kwargs)
-		self.exsclaim_json = {}
+		self.exsclaim_json = dict()
 		self._get_unrecognized_image_folders()
 
 	def _get_unrecognized_image_folders(self):
@@ -45,7 +45,8 @@ class FigureSeparator(ExsclaimTool):
 			if path is not None:
 				path.mkdir(parents=True, exist_ok=True)
 
-	async def load(self):
+	async def load(self, yolov11_subfigure_bbox: Optional[Path] = None, yolov11_subfigure_label: Optional[Path] = None,
+				   yolov11_classifier: Optional[Path] = None):
 		"""Load relevant models for the object detection tasks"""
 		from ultralytics import YOLO
 		from torchvision.models.detection import fasterrcnn_resnet50_fpn
@@ -53,6 +54,7 @@ class FigureSeparator(ExsclaimTool):
 
 		# Set configuration variables
 		figures_path = Path(__file__).parent.resolve() / "figures"
+		checkpoint_path = settings.CHECKPOINTS_PATH
 		self.cuda = torch.cuda.is_available()
 
 		self.dtype = torch.cuda.FloatTensor if self.cuda else torch.FloatTensor
@@ -61,18 +63,22 @@ class FigureSeparator(ExsclaimTool):
 
 		self.device = torch.device("cuda" if self.cuda else "cpu")
 
-		yolov11_load = figures_path / "checkpoints" / "yolov11_finetuned_augmentation_best.pt"
-		yolov11_subfigure = figures_path / "checkpoints" / "yolov11_classification.pt"
+		yolov11_subfigure_bbox = yolov11_subfigure_bbox or checkpoint_path / "yolov11_finetuned_augmentation_best.pt"
+		yolov11_subfigure_label = yolov11_subfigure_label or checkpoint_path / "yolov11_label.pt"
+		yolov11_classifier = yolov11_classifier or checkpoint_path / "yolov11_classification.pt"
 
-		for model_file in (yolov11_load, yolov11_subfigure):
+		for model_file in (yolov11_subfigure_bbox, yolov11_subfigure_label, yolov11_classifier):
 			if not model_file.is_file():
 				await download_model_checkpoint(model_file)
 
 		try:
-			self.yolo_model = YOLO(yolov11_load)
-			self.yolo_model.to(self.device)
+			self.subfigure_bbox = YOLO(yolov11_subfigure_bbox)
+			self.subfigure_bbox.to(self.device)
 
-			self.classification_model = YOLO(yolov11_subfigure)
+			self.subfigure_label = YOLO(yolov11_subfigure_label)
+			self.subfigure_label.to(self.device)
+
+			self.classification_model = YOLO(yolov11_classifier)
 			self.classification_model.to(self.device)
 		except BaseException as e:
 			self.logger.exception("Error loading YOLO models.")
@@ -92,7 +98,7 @@ class FigureSeparator(ExsclaimTool):
 		scale_bar_detection_model.roi_heads.box_predictor = FastRCNNPredictor(input_features, number_classes)
 
 		self.scale_bar_detection_model = await load_model_from_checkpoint(
-			scale_bar_detection_model, "scale_bar_detection_model.pt", self.cuda, self.device,
+			scale_bar_detection_model, "scale_bar_detection_model.pt", self.device,
 		)
 
 		# Load scale label recognition model
@@ -105,12 +111,12 @@ class FigureSeparator(ExsclaimTool):
 		scale_label_recognition_model = CRNN(configuration=configuration)
 
 		self.scale_label_recognition_model = await load_model_from_checkpoint(
-			scale_label_recognition_model, "scale_label_recognition_model.pt", self.cuda, self.device
+			scale_label_recognition_model, "scale_label_recognition_model.pt", self.device
 		)
 
 	async def unload(self):
 		torch.cuda.empty_cache()
-		for model in (self.yolo_model, self.classification_model, self.scale_bar_detection_model, self.scale_label_recognition_model):
+		for model in (self.subfigure_bbox, self.classification_model, self.scale_bar_detection_model, self.scale_label_recognition_model):
 			# Remove the model from the GPU
 			if self.cuda:
 				model.to("cpu")
@@ -123,7 +129,7 @@ class FigureSeparator(ExsclaimTool):
 
 		return exsclaim_dict
 
-	async def run(self, search_query:dict, exsclaim_dict: dict[str, Any]):
+	async def run(self, search_query: dict, exsclaim_dict: dict[str, Any]):
 		"""Run the models relevant to manipulating article figures"""
 		exsclaim_dict = exsclaim_dict or dict()
 		append_file = "_figures"
@@ -289,9 +295,9 @@ class FigureSeparator(ExsclaimTool):
 			"cm":    10_000_000.0,
 			"m":  1_000_000_000.0,
 		}
-		unassigned = figure_json.get("unassigned", {})
-		unassigned_scale_labels = unassigned.get("scale_bar_labels", [])
-		master_images = figure_json.get("master_images", [])
+		unassigned = figure_json.get("unassigned", dict())
+		unassigned_scale_labels = unassigned.get("scale_bar_labels", list())
+		master_images = figure_json.get("master_images", list())
 		image = Image.open(figure_path).convert("RGB")
 		tensor_image = transforms.ToTensor()(image)
 
@@ -342,6 +348,30 @@ class FigureSeparator(ExsclaimTool):
 
 		return figure_json
 
+	def get_bounding_boxes(self, figure_path: Path, model):
+		# Run YOLO detection with higher confidence threshold
+		results = model.predict(
+			source=figure_path,
+			imgsz=self.image_size,
+			conf=0.6,
+			iou=0.45,
+			max_det=100,
+			agnostic_nms=False,
+			stream=False
+		)
+		result = results[0]
+
+		# Process detections
+		detections_per_class = dict()
+
+		for box in result.boxes:
+			cls_id = int(box.cls[0])
+			conf = box.conf[0]
+			if cls_id not in detections_per_class or conf > detections_per_class[cls_id].conf[0]:
+				detections_per_class[cls_id] = box
+		# print(f"{detections_per_class=}")
+		return detections_per_class
+
 	def extract_image_objects(self, figure_path: str) -> dict:
 		"""Separate and classify subfigures in an article figure
 
@@ -357,52 +387,37 @@ class FigureSeparator(ExsclaimTool):
 		# Get full path to figure
 		figure_path = self.results_directory / "figures" / figure_path
 
-		img = cv2.imread(str(figure_path), cv2.IMREAD_COLOR)
+		img: np.ndarray = cv2.imread(str(figure_path), cv2.IMREAD_COLOR)
 		height, width, _ = img.shape
 		binary_img = np.zeros((height, width, 1))
 
 		# Get figure name without extension for directory naming
 		figure_base_name = figure_path.stem
 
-		# Run YOLO detection with higher confidence threshold
-		results = self.yolo_model.predict(
-			source=figure_path,
-			imgsz=self.image_size,
-			conf=0.6,
-			iou=0.45,
-			max_det=100,
-			agnostic_nms=False,
-			stream=True
-		)
+		detections_per_class = self.get_bounding_boxes(figure_path, self.subfigure_bbox)
+		subfigures_per_class = self.get_bounding_boxes(figure_path, self.subfigure_label)
 
 		# Initialize variables
 		figure_name = figure_path.name
-		figure_json = self.exsclaim_json.get(figure_name, {})
+		figure_json = self.exsclaim_json.get(figure_name, dict())
 		figure_json.update(dict(
 			figure_name=figure_name,
 			master_images=[]
 		))
 
-		# Process detections
-		detections_per_class = {}
-		first_result = None
-
-		for i, result in enumerate(results):
-			first_result = first_result or result
-			for box in result.boxes:
-				cls_id = int(box.cls[0])
-				conf = box.conf[0]
-				if cls_id not in detections_per_class or conf > detections_per_class[cls_id].conf[0]:
-					detections_per_class[cls_id] = box
-
-		if first_result is None or first_result.boxes.shape[0] == 0:
+		if len(detections_per_class) == 0:
 			self.logger.info(f"{figure_path} could not detect any subfigures.")
 			if self.undetected_path is not None:
-				cv2.imwrite(str(self.undetected_path / figure_path.name), img)
+				cv2.imwrite(self.undetected_path / figure_path.name, img)
 
 		# Process each final detection
 		for cls_id, box in detections_per_class.items():
 			x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+			label_box = subfigures_per_class.get(cls_id, None)
+			if label_box is not None:
+				lx1, ly1, lx2, ly2 = label_box.xyxy[0].cpu().numpy()
+			else:
+				lx1, ly1, lx2, ly2 = None, None, None, None
 			conf = float(box.conf[0])
 
 			# Ensure coordinates are within bounds and boxes aren't too small
@@ -418,7 +433,7 @@ class FigureSeparator(ExsclaimTool):
 				continue
 
 			# Get the label
-			label = self.yolo_model.names[cls_id]		# This will be 'a', 'b', 'c', etc.
+			label = self.subfigure_bbox.names[cls_id]		# This will be 'a', 'b', 'c', etc.
 
 			# Add to binary mask for visualization if small enough
 			if dx < 64 and dy < 64:
@@ -432,19 +447,19 @@ class FigureSeparator(ExsclaimTool):
 				iou=0.45,
 				max_det=100,
 				agnostic_nms=False,
-				stream=True
+				stream=False
 			)
 
-			try:
-				results = next(classification_results)
-				classification = results.names[results.probs.top1]
-				class_conf = float(results.probs.top1conf)
-			except BaseException as e:
-				self.logger.exception(f"Could not classify subfigure {figure_path} ({label}).", exc_info=e)
+			result = classification_results[0]
+			if result.probs is not None:
+				classification = result.names[result.probs.top1]
+				class_conf = float(result.probs.top1conf)
+			else:
+				self.logger.exception(f"Could not classify subfigure {figure_path} (label {label}) -- result.probs is None.")
 				classification = "unclear"
 				class_conf = 0
 				if self.unclassified_path is not None:
-					cv2.imwrite(str(self.unclassified_path / f"{figure_path.stem}-{label}{figure_path.suffix}"), img)
+					cv2.imwrite(self.unclassified_path / f"{figure_path.stem}-{label}{figure_path.suffix}", img)
 
 			# Create master_image_info
 			master_image_info = {
@@ -453,20 +468,20 @@ class FigureSeparator(ExsclaimTool):
 				"confidence": float(conf),
 				"height": dy,
 				"width": dx,
-				"geometry": [
-					{"x": x1, "y": y1},
-					{"x": x2, "y": y1},
-					{"x": x1, "y": y2},
-					{"x": x2, "y": y2}
-				],
+				"geometry": dict(
+					x0=x1,
+					y0=y1,
+					x1=x2,
+					y1=y2
+				),
 				"subfigure_label": {
 					"text": label,
-					"geometry": [
-						{"x": x1, "y": y1},
-						{"x": x2, "y": y1},
-						{"x": x1, "y": y2},
-						{"x": x2, "y": y2}
-					]
+					"geometry": dict(
+						x0=int(lx1),
+						y0=int(ly1),
+						x1=int(lx2),
+						y1=int(ly2)
+					)
 				}
 			}
 

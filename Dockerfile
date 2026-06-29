@@ -1,4 +1,5 @@
-FROM python:3.13.11-slim AS core
+# syntax=docker/dockerfile:1.7-labs
+FROM python:3.14.4-slim AS core
 LABEL authors="Len Washington III"
 
 ARG UID=1000
@@ -10,7 +11,6 @@ ARG GNAME=exsclaim
 ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
 ARG CHROMEDRIVER_VERSION="144.0.7559.96"
 
-ENV OLLAMA_MODELS=/opt/ollama
 ENV CUDA_LAUNCH_BLOCKING=1
 
 ENV FAST_API_PORT=8000
@@ -24,17 +24,19 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 SHELL ["/bin/bash", "-c"]
 HEALTHCHECK --interval=20s --timeout=4s --start-period=12s --retries=8 CMD docker-healthcheck
 ENTRYPOINT ["docker-entrypoint"]
-CMD exsclaim initialize_db; exsclaim ui --force_ollama --blocking
+CMD exsclaim ui --blocking --initialize_db
 
 WORKDIR /opt/install
 
 COPY ./requirements.txt /opt/install/requirements.txt
 
 RUN --mount=type=cache,target=/tmp/pip \
-	groupadd -g $GID $GNAME && \
+    --mount=type=cache,target=/var/lib/apt\
+    groupadd -g $GID $GNAME && \
     useradd -lm -u $UID -g $GNAME -c "EXSCLAIM non-root user" --shell /bin/bash $UNAME && \
     usermod -aG $GID $UNAME && \
-    mkdir -p /exsclaim/{logs,results}/ && \
+    printf "\numask 002\n" >> /home/$UNAME/.bashrc && \
+    mkdir -p /exsclaim/{logs,results,yolo}/ && \
     chown -R $UID:$GID /exsclaim && \
     apt update && \
     apt install -y --no-install-recommends curl ffmpeg unzip libglib2.0-0 libnss3 \
@@ -47,23 +49,23 @@ RUN --mount=type=cache,target=/tmp/pip \
         libdrm2 libnspr4 xvfb fonts-noto-color-emoji fonts-unifont \
         libfreetype6 xfonts-scalable fonts-liberation fonts-ipafont-gothic \
         fonts-wqy-zenhei fonts-tlwg-loma-otf fonts-freefont-ttf zstd build-essential \
-	make git cmake libfreetype6-dev libharfbuzz-dev && \
-	curl -fsSL https://ollama.com/install.sh | sh && \
-	usermod -aG ollama $UNAME && \
+        make git cmake libfreetype6-dev libharfbuzz-dev libssl-dev libopenblas-dev && \
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
     pip install --upgrade pip --cache-dir=/tmp/pip --root-user-action ignore && \
     . ~/.bashrc && \
-    uv pip install --system --native-tls -r /opt/install/requirements.txt && \
+    uv pip install --system --system-certs -r /opt/install/requirements.txt || exit 1; \
     playwright install --with-deps chromium && \
     curl -o chromedriver-linux64.zip https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip && \
-	unzip -p chromedriver-linux64.zip chromedriver-linux64/chromedriver > /usr/local/bin/chromedriver && \
-	curl -o chrome-linux64.zip https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chrome-linux64.zip && \
-	unzip chrome-linux64.zip -d /opt/chrome && \
-	apt clean && \
+    unzip -p chromedriver-linux64.zip chromedriver-linux64/chromedriver > /usr/local/bin/chromedriver && \
+    curl -o chrome-linux64.zip https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chrome-linux64.zip && \
+    unzip chrome-linux64.zip -d /opt/chrome && \
+    apt clean && \
     rm chrome*-linux64.zip && \
-	rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p /home/$UNAME/.cache/torch; \
+    chown -R $UID:$GID /home/$UNAME/.cache
 
-COPY ./ ./
+COPY --parents ./exsclaim ./LICENSE ./Makefile ./MANIFEST.in ./pyproject.toml ./README.md ./setup.py ./
 COPY --chown=$UID:$GID docker-entrypoint docker-healthcheck /usr/local/bin/
 COPY --chown=$UID:$GID query ./query
 
@@ -72,10 +74,11 @@ RUN --mount=type=cache,target=/tmp/pip \
     chmod +x /usr/local/bin/docker-healthcheck && \
     . ~/.bashrc && \
     make install && \
+    make clean && \
     apt clean && \
-	rm -rf /var/lib/apt/lists/* && \
+    rm -rf /var/lib/apt/lists/* && \
     mkdir -p /opt/exsclaim && \
-    chmod 775 /opt/{exsclaim,ollama} && \
+    chmod 775 /opt/exsclaim && \
     chown $UID:$GID /opt/exsclaim
 
 WORKDIR /opt/exsclaim
@@ -85,12 +88,12 @@ USER $UID
 FROM core AS pycharm
 LABEL authors="Len Washington III"
 
-CMD ["python3"]
+#CMD ["python3"]
 
 USER root
 
 RUN touch ~/.xinitrc && chmod +x ~/.xinitrc && \
-    pip install ipython==9.2.0 pydevd==3.3.0 pydevd-pycharm pytest==8.4.1 scipy-stubs==1.16.0.2 yappi==1.6.10 trio==0.32.0 faker==40.1.0 --root-user-action ignore --cache-dir /tmp/pip && \
+    pip install ipython==9.2.0 pydevd==3.3.0 pydevd-pycharm~=262.8117.23 pytest==8.4.1 scipy-stubs==1.16.0.2 trio==0.32.0 --root-user-action ignore --cache-dir /tmp/pip && \
     chmod -R 775 /opt && \
     chown -R exsclaim:root /opt && \
     mkdir -p /home/exsclaim/.cache/torch/hub/checkpoints/ && \
@@ -99,16 +102,6 @@ RUN touch ~/.xinitrc && chmod +x ~/.xinitrc && \
     --output '/home/exsclaim/.cache/torch/hub/checkpoints/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth'
 
 USER $UID
-
-FROM core AS with-ollama
-
-RUN mkdir -p $OLLAMA_MODELS && \
-	chown -R ollama:ollama $OLLAMA_MODELS && \
-	chmod -R 775 $OLLAMA_MODELS && \
-    echo -e '#!/bin/bash\n\nnohup ollama serve&\nOLLAMA_PID=$!\necho "Waiting for Ollama server to start..."\nwhile [ "$(ollama list | grep NAME)" == "" ]; do\n  sleep 1\ndone\nollama pull llama3.2\nkill $OLLAMA_PID' > pull_ollama_file && \
-    chmod +x pull_ollama_file && \
-    ./pull_ollama_file && \
-    rm pull_ollama_file
 
 FROM core AS jupyter
 

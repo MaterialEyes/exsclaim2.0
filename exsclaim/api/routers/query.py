@@ -6,8 +6,7 @@ import logging
 from asyncio import all_tasks, create_task, CancelledError, Task
 from datetime import datetime as dt
 from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
-from fastapi import APIRouter, BackgroundTasks, Depends, status
-from fastapi.responses import ORJSONResponse
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, status
 from json import dump
 from os import listdir
 from pathlib import Path
@@ -18,7 +17,7 @@ from starlette.requests import Request
 from starlette.responses import Response, FileResponse
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
-from typing import Literal
+from typing import Literal, Optional
 from uuid import UUID
 
 
@@ -62,12 +61,12 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, session: AsyncSes
 		if results_dir.is_dir():
 			rmtree(results_dir.absolute(), ignore_errors=True)
 	except (KeyboardInterrupt, CancelledError) as e:
-		db_result = Status.STOPPED # FIXME: Stopping the run using the endpoint doesn't set it with the proper status
-		logging.info(f"Run {_id} was stopped during processing: {e}")
+		db_result = Status.STOPPED
+		logger.info(f"Run {_id} was stopped during processing: {e}")
 		result_code = 1
 	except Exception as e:
 		db_result = Status.ERROR
-		logging.getLogger(f"run_exsclaim_{_id}").exception(e)
+		logger.exception(e)
 		result_code = -1
 	finally:
 		await session.execute(update(Results).where(Results.id == _id).values(status=db_result, end_time=dt.now()))
@@ -76,7 +75,7 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, session: AsyncSes
 	return result_code
 
 
-@router.post("/query", responses={
+@router.api_route("/query", methods=["POST", "HEAD"], responses={
 	202: {
 		"description": "Query successfully submitted.",
 		"content": {
@@ -189,7 +188,7 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 				"ntfy": list(map(lambda ntfy: ntfy.to_json(), search_query.ntfy)),
 				"emails": search_query.emails,
 			},
-			**search_query.tools,
+			**search_query.tools.tools,
 		}
 
 		# profile = request.headers.get("X-Profile-Request", "0") == "1"
@@ -214,7 +213,7 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 		await session.commit()
 
 		if send_json:
-			response = ORJSONResponse(
+			response = ExsclaimJSONResponse(
 				{"message": "Thank you, your request is currently being processed.", "result_id": str_uuid},
 				status_code=status.HTTP_202_ACCEPTED, media_type="application/json")
 		else:
@@ -225,22 +224,22 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 		logger.exception(e)
 		message = "An error occurred connecting to the database. Please try again later."
 		if send_json:
-			response = ORJSONResponse({"message": message}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="application/json")
+			response = ExsclaimJSONResponse({"message": message}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="application/json")
 		else:
 			response = Response(message, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="text/plain")
 	except Exception as e:
-		print(f"{logger=}, {e}")
-		logger.exception(e)
+		print(f"{e}")
+		logger.exception("An unknown error occurred when querying.", exc_info=e)
 		message = "An unknown error occurred within the EXSCLAIM! API. Please try again later."
 		if send_json:
-			response = ORJSONResponse({"message": message}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="application/json")
+			response = ExsclaimJSONResponse({"message": message}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="application/json")
 		else:
 			response = Response(message, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
 
 	return response
 
 
-@router.get("/status/{result_id}", tags=["Using EXSCLAIM"],
+@router.api_route("/status/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
 		 responses={
 			 200: {
 				 "description": "Status Found for ID.",
@@ -350,7 +349,7 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 					 }
 				 }
 			 },
-			 503: {
+			 210: {
 				 "description": "Internal Database Error.",
 				 "content": {
 					 "application/json": {
@@ -380,7 +379,7 @@ async def status_def(request: Request, result_id: UUID):
 	result: Results = results.scalar_one_or_none()
 
 	if not User.has_permission(request.state.user_id, result):
-		return ORJSONResponse({
+		return ExsclaimJSONResponse({
 			"results_status": "Not Found",
 			"message": f"There is no query recorded in our database with id: {result_id}."
 		}, status_code=status.HTTP_404_NOT_FOUND, media_type="application/json")
@@ -390,13 +389,17 @@ async def status_def(request: Request, result_id: UUID):
 	time_diff = (end_time or dt.now(tz=start_time.tzinfo)) - start_time
 
 	match results_status:
-		case Status.RUNNING | Status.FINISHED | Status.STOPPED:
+		case Status.RUNNING:
 			status_code = status.HTTP_200_OK
+		case Status.FINISHED:
+			status_code = status.HTTP_202_ACCEPTED
+		case Status.STOPPED:
+			status_code = 209
 		case Status.ERROR:
-			status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+			status_code = 210
 		case _:
 			logger.exception(f"Unknown results_status {results_status} when checking results_status of {result_id}.")
-			return ORJSONResponse(dict(message="An unknown results_status was saved in our database. Try again later."),
+			return ExsclaimJSONResponse(dict(message="An unknown results_status was saved in our database. Try again later."),
 								  status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="application/json")
 
 	json = dict(
@@ -406,37 +409,37 @@ async def status_def(request: Request, result_id: UUID):
 		run_time=time_diff.total_seconds()
 	)
 
-	headers = {}
+	headers = dict()
 	if results_status == Status.FINISHED:
 		headers = {"Location": f"/results/{result_id}"}
 
-	return ORJSONResponse(json, status_code=status_code, media_type="application/json", headers=headers)
+	return ExsclaimJSONResponse(json, status_code=status_code, media_type="application/json", headers=headers)
 
 
-@router.get("/stop/{result_id}", tags=["Using EXSCLAIM"])
+@router.api_route("/stop/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
 async def stop_run(request: Request, result_id: UUID):
 	session: AsyncSession = request.state.session
 	results = await session.execute(select(Results).where(Results.id == result_id))
 	result: Results = results.scalar_one_or_none()
 
 	if result.user_id != request.state.user_id:
-		return ORJSONResponse({
+		return ExsclaimJSONResponse({
 			"status": "Not Found",
 			"message": f"There is no query recorded in our database with id: {result_id}."
 		}, status_code=status.HTTP_404_NOT_FOUND)
 
 	match result.status:
 		case Status.FINISHED:
-			return ORJSONResponse({
+			return ExsclaimJSONResponse({
 				"message": f"Run {result_id} has already finished running."
 			}, status_code=status.HTTP_406_NOT_ACCEPTABLE)
 		case Status.ERROR:
-			return ORJSONResponse({
+			return ExsclaimJSONResponse({
 				"message": f"Run {result_id} has already stopped running due to an error."
 			}, status_code=status.HTTP_412_PRECONDITION_FAILED)
 		case Status.STOPPED:
-			return ORJSONResponse({
-				"message": f"Run {result_id} has already stopped running due to an error."
+			return ExsclaimJSONResponse({
+				"message": f"Run {result_id} has already stopped early."
 			}, status_code=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 	# The pipeline is still running for the pipeline
@@ -444,23 +447,22 @@ async def stop_run(request: Request, result_id: UUID):
 	tasks = tuple(filter(lambda task: task.get_name() == task_name, all_tasks()))
 
 	if len(tasks) == 0:
-		return ORJSONResponse({
+		return ExsclaimJSONResponse({
 			"message": f"Could not find a running pipeline for {result_id}. Please try again later."
 		}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 	elif len(tasks) > 1:
-		return ORJSONResponse({
+		return ExsclaimJSONResponse({
 			"message": f"Found too many running pipelines for {result_id}. Please try again later."
 		}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 	task: Task = tasks[0]
 	task.cancel("Pipeline stopped upon user request.")
-	return ORJSONResponse({
+	return ExsclaimJSONResponse({
 		"message": f"Stopped the pipeline for {result_id}."
 	}, status_code=status.HTTP_200_OK)
 
 
-
-@router.get("/results/{result_id}", tags=["Using EXSCLAIM"],
+@router.api_route("/results/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
 		 responses={
 			 200: {
 				 "description": "Results Compressed and Included.",
@@ -583,14 +585,8 @@ async def download(request: Request, result_id: UUID, compression: str = "defaul
 			"The result id was found in our database, but the corresponding results file could not be found. Please try again later.",
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="text/plain")
 
-	# last_modified = results_file.stat().st_mtime
 	if compression == "gztar":
-		# buffer = BytesIO()
-		# with open(results_file, "rb") as f:
-		# 	buffer.write(f.read())
-		# return streaming_response_with_hash(buffer, results_file.name, last_modified)
-
-		return FileResponse(str(results_file), media_type="text/plain", status_code=status.HTTP_200_OK)
+		return FileResponse(results_file, status_code=status.HTTP_200_OK, stat_result=results_file.stat())
 
 	tmp_dir = Path(tmp_dir_name)
 
@@ -603,23 +599,38 @@ async def download(request: Request, result_id: UUID, compression: str = "defaul
 		make_archive(str(tmp_dir / str(result_id)), compression, root_dir=str(tmp_dir), base_dir=name)
 	)
 
-	# buffer = BytesIO()
-
-	# with open(results_file, "rb") as f:
-	# 	buffer.write(f.read())
-
 	if filename == "name":
 		filename = results_file.with_stem(name).name
 	elif filename == "id":
 		filename = results_file.name
 
-	response = FileResponse(str(results_file), media_type="text/plain", status_code=status.HTTP_200_OK,
+	return FileResponse(results_file, status_code=status.HTTP_200_OK, stat_result=results_file.stat(),
 						headers={"Content-Disposition": f"inline ; filename = \"{filename}\""})
-	return response
-	# return streaming_response_with_hash(buffer, filename, last_modified)
 
 
-@router.get("/compression_types", tags=["Using EXSCLAIM"],
+@router.api_route("/results/{result_id}/publicize", methods=["POST", "HEAD"], tags=["Using EXSCLAIM"])
+async def publicize_result(request: Request, result_id: UUID, publicize: bool = Body(...)):
+	session: AsyncSession = request.state.session
+	results = await session.execute(select(Results).where(Results.id == result_id))
+	results: Optional[Results] = results.scalar_one_or_none()
+
+	if results is None or results.user_id != request.state.user_id:
+		return Response(f"There is no query recorded in our database with id: {result_id}.",
+						status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
+
+	if results.user_id == get_guest_uuid():
+		return Response("Publicization status for queries run by guests cannot be changed.",
+						status_code=status.HTTP_403_FORBIDDEN, media_type="text/plain")
+
+	if publicize == results.publicize_results:
+		return Response(f"Publicization status for {result_id} is already {publicize}.",
+						status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
+
+	await session.execute(update(Results).where(Results.id == result_id).values(publicize_results=publicize))
+	return Response("Publicization status updated.", status_code=status.HTTP_200_OK, media_type="text/plain")
+
+
+@router.api_route("/compression_types", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
 		 responses={
 			 200: {
 				 "description": "Possible Compression Algorithms/Extensions",
@@ -694,27 +705,28 @@ async def download(request: Request, result_id: UUID, compression: str = "defaul
 				 }
 			 }
 		 })
-async def get_possible_compressions(request: Request, compression_type: str = None) -> Response:
+async def get_possible_compressions(request: Request, compression_type: Optional[str] = None) -> Response:
 	send_json = request.headers.get("accept", "") == "application/json"
 	compression_types = frozenset(map(lambda i: i[0], get_archive_formats()))
 
 	if compression_type is None: # TODO: Add E-Tag header for compression types
 		compression_types = list(compression_types)
 		if send_json:
-			return ORJSONResponse({"compression_types": compression_types}, status_code=status.HTTP_200_OK,
+			return ExsclaimJSONResponse({"compression_types": compression_types}, status_code=status.HTTP_200_OK,
 								  media_type="application/json")
 		return Response(str(compression_types), status_code=status.HTTP_200_OK, media_type="text/plain")
 
 	allowed = compression_type in compression_types
 	status_code = status.HTTP_202_ACCEPTED if allowed else status.HTTP_404_NOT_FOUND
 	if send_json:
-		return ORJSONResponse({"allowed": allowed}, status_code=status_code, media_type="application/json")
+		return ExsclaimJSONResponse({"allowed": allowed}, status_code=status_code, media_type="application/json")
 
 	return Response(f"{compression_type} is {'NOT ' if not allowed else ''}an available compression type.",
 					status_code=status_code, media_type="text/plain")
 
 
-@router.get("/classification_codes", tags=["Using EXSCLAIM"], response_model=list[ClassificationCodes])
+@router.api_route("/classification_codes", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
+				  response_model=list[ClassificationCodes])
 async def classification_codes(request: Request, response: Response) -> tuple[ClassificationCodes]:
 	from base64 import b64encode
 	session: AsyncSession = request.state.session
@@ -729,7 +741,7 @@ async def classification_codes(request: Request, response: Response) -> tuple[Cl
 	return results
 
 
-@router.get("/checkpoints/{checkpoint}", tags=["EXSCLAIM Model Checkpoints"])
+@router.api_route("/checkpoints/{checkpoint}", methods=["GET", "HEAD"], tags=["EXSCLAIM Model Checkpoints"])
 async def download_checkpoint(checkpoint: str) -> Response:
 	checkpoint_folder = settings.CHECKPOINTS_PATH
 
@@ -742,7 +754,8 @@ async def download_checkpoint(checkpoint: str) -> Response:
 		return Response(f"Could not find checkpoint \"{checkpoint}\".", status_code=status.HTTP_404_NOT_FOUND,
 						media_type="text/plain")
 
-	return FileResponse(str(checkpoint_path), media_type="application/octet-stream", status_code=status.HTTP_200_OK)
+	return FileResponse(checkpoint_path, media_type="application/octet-stream", status_code=status.HTTP_200_OK,
+						stat_result=checkpoint_path.stat())
 	# with open(checkpoint_path, "rb") as f:
 	# 	buffer = BytesIO(f.read())
 	# return streaming_response_with_hash(buffer, checkpoint, checkpoint_path.stat().st_mtime)

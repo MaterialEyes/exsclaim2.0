@@ -1,7 +1,6 @@
 from ..models import *
 
 from fastapi import APIRouter, status, HTTPException
-from fastapi.responses import ORJSONResponse
 from re import findall
 from starlette.requests import Request
 from sqlalchemy import select
@@ -23,7 +22,7 @@ async def get_item(cls, results_id: UUID, _id: str, session: AsyncSession, error
 	if item is not None:
 		return item
 
-	return ORJSONResponse(dict(message=error_msg(_id), status_code=status.HTTP_404_NOT_FOUND, media_type="application/json"))
+	return dict(message=error_msg(_id), status_code=status.HTTP_404_NOT_FOUND, media_type="application/json")
 
 
 async def get_items(cls, results_id: UUID, user_id: UUID, session: AsyncSession, page: Optional[int] = None):
@@ -112,7 +111,7 @@ def get_item_responses(*args, **kwargs):
 
 
 # region Lists of Objects
-@router.get("/{results_id}/articles", tags=[TAG], response_model=list[Article],
+@router.api_route("/{results_id}/articles", methods=["GET", "HEAD"], tags=[TAG], response_model=list[Article],
 			responses=get_items_responses("Article", "articles", [
 			 {
 				 "id": "s41467-024-50040-6",
@@ -146,31 +145,31 @@ async def articles(request: Request, results_id: UUID):
 	return await get_items(Article, results_id, request.state.user_id, request.state.session)
 
 
-@router.get("/{results_id}/figures/", tags=[TAG], response_model=list[Figure],
+@router.api_route("/{results_id}/figures", methods=["GET", "HEAD"], tags=[TAG], response_model=list[Figure],
 			responses=get_items_responses("Figure", "figures", []))
 async def figures(request: Request, results_id: UUID, page=None):
 	return await get_items(Figure, results_id, request.state.user_id, request.state.session, page)
 
 
-@router.get("/{results_id}/subfigures/", tags=[TAG], response_model=list[Subfigure],
+@router.api_route("/{results_id}/subfigures", methods=["GET", "HEAD"], tags=[TAG], response_model=list[Subfigure],
 			responses=get_items_responses("Subfigure", "subfigures", []))
 async def subfigures(request: Request, results_id: UUID, page=None):
 	return await get_items(Subfigure, results_id, request.state.user_id, request.state.session)
 
 
-@router.get("/{results_id}/scales/", tags=[TAG], response_model=list[Scale],
+@router.api_route("/{results_id}/scales", methods=["GET", "HEAD"], tags=[TAG], response_model=list[Scale],
 			responses=get_items_responses("Scale", "scales", []))
 async def scales(request: Request, results_id: UUID):
 	return await get_items(Scale, results_id, request.state.user_id, request.state.session)
 
 
-@router.get("/{results_id}/subfigure_labels/", tags=[TAG], response_model=list[SubfigureLabel],
+@router.api_route("/{results_id}/subfigure_labels", methods=["GET", "HEAD"], tags=[TAG], response_model=list[SubfigureLabel],
 			responses=get_items_responses("SubfigureLabel", "subfigure labels", []))
 async def subfigure_labels(request: Request, results_id: UUID):
 	return await get_items(SubfigureLabel, results_id, request.state.user_id, request.state.session)
 
 
-@router.get("/{results_id}/scale_labels/", tags=[TAG], response_model=list[ScaleLabel],
+@router.api_route("/{results_id}/scale_labels", methods=["GET", "HEAD"], tags=[TAG], response_model=list[ScaleLabel],
 			responses=get_items_responses("ScaleLabel", "scale labels", []))
 async def scale_labels(request: Request, results_id: UUID):
 	return await get_items(ScaleLabel, results_id, request.state.user_id, request.state.session)
@@ -178,44 +177,44 @@ async def scale_labels(request: Request, results_id: UUID):
 
 
 # region Individual Objects
-@router.get("/{results_id}/articles/{id}", tags=[TAG], response_model=Article,
+@router.api_route("/{results_id}/articles/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=Article,
 			responses=get_item_responses("Article", "article"))
-async def article(request: Request, results_id: UUID, id:str):
+async def article(request: Request, results_id: UUID, id: str):
 	session = request.state.session
 	return await get_item(Article, results_id, id, session, "No Article with id: {}".format)
 
 
-@router.get("/{results_id}/figures/{id}", tags=[TAG], response_model=Figure,
+@router.api_route("/{results_id}/figures/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=Figure,
 			responses=get_item_responses("Figure", "figure", []))
-async def figure(request: Request, results_id: UUID, id:str):
+async def figure(request: Request, results_id: UUID, id: str):
 	session = request.state.session
 	return await get_item(Figure, results_id, id, session, "No Figure with id: {}".format)
 
 
-@router.get("/{results_id}/subfigures/{id}", tags=[TAG], response_model=Subfigure,
+@router.api_route("/{results_id}/subfigures/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=Subfigure,
 			responses=get_item_responses("Subfigure", "subfigure", []))
-async def subfigure(request: Request, results_id: UUID, id:str):
+async def subfigure(request: Request, results_id: UUID, id: str):
 	session = request.state.session
 	return await get_item(Subfigure, results_id, id, session, "No Subfigure with id: {}".format)
 
 
-@router.get("/{results_id}/scales/{id}", tags=[TAG], response_model=Scale,
+@router.api_route("/{results_id}/scales/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=Scale,
 			responses=get_item_responses("Scale", "scale", []))
-async def scale(request: Request, results_id: UUID, id:str):
+async def scale(request: Request, results_id: UUID, id: str):
 	session = request.state.session
 	return await get_item(Scale, results_id, id, session, "No Scale with id: {}".format)
 
 
-@router.get("/{results_id}/subfigure_labels/{id}", tags=[TAG], response_model=SubfigureLabel,
+@router.api_route("/{results_id}/subfigure_labels/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=SubfigureLabel,
 			responses=get_item_responses("SubfigureLabel", "subfigure label", []))
-async def subfigure_label(request: Request, results_id: UUID, id:str):
+async def subfigure_label(request: Request, results_id: UUID, id: str):
 	session = request.state.session
 	return await get_item(SubfigureLabel, results_id, id, session, "No SubfigureLabel with id: {}".format)
 
 
-@router.get("/{results_id}/scale_labels/{id}", tags=[TAG], response_model=ScaleLabel,
+@router.api_route("/{results_id}/scale_labels/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=ScaleLabel,
 			responses=get_item_responses("ScaleLabel", "scale label", []))
-async def scale_label(request: Request, results_id: UUID, id:str):
+async def scale_label(request: Request, results_id: UUID, id: str):
 	session = request.state.session
 	return await get_item(ScaleLabel, results_id, id, session, "No ScaleLabel with id: {}".format)
 # endregion

@@ -7,8 +7,7 @@ package. All the model classes are independent of each
 other, but they expose the same interface, so they are
 interchangeable.
 """
-
-from .caption import LLM
+from .caption import LLM, OptionalSemaphore
 from .config import settings
 from .exceptions import JournalScrapeError
 from .journal import JournalFamily
@@ -22,7 +21,7 @@ from os import PathLike
 from pathlib import Path
 from re import match
 from time import time_ns as timer
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Collection
 
 import numpy as np
 
@@ -52,7 +51,6 @@ class ExsclaimTool(ABC):
 				handler.setFormatter(PrinterFormatter())
 				logger.addHandler(handler)
 
-		self.default_permissions = search_query.get("default_permissions", 0o775)
 		self.logger = logger
 		self.search_query = search_query
 
@@ -145,9 +143,9 @@ class ExsclaimTool(ABC):
 		"""
 		self.logger.info(info)
 
-	def display_exception(self, e:Exception, figure_path):
-		error_msg = f"<!> ERROR: An exception occurred in {self.__class__.__name__} on figure: {figure_path}. Exception: {e}"
-		self.logger.exception(error_msg)
+	def display_exception(self, e: Exception, figure_path: str):
+		error_msg = f"<!> ERROR: An exception occurred in {self.__class__.__name__} on figure: {figure_path}."
+		self.logger.exception(error_msg, exc_info=e)
 
 
 class JournalScraper(ExsclaimTool):
@@ -271,7 +269,7 @@ class CaptionDistributor(ExsclaimTool):
 		self.llm: LLM = LLM.from_search_query(search_query)
 
 	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter,
-						 caption_dict: dict[str, str], keywords: tuple[str, ...]):
+						 caption_dict: dict[str, str], keywords: Collection[str]):
 		exsclaim_dict[figure_name]["caption_delimiter"] = delimiter
 
 		# Gets the figure number out of the figure name
@@ -294,7 +292,7 @@ class CaptionDistributor(ExsclaimTool):
 			exsclaim_dict[figure_name]["unassigned"]["captions"].append(master_image)
 		return exsclaim_dict
 
-	def _appendJSON(self, exsclaim_json: dict, data: Iterable[str] = None, filename:str=None):
+	def _appendJSON(self, exsclaim_json: dict, data: Iterable[str] = None, filename: Optional[str] = None):
 		"""Commit updates to EXSCLAIM JSON and updates list of ed figures
 
 		Args:
@@ -311,37 +309,32 @@ class CaptionDistributor(ExsclaimTool):
 		await self.llm.unload()
 
 	async def _runner(self, exsclaim_json: dict, search_query: dict, figure: str, new_separated: set, lock: Lock,
-					 i: int, num_captions: int):
-		try:
-			# if figure == "s41929-023-01090-4_fig4.jpg":
-			# 	self.logger.error(
-			# 		f"There's an extra \"'\" in this {figure}'s caption that causes the JSON to not be parsed properly, skipping for now.")
-			# 	return
+					 semaphore: OptionalSemaphore, i: int, num_captions: int):
+		async with semaphore:
+			try:
+				t0 = self._start_timer()
+				self.display_info(f">>> Parsing captions from: {figure} ({i:,} of {num_captions:,}).")
 
-			# async with semaphore:
-			t0 = self._start_timer()
-			self.display_info(f">>> Parsing captions from: {figure} ({i:,} of {num_captions:,}).")
+				caption_text = exsclaim_json[figure]["full_caption"]
 
-			caption_text = exsclaim_json[figure]["full_caption"]
+				delimiter = "0"
 
-			delimiter = "0"
+				# caption_dict = await self.llm.separate_captions(caption_text)
+				# keywords = await self.llm.get_keywords(caption_text)
+				caption_dict, keywords = await self.llm.parse_captions(caption_text)
 
-			# caption_dict = await self.llm.separate_captions(caption_text)
-			# keywords = await self.llm.get_keywords(caption_text)
-			caption_dict, keywords = await self.llm.parse_captions(caption_text)
+				if caption_dict is not None:
+					self.logger.debug(f"Full caption dict: \"{caption_dict}\".")
+					async with lock:
+						self._update_exsclaim(search_query, exsclaim_json, figure, delimiter, caption_dict, keywords)
+						new_separated.add(figure)
+				else:
+					self.logger.exception(f"Could not find full caption in {figure}.")
 
-			if caption_dict is not None:
-				self.logger.debug(f"Full caption dict: \"{caption_dict}\".")
-				async with lock:
-					self._update_exsclaim(search_query, exsclaim_json, figure, delimiter, caption_dict, keywords)
-					new_separated.add(figure)
-			else:
-				self.logger.exception(f"Could not find full caption in {figure}.")
+			except Exception as e:
+				self.display_exception(e, figure)
 
-		except Exception as e:
-			self.display_exception(e, figure)
-
-		self._end_timer(t0, f"CaptionDistributor: {figure} ({i:,} of {num_captions:,}).")
+			self._end_timer(t0, f"CaptionDistributor: {figure} ({i:,} of {num_captions:,}).")
 
 	async def run(self, search_query: dict, exsclaim_json: dict, limit_llms_to: Optional[int] = None):
 		"""Run the CaptionDistributor to distribute subfigure captions
@@ -354,9 +347,6 @@ class CaptionDistributor(ExsclaimTool):
 			exsclaim_json (dict): Updated with results of search
 		"""
 		exsclaim_json = exsclaim_json or dict()
-		# Having -1 will remove the semaphore limit, then Ollama can be 1 since that's all running locally.
-		# semaphore = Semaphore(limit_llms_to or self.llm.request_concurrency())
-
 		self.display_info(f"Running Caption Distributor\n")
 
 		t0 = self._start_timer()
@@ -384,8 +374,10 @@ class CaptionDistributor(ExsclaimTool):
 
 		num_figures = len(figures)
 		lock = Lock()
+		concurrency = self.llm.request_concurrency()
+		semaphore = OptionalSemaphore(concurrency)
 		await gather(*[
-			self._runner(exsclaim_json, search_query, _path, new_separated, lock, i+1, num_figures)
+			self._runner(exsclaim_json, search_query, _path, new_separated, lock, semaphore, i+1, num_figures)
 			for i, _path in enumerate(figures)
 		])
 

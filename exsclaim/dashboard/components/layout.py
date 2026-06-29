@@ -6,8 +6,9 @@ Converted from React Layout.js component.
 import dash_bootstrap_components as dbc
 
 from certifi import where
-from dash import html, dcc, callback, clientside_callback, ClientsideFunction, Output, Input, State, no_update
+from dash import html, dcc, callback, clientside_callback, ClientsideFunction, Output, Input, State, no_update, ALL
 from dash.exceptions import PreventUpdate
+from dash_extensions import Purify
 
 from exsclaim.api import Status
 from httpx import Client
@@ -52,6 +53,10 @@ def create_layout_component(result_id: UUID, base_url: str, public_api_url: str)
 			"figure_page": 1,
 			"subfigure_page": 1
 		}),
+
+		dcc.Store(
+			id="visible-ids"
+		),
 
 		# Interval component for polling API status
 		dcc.Interval(
@@ -180,7 +185,7 @@ def create_result_id_component(result_id: UUID):
 
 
 def create_download_component(public_api_url: str, result_id: UUID):
-	return html.A( # TODO: Get the correct URL (this is using private, not public)
+	return html.A(
 		href=f"{public_api_url}/results/{result_id}",
 		children=[
 			dbc.Card([
@@ -312,10 +317,8 @@ def create_submit_component():
 
 def create_images_page_component():
 	"""Create the images page component (right side display)."""
-	return html.Div([
-		html.Div(id="images-container", children=[
-			html.Div("No articles/figures available", className="text-center")
-		])
+	return dbc.Container(id="images-container", children=[
+		html.Div("No articles/figures available", className="text-center")
 	])
 
 
@@ -391,11 +394,10 @@ def update_keywords(keyword_type, data):
 
 
 @callback(
-	[
-		Output("images-container", "children"),
-		Output("scale-max-width", "value"),
-		Output("scale-max-height", "value"),
-	],
+	Output("visible-ids", "data"),
+	Output("images-container", "children"),
+	Output("scale-max-width", "value"),
+	Output("scale-max-height", "value"),
 	[
 		Input("layout-state", "data"),
 	],
@@ -409,23 +411,25 @@ def update_keywords(keyword_type, data):
 async def update_images(data, max_width, max_height):
 	"""Update images display based on filters."""
 	if not data:
-		return [html.Div("No data available", className="text-center")], no_update, no_update
+		return no_update, [html.Div("No data available", className="text-center")], no_update, no_update
 
 	if not data.get("results_available", True):
-		match data.get("status", Status.ERROR):
-			case Status.STOPPED:
-				return [html.Div("This run was stopped by the user or admin, please re-submit your query.", className="text-center")], no_update, no_update
-			case Status.ERROR:
-				return [html.Div("The results for this run are unavailable due to an error interrupting the pipeline. Please re-submit your query later.", className="text-center")], no_update, no_update
+		match data.get("status", Status.ERROR.value).rstrip("."):
+			case Status.STOPPED.value:
+				return [no_update, html.Div("This run was stopped by the user or admin, please re-submit your query.", className="text-center")], no_update, no_update
+			case Status.ERROR.value:
+				return [no_update, html.Div("The results for this run are unavailable due to an error interrupting the pipeline. Please re-submit your query later.", className="text-center")], no_update, no_update
 
 	all_subfigures = data.get("all_subfigures", [])
 
 	if not all_subfigures:
-		return html.Div("No articles/figures available.", className="text-center"), no_update, no_update
+		return no_update, html.Div("No articles/figures available.", className="text-center"), no_update, no_update
 
 	# Create image grid
-	image_items = []
-	for subfigure in all_subfigures:
+	image_items: list = [
+		html.Div("No results match the selected filters.", id="filter-error", className="text-center", style={"display": "none"}),
+	]
+	for index, subfigure in enumerate(all_subfigures):
 		figure = subfigure["figure"]
 		article = subfigure["article"]
 
@@ -441,38 +445,38 @@ async def update_images(data, max_width, max_height):
 		scale = 290 / max(width, height)
 
 		image_items.append(
-			dbc.Card(className="mb-3", id=subfigure["id"], children=[
-				html.Div([
-					dbc.CardImg(src=url, alt="Sample Image", className="crop-image",
-								style={
-									"--x1": f"{x1:.2f}",
-									"--y1": f"{y1:.2f}",
-									"--scale": f"{scale:.4f}",
-									"--width": f"{width:.4f}",
-									"--height": f"{height:.4f}",
-								}),
-				], className="crop-container"),
-				dbc.CardBody([
-					html.H6(subfigure.get("id", "Unknown"), className="card-title"),
-					html.P(
-						subfigure.get("caption", "No caption available"),
-						className="text-muted"
-					),
-					html.Small(
-						html.A(
-							article.get("title", "Unknown Article"),
-							href=article.get("url", "#"),
-							target="_blank"
-						) if article else "Unknown Article",
-						className="card-text"
-					)
+			dbc.Col(id=dict(type="subfigure", index=index, id=subfigure["id"]), children=[
+			    dbc.Card(className="mb-3", children=[
+					html.Div([
+						dbc.CardImg(src=url, alt="Sample Image", className="crop-image",
+									style={
+										"--x1": f"{x1:.2f}",
+										"--y1": f"{y1:.2f}",
+										"--scale": f"{scale:.4f}",
+										"--width": f"{width:.4f}",
+										"--height": f"{height:.4f}",
+									}),
+					], className="crop-container"),
+					dbc.CardBody([
+						html.H6(subfigure.get("id", "Unknown"), className="card-title"),
+						Purify(
+							html=subfigure.get("caption", "No caption available"),
+							className="text-muted"
+						),
+						html.Small(
+							html.A(
+								article.get("title", "Unknown Article"),
+								href=article.get("url", "#"),
+								target="_blank"
+							) if article else "Unknown Article",
+							className="card-text"
+						)
+					])
 				])
 			])
 		)
 
-	return dbc.Row([
-		dbc.Col(image_item) for image_item in image_items
-	]), max_width, max_height
+	return all_subfigures, dbc.Row(image_items), max_width, max_height
 
 
 clientside_callback(
@@ -480,35 +484,33 @@ clientside_callback(
 		namespace="clientside",
 		function_name="filterImages"
 	),
-	Output("images-container", "children", allow_duplicate=True),
-	[
-		Input("apply-filters", "n_clicks"),
-	],
-	[
-		State("images-container", "children"),
-		State("keyword-dropdown", "value"),
-		State("keyword-type", "value"),
-		State("classification-checklist", "value"),
-		State("license-checkbox", "value"),
-		State("layout-state", "data"),
-		State("scale-min-width", "value"),
-		State("scale-max-width", "value"),
-		State("scale-min-height", "value"),
-		State("scale-max-height", "value"),
-		State("scale-threshold", "value"),
-	],
+	Output("visible-ids", "data"),
+	Input("apply-filters", "n_clicks"),
+	State("keyword-dropdown", "value"),
+	State("keyword-type", "value"),
+	State("classification-checklist", "value"),
+	State("license-checkbox", "value"),
+	State("layout-state", "data"),
+	State("scale-min-width", "value"),
+	State("scale-max-width", "value"),
+	State("scale-min-height", "value"),
+	State("scale-max-height", "value"),
+	State("scale-threshold", "value"),
 	prevent_initial_call=True,
 	_allow_dynamic_callbacks=True,
 )
 
-
 clientside_callback(
 	ClientsideFunction(
 		namespace="clientside",
-		function_name="update_banner"
+		function_name="update_ids_and_banner"
 	),
+	Output(dict(type="subfigure", index=ALL, id=ALL), "style"),
 	Output("figure-results-header", "children"),
-	Input("images-container", "children"),
+	Output("filter-error", "style"),
+	Input("visible-ids", "data"),
+	State(dict(type="subfigure", index=ALL, id=ALL), "id"),
+	prevent_initial_call=True,
 )
 
 

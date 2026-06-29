@@ -85,7 +85,10 @@ def create_password_component(debounce=False, show_signup_tips: bool = False):
 
 
 def create_orcid_button_component(mode: FormMode = FormMode.LOGIN):
-	from ...config import orcid_settings, ui_settings
+	try:
+		from ...config import orcid_settings, ui_settings
+	except ImportError:
+		from exsclaim.config import orcid_settings, ui_settings
 
 	return html.Div([
 		dbc.Button(
@@ -112,7 +115,7 @@ def create_login_button_component(mode: FormMode = FormMode.LOGIN):
 		dbc.Button(
 			mode.value.title(),
 			type="submit",
-			id="submit-query",
+			id="submit-info",
 			className="button-link",
 			size="lg",
 			style={"width": "200px"}
@@ -209,13 +212,11 @@ def create_login_page_layout(mode: FormMode = FormMode.LOGIN, debounce=True) -> 
 clientside_callback(
 	"""
 	function(username_validity, email_validity, password_validity) {
-		if(username_validity === undefined) { username_validity = true; }
-		return username_validity && email_validity && password_validity;
+		if(username_validity === undefined) { username_validity = false; }
+		return !(username_validity && email_validity && password_validity);
 	}
 	""",
-	[
-		Output("submit-query", "enabled"),
-	],
+	Output("submit-info", "disabled"),
 	[
 		Input("username", "valid", allow_optional=True),
 		Input("email", "valid"),
@@ -254,7 +255,7 @@ clientside_callback(
 		Output("url", "refresh", allow_duplicate=True),
 	],
 	[
-		Input("submit-query", "n_clicks")
+		Input("submit-info", "n_clicks")
 	],
 	[
 		State("username", "value", allow_optional=True),

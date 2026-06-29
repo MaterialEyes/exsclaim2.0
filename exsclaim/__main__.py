@@ -10,6 +10,7 @@ from json import load
 from os import PathLike, chmod
 from os.path import splitext, isfile
 from pathlib import Path
+from typing import Optional
 from shutil import make_archive
 from uuid import UUID
 
@@ -74,7 +75,7 @@ async def run_pipeline(query=None, verbose: bool = False, compress: str = None, 
 	return 0
 
 
-async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:PathLike[str] = None, blocking:bool = False):
+async def ui(dashboard_configuration: PathLike[str] = None, api_configuration: PathLike[str] = None, blocking: bool = False):
 	from signal import signal, SIGINT, SIGTERM, SIGQUIT
 	from subprocess import Popen
 
@@ -97,6 +98,7 @@ async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:Pat
 	dashboard = Popen(["/usr/local/bin/gunicorn", "-c", dashboard_configuration, "exsclaim.dashboard:server"],
 		  cwd=str(exsclaim_dir / "dashboard"))
 
+	# TODO: Write the PIDs to a file
 	if not blocking:
 		return 0
 
@@ -120,13 +122,13 @@ async def init_db():
 
 
 async def train_model(**kwargs):
-	from .figures.train import train_model
+	from .train import train_model
 
 	del kwargs["command"]
 
 	for (argname, actual_name) in (
-		("json", "json_file_path"),
-		("detection_output_model", "detection_save_path"),
+		("figures_output_model", "figures_save_path"),
+		("labels_output_model", "labels_save_path"),
 		("classification_output_model", "classification_save_path"),
 	):
 		kwargs[actual_name] = kwargs[argname]
@@ -170,11 +172,35 @@ async def upload_results(csv_dir: PathLike[str], result_id: UUID, strict: bool =
 	await db.upload(csv_info, result_id)
 
 
+async def upload_training_data(args):
+	from .train import append_to_hub, convert_json_to_ds
+
+	json_file: Path = args.json
+	image_repo: Optional[str] = args.figure_dataset
+	caption_repo: Optional[str] = args.caption_dataset
+
+	if not args.prioritize_old_data and not args.prioritize_new_data:
+		prioritize_old_data = True
+	else:
+		prioritize_old_data = args.prioritize_old_data
+
+	image_ds, caption_ds = convert_json_to_ds([json_file])
+
+	if image_repo is not None:
+		append_to_hub(image_repo, image_ds, prioritize_old_data=prioritize_old_data)
+
+	if caption_repo is not None:
+		append_to_hub(caption_repo, caption_ds, prioritize_old_data=prioritize_old_data)
+
+	return 0
+
+
 async def launch(args=None):
 	parser = ArgumentParser(prog="exsclaim")
 
 	parser.add_argument("-v", "--version", action="version",
 						version=f"EXSCLAIM v{__version__}" if __version__ is not None else "EXSCLAIM! version is currently unavailable.")
+	parser.add_argument("-db", "--initialize_db", help="Initializes the PostgreSQL database.", action="store_true")
 
 	subparsers = parser.add_subparsers(dest="command", required=True)
 	query_subparser = subparsers.add_parser("query", help="The path to the JSON file holding the search query.")
@@ -194,35 +220,42 @@ async def launch(args=None):
 	view_subparser.add_argument("-ac", "--api_configuration", help="The path to the gunicorn configuration file for the api.")
 	view_subparser.add_argument("-B", "--blocking", action="store_true", help="If the program should wait for the subprocesses to finish before closing.")
 
-	subparsers.add_parser("initialize_db", help="Initializes the PostgreSQL database.")
-
 	results_subparsers = subparsers.add_parser("upload_results", help="Upload the EXSCLAIM results to the PostgreSQL database if they results weren't fully uploaded.")
 	results_subparsers.add_argument("json", help="The path to the `exsclaim.json` file.")
 
 	train_subparser = subparsers.add_parser("train", help="Train a new YOLOv11 model.")
-	train_subparser.add_argument("json", help="The json file holding the training data.")
-	train_subparser.add_argument("-di", "--detection_input_model", default=None, help="The path to the detection YOLOv11 model that is being used to train.")
-	train_subparser.add_argument("-do", "--detection_output_model", default=None, help="The path where the refined model should be saved.")
-	train_subparser.add_argument("-dn", "--detector_name", default=None, help="The name of the detector.")
+	train_subparser.add_argument("-fi", "--figures_input_model", default=None, help="The path to the detection YOLOv11 model that is being used to train the subfigure coordinate finder.")
+	train_subparser.add_argument("-fo", "--figures_output_model", default=None, help="The path where the refined model should be saved.")
+	train_subparser.add_argument("-fn", "--detector_name", default=None, help="The name of the detector.")
+	train_subparser.add_argument("-li", "--labels_input_model", default=None, help="The path to the detection YOLOv11 model that is being used to train the label coordinate finder.")
+	train_subparser.add_argument("-lo", "--labels_output_model", default=None, help="The path where the refined model should be saved.")
+	train_subparser.add_argument("-ln", "--labels_name", default=None, help="The name of the detector.")
 	train_subparser.add_argument("-ci", "--classification_input_model", default=None, help="The path to the classification YOLOv11 model that is being used to train.")
 	train_subparser.add_argument("-co", "--classification_output_model", default=None, help="The path where the refined model should be saved.")
 	train_subparser.add_argument("-cn", "--classifier_name", default=None, help="The name of the classifier.")
-	train_subparser.add_argument("-ts", "--test_size", default=1_164, help="The size of the test set.")
+	train_subparser.add_argument("-ts", "--test_size", default=0.1, help="The size of the test set.")
 	train_subparser.add_argument("-r", "--random_state", type=int, default=42, help="The random state to use.")
 	train_subparser.add_argument("-d", "--dataset_dir", default=None, help="The path to the dataset directory.")
 	train_subparser.add_argument("-p", "--project", default=None, help="The name of the wandb project.")
 
+	dataset_subparser = subparsers.add_parser("upload_training_data", help="Uploads training data instances to a HuggingFace dataset.")
+	dataset_subparser.add_argument("json", help="The path to the training data json downloaded from the EXSCLAIM site.", type=Path),
+	dataset_subparser.add_argument("-f", "--figure_dataset", help="The repo id of the dataset where the figure information should be stored.")
+	dataset_subparser.add_argument("-c", "--caption_dataset", help="The repo id of the dataset where the caption information should be stored.")
+	group = dataset_subparser.add_mutually_exclusive_group()
+	group.add_argument("-o", "--prioritize_old_data", action="store_true",
+	                   help="If there is a collision between the current dataset and the new dataset, the data in the old dataset with the same conflicting IDs will be kept.")
+	group.add_argument("-n", "--prioritize_new_data", action="store_true",
+	                   help="If there is a collision between the current dataset and the new dataset, the data in the new dataset with the same conflicting IDs will be kept.")
 	for subparser in (query_subparser, view_subparser):
 		subparser.add_argument("--force_ollama", action="store_true", help="Fails if EXSCLAIM can't connect to the Ollama API.")
 
-	args = vars(parser.parse_args(args))
+	parsed_args = parser.parse_args(args)
+	args = vars(parsed_args)
 
-	if "force_ollama" in args:
-		if args["force_ollama"]:
-			from .captions.ollama_llms import Ollama
-			Ollama.available_models(silent_fail=False)
-
-		del args["force_ollama"]
+	if parsed_args.initialize_db:
+		await init_db()
+	del args["initialize_db"]
 
 	exit_code = None
 	match args["command"]:
@@ -231,12 +264,12 @@ async def launch(args=None):
 		case "ui":
 			del args["command"]
 			exit_code = await ui(**args)
-		case "initialize_db":
-			exit_code = await init_db()
 		case "train":
 			exit_code = await train_model(**args)
 		case "upload_results":
 			exit_code = await upload_results(args["json"])
+		case "upload_training_data":
+			exit_code = await upload_training_data(parsed_args)
 
 	return exit_code
 

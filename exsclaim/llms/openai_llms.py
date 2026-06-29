@@ -2,29 +2,33 @@ from ..caption import LLM, ChatMessage, ResponseBase
 
 from logging import exception, error
 from os import getenv
-from openai import AsyncOpenAI, OpenAIError, NOT_GIVEN
+from openai import AsyncOpenAI, OpenAIError, NOT_GIVEN, BadRequestError
 from openai.types.responses import ResponseOutputMessage, ResponseFunctionToolCall, ParsedResponseOutputMessage
-from openai.types.shared.chat_model import ChatModel as OpenAILLMs
+from openai.types.shared.chat_model import ChatModel as OPEN_AI_LLMs
 from pydantic import BaseModel, ValidationError
-from typing import get_args, Iterable, Any, Type
+from typing import get_args, Any, Type, Optional, Collection
 
-__all__ = ["OpenAI", "OpenAILLMs"]
+__all__ = ["OpenAI", "OPEN_AI_LLMs"]
 
 
 class OpenAI(LLM):
-	def __init__(self, model:OpenAILLMs, api_key:str = None, **kwargs):
+	def __init__(self, model: OPEN_AI_LLMs, api_key: str, timeout=NOT_GIVEN, **kwargs):
 		super().__init__(model, api_key, **kwargs)
 		self.model = model
 		api_key = api_key or getenv("OPENAI_API_KEY", None)
-		self.client = AsyncOpenAI(api_key=api_key)
+		self.client = AsyncOpenAI(api_key=api_key, base_url=kwargs.get("base_url", None), timeout=timeout)
 
 	@staticmethod
 	def available_models():
 		return tuple(
-			(model, True, model.replace("gpt", "GPT")) for model in get_args(OpenAILLMs)
+			(model, True, model.replace("gpt", "GPT")) for model in get_args(OPEN_AI_LLMs)
 		)
 
-	def format_messages(self, messages: Iterable[ChatMessage]) -> list[dict[str, Any]]:
+	@staticmethod
+	def request_concurrency() -> Optional[int]:
+		return None
+
+	def format_messages(self, messages: Collection[ChatMessage]) -> list[dict[str, Any]]:
 		new_messages = [None] * len(messages)
 
 		for i, message in enumerate(messages):
@@ -37,13 +41,14 @@ class OpenAI(LLM):
 				formatted_message["content"] = content
 			else:
 				formatted_message["content"] = message.content
+				formatted_message["type"] = "input_text"
 
 			new_messages[i] = formatted_message
 
 		return new_messages
 
 	@staticmethod
-	def create_tool_from_model(response_format:Type[BaseModel]) -> dict:
+	def create_tool_from_model(response_format: Type[BaseModel]) -> dict:
 		def clean(schema):
 			if isinstance(schema, dict):
 				return {
@@ -66,7 +71,7 @@ class OpenAI(LLM):
 			parameters=parameters,
 		)
 
-	async def get_response(self, prompt: list[ChatMessage], response_format:Type[ResponseBase] = str) -> ResponseBase:
+	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str) -> ResponseBase:
 		await super().get_response(prompt, response_format)
 
 		input_ = self.format_messages(prompt)
@@ -79,14 +84,19 @@ class OpenAI(LLM):
 		try:
 			completion = await self.client.responses.parse(model=self.model, input=input_, temperature=temperature,
 															text_format=response_format if response_format != str else NOT_GIVEN)
-
 			response = completion.output[0]
+		except BadRequestError as e:
+			from json import dumps
+			exception(f"Could not parse the response from the LLM when inputs where inputs are:\n{dumps(input_, indent='\t')}", exc_info=e)
+			raise e
 		except OpenAIError as e:
-			exception("An error occurred in OpenAI.")
+			exception("An error occurred in OpenAI.", exc_info=e)
 			raise e
 
 		if response_format == str:
 			return response.content[0].text
+		elif isinstance(response, response_format):
+			return response
 		elif isinstance(response, ParsedResponseOutputMessage):
 			return response.content[0].parsed
 		elif isinstance(response, ResponseFunctionToolCall):
@@ -101,4 +111,4 @@ class OpenAI(LLM):
 			return response_format.model_validate_json(output)
 		except ValidationError as e:
 			exception(f"Error validating to type: {response_format}.")
-			raise e
+			raise ValidationError(f"Could not parse the response from the LLM: `{output}`") from e

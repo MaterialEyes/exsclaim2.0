@@ -1,8 +1,8 @@
 from ...config import ui_settings, orcid_settings
-from ..models import User, Sessions, PasswordReset, Results, cryptographic_hash, generate_salt, get_guest_uuid
+from ..models import User, Sessions, PasswordReset, Results, cryptographic_hash, generate_salt, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
 from datetime import datetime as dt, timezone as tz, timedelta as td
 from fastapi import APIRouter, Form, status
-from fastapi.responses import ORJSONResponse
+from fastapi.encoders import jsonable_encoder
 from httpx import AsyncClient
 from starlette.requests import Request
 from starlette.responses import Response, HTMLResponse
@@ -124,7 +124,7 @@ async def login_user(request: Request, email: Annotated[EmailStr, Form()], passw
 	return await create_cookie(request, response, db_session, actual_user)
 
 
-@router.get("/login-orcid", tags=[TAG], include_in_schema=False)
+@router.api_route("/login-orcid", methods=["GET", "HEAD"], tags=[TAG], include_in_schema=False)
 async def login_with_orcid(request: Request, code: str): # TODO: Create a way for users to merge there email account with their ORCID
 	logger = request.state.logger
 	async with AsyncClient() as client:
@@ -141,7 +141,7 @@ async def login_with_orcid(request: Request, code: str): # TODO: Create a way fo
 
 		if response.status_code != 200:
 			logger.error(f"Login failed with status code {response.status_code}: {response.text}")
-			return ORJSONResponse({**response.json(), "status_code": response.status_code}, status_code=500)
+			return JSONResponse({**response.json(), "status_code": response.status_code}, status_code=500)
 
 		json = response.json()
 
@@ -158,7 +158,7 @@ async def login_with_orcid(request: Request, code: str): # TODO: Create a way fo
 	return await create_cookie(request, response, session, actual_user)
 
 
-@router.get("/logout", tags=[TAG])
+@router.api_route("/logout", methods=["GET", "HEAD"], tags=[TAG])
 async def logout_user(request: Request) -> Response:
 	db_session: AsyncSession = request.state.session
 	session_id = request.cookies.get("session_id")
@@ -227,25 +227,25 @@ async def reset_password(request: Request, token: str = None, email: EmailStr = 
 	return HTMLResponse(f"", status_code=status.HTTP_202_ACCEPTED) # TODO: Create the password reset form, and have a hidden field with some token for security when the form is posted.
 
 
-@router.get("/get_username", include_in_schema=False)
-async def get_username(request: Request) -> ORJSONResponse:
+@router.api_route("/get_username", methods=["GET", "HEAD"], include_in_schema=False)
+async def get_username(request: Request) -> JSONResponse:
 	user_id = request.state.user_id
 	session: AsyncSession = request.state.session
 
 	if user_id is None:
-		return ORJSONResponse({"username": "Not Logged In."}, status_code=status.HTTP_403_FORBIDDEN)
+		return JSONResponse({"username": "Not Logged In."}, status_code=status.HTTP_403_FORBIDDEN)
 	elif user_id == get_guest_uuid():
-		return ORJSONResponse({"username": "Not Logged In."}, status_code=status.HTTP_202_ACCEPTED)
+		return JSONResponse({"username": "Not Logged In."}, status_code=status.HTTP_202_ACCEPTED)
 
 	result = await session.execute(text("SELECT name FROM users.users WHERE id = :id;"), params=dict(id=user_id))
 	result = result.fetchone()
 	if not result:
-		return ORJSONResponse({"username": "Logged in, but could not find username."}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-	return ORJSONResponse({"username": result[0]}, status_code=status.HTTP_200_OK)
+		return JSONResponse({"username": "Logged in, but could not find username."}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+	return JSONResponse({"username": result[0]}, status_code=status.HTTP_200_OK)
 
 
-@router.get("/previous_runs", tags=[TAG])
-async def previous_runs(request: Request) -> ORJSONResponse:
+@router.api_route("/previous_runs", methods=["GET", "HEAD"], tags=[TAG]) # TODO: Allow request to dictate which fields are found and sent
+async def previous_runs(request: Request) -> JSONResponse:
 	session: AsyncSession = request.state.session
 
 	results = await session.execute(text("""WITH
@@ -266,8 +266,8 @@ async def previous_runs(request: Request) -> ORJSONResponse:
 	keys = ["id", "status", "name", "term", "start_time", "end_time", "run_time", "max_articles", "num_articles", "num_figures"]
 	for i, run in enumerate(runs):
 		run = dict(zip(keys, run))
-		run["id"] = UUID(str(run["id"]))
+		run["id"] = str(run["id"])
 		run["run_time"] = run["run_time"].total_seconds()
 		output[i] = run
 
-	return ORJSONResponse(output, status_code=status.HTTP_200_OK)
+	return JSONResponse(jsonable_encoder(output), status_code=status.HTTP_200_OK)

@@ -7,7 +7,6 @@ from .routers import v1_router, general_router, query_router, users_router
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import ORJSONResponse
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from starlette.middleware import Middleware
@@ -139,7 +138,6 @@ def get_app() -> FastAPI:
 		redoc_url=None,
 		lifespan=lifespan,
 		middleware=get_middleware(settings, logger),
-		default_response_class=ORJSONResponse,
 	)
 
 	app.logger = logger
@@ -154,3 +152,13 @@ def get_app() -> FastAPI:
 
 
 app = None
+
+if __name__ == "__main__":
+	from asyncio import run
+	from hypercorn.asyncio import serve
+	from hypercorn.config import Config
+	app = get_app()
+
+	config = Config.from_pyfile(Path(__file__).parent / "config.py")
+
+	run(serve(app, config))

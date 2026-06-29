@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
+from .exceptions import ExsclaimToolException
 import numpy as np
 
 from abc import ABC, abstractmethod, ABCMeta
+from asyncio import Semaphore
 from base64 import b64encode
 from io import BytesIO
 from PIL import Image
 from pydantic import BaseModel, Field
+from pydantic_core import ValidationError
 from re import sub
 from textwrap import dedent
-from typing import Literal, Iterable, Type, Optional, Any, TypeVar, Self
+from typing import Literal, Iterable, Type, Optional, Any, TypeVar, Self, Collection
 
 
-__all__ = ["ChatMessage", "LLMMeta","LLM", "CaptionEntry", "Captions", "Keywords", "ResponseBase"]
+__all__ = ["ChatMessage", "LLMMeta","LLM", "CaptionEntry", "Captions", "Keywords", "ResponseBase", "OptionalSemaphore"]
 
 
 ResponseBase = TypeVar("ResponseBase", bound=str | BaseModel)
@@ -36,8 +39,8 @@ class CaptionInfo(BaseModel):
 
 
 class ChatMessage:
-	def __init__(self, content, role:Literal["user", "assistant", "system", "tool"] = "user", temperature: float = None,
-				 images:Iterable[Any] = None):
+	def __init__(self, content: str, role: Literal["user", "assistant", "system", "tool"] = "user",
+				 temperature: Optional[float] = None, images: Optional[Collection[Any]] = None):
 		self.content = content
 		self.role = role
 		self.temperature = temperature
@@ -106,7 +109,10 @@ class LLMMeta(ABCMeta):
 		cls.append_llms()
 
 		model_name = args[0]
-		actual_cls, needs_api_key, _ = LLMMeta.models[model_name]
+		try:
+			actual_cls, needs_api_key, _ = LLMMeta.models[model_name]
+		except KeyError as e:
+			raise ExsclaimToolException(f"{model_name} is not an available model.") from e
 		return actual_cls.__call__(*args, **kwargs)
 
 	def __iter__(cls):
@@ -120,6 +126,21 @@ class LLMMeta(ABCMeta):
 
 		LLMMeta.unscanned_classes.clear()
 		LLM._models = LLMMeta.models
+
+
+class OptionalSemaphore(Semaphore):
+	def __init__(self, value: Optional[int] = None):
+		self._is_valid_value = value is not None and value > 0
+		if self._is_valid_value:
+			super().__init__(value)
+
+	async def __aenter__(self):
+		if self._is_valid_value:
+			await super().__aenter__()
+
+	async def __aexit__(self, *args, **kwargs):
+		if self._is_valid_value:
+			await super().__aexit__(*args, **kwargs)
 
 
 class LLM(ABC, metaclass=LLMMeta):
@@ -145,14 +166,14 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	@staticmethod
 	@abstractmethod
-	def request_concurrency() -> int:
+	def request_concurrency() -> Optional[int]:
 		"""
 		Returns: the number of requests that can be sent at once. -1 if there is no limit.
 		"""
 		...
 
 	@abstractmethod
-	def format_messages(self, messages: Iterable[ChatMessage]) -> list[Any]:
+	def format_messages(self, messages: Collection[ChatMessage]) -> list[Any]:
 		...
 
 	async def __aenter__(self) -> Self:
@@ -176,27 +197,39 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	async def parse_captions(self, caption: str) -> tuple[dict[str, str], list[str]]:
 		messages = [
-			ChatMessage(role="system", content=dedent(f"""\
+			ChatMessage(role="system", content=dedent("""\
 				You are an experienced material scientist. 
-				Please separate the given entire caption into the exact subcaptions, where the letter acts as the key of each subcaption. 
-				Remove as little content as possible when splitting the subcaptions.
-				If there is no full caption then return a list with an empty dictionary.
-				Also, summarize the entire caption into 3-5 phrases that are each 1-3 words. 
-				The keywords should be a broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. 
+				Please parse the given caption with the response only containing a valid JSON object that can be plugging into Pydantic's BaseModel.model_validation_json. 
+				Do not add any markdown wrappers or code blocks, only the raw JSON object. 
+				The `keywords` key should hold a list of broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. 
+				The `captions` key should be a list of objects, where each object holds the letter sublabel in the `label` key and the parsed subcaption in the `caption` key. 
+				Please include any HTML tags from the full caption in the separated caption values. 
+				Remove as little content as possible when splitting the subcaptions, and having duplicated content across labels is okay. 
+				If there is no full caption then return an object with `keywords` and `captions` being empty lists. 
 				Do not hallucinate or create content that does not exist in the provided text.""")),
 			ChatMessage(role="user", content=caption)
 		]
 
-		info = await self.get_response(messages, response_format=CaptionInfo)
+		while True:
+			try:
+				info = await self.get_response(messages, response_format=CaptionInfo)
+				break
+			except ValidationError as error:
+				for e in error.errors(include_url=False):
+					messages.append(ChatMessage(role="assistant", content=e["input"]))
+					messages.append(ChatMessage(role="user", content=e["msg"]))
+
 		captions = {entry.label: entry.caption for entry in info.captions}
 		return captions, info.keywords
 
+	# TODO: Add deprecations to these methods
 	async def separate_captions(self, caption: str) -> dict[str, str]:
 		messages = [
 			ChatMessage(role="system", content=dedent(f"""\
 				Please separate the given full caption into the exact subcaptions. 
+				Duplicating content across keys is okay. 
 				If there is no full caption then return a list with an empty dictionary. 
-				Do not hallucinate.""")),
+				Do not hallucinate or create content that does not exist in the provided text.""")),
 			ChatMessage(role="user", content=caption)
 		]
 
@@ -222,7 +255,7 @@ class LLM(ABC, metaclass=LLMMeta):
 		if llm is None:
 			raise ValueError("llm key must be provided to search_query.")
 		model_key = search_query.get("model_key", None)
-		return LLM(llm, model_key)
+		return cls(llm, model_key)
 
 	@staticmethod
 	def remove_control_characters(string: str) -> str:

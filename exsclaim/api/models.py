@@ -4,23 +4,25 @@ from ..journal import JournalFamily
 from ..caption import LLM
 from ..config import ExsclaimSettings
 from ..db.models import ExsclaimSQLModel, Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes
+from .json_models import *
 
 from datetime import datetime as dt, timezone as tz
 from enum import StrEnum
 from fastapi import Path
+from fastapi.responses import JSONResponse
 from httpx import Client, InvalidURL, Response
+from orjson import dumps
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import Enum as SAEnum, Column, ForeignKeyConstraint, CheckConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
-# from sqlalchemy.sql.schema import SchemaItem
 from sqlmodel import text, SQLModel, Field, DateTime
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional, Any
 from uuid import UUID
 
 
 __all__ = ["BaseModel", "NTFY", "Query", "ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
 		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Results", "User", "get_guest_uuid", "Sessions",
-		   "gen_uuid7", "PasswordReset", "generate_salt", "cryptographic_hash"]
+		   "gen_uuid7", "PasswordReset", "generate_salt", "cryptographic_hash", "ExsclaimJSONResponse", "Output", "Banner"]
 
 
 def gen_uuid7() -> UUID:
@@ -298,6 +300,33 @@ class Results(SQLModel, table=True):
 	)
 
 
+class Banner(SQLModel, table=True):
+	id: UUID = Field(
+		default_factory=gen_uuid7,
+		title="The unique ID for the banners",
+		sa_column=Column(
+			PGUUID(as_uuid=True),
+			primary_key=True,
+			server_default=text("uuidv7()"),
+			unique=True,
+			nullable=False,
+		)
+	)
+	content: str = Field(
+		title="The ID of the user that requested this run.",
+		nullable=False
+	)
+	created: dt = Field(
+		default_factory=lambda: dt.now(tz.utc),
+		sa_column=Column(
+			DateTime(timezone=True),
+			server_default=text("NOW()"),
+			nullable=False,
+		)
+	)
+
+
+
 class NTFY(BaseModel):
 	"""A base model representing the necessary info to send an NTFY notification."""
 	url: Annotated[str, Path(title=f"The url to the NTFY server, with the topic included (e.g. {create_link('https://ntfy.sh/exsclaim')})")]
@@ -338,6 +367,15 @@ class QueryTools(BaseModel):
 		if ExsclaimSettings().ALLOW_PDF_PATHS: # PDF Path won't even run in this isn't the case
 			return pdf_scraper
 		return False
+
+	@property
+	def tools(self):
+		return dict(
+			journal_scraper=self.journal_scraper,
+			caption_distributor=self.caption_distributor,
+			figure_separator=self.figure_separator,
+			pdf_scraper=self.pdf_scraper,
+		)
 
 
 class Query(BaseModel):
@@ -401,3 +439,15 @@ class Query(BaseModel):
 		if ExsclaimSettings().ALLOW_PDF_PATHS: # PDF Path won't even run in this case
 			return pdf_path
 		return None
+
+
+class ExsclaimJSONResponse(JSONResponse):
+	@staticmethod
+	def encoder(obj):
+		if isinstance(obj, dt):
+			return obj.isoformat()
+		raise NotImplementedError
+
+	def render(self, content: Any) -> bytes:
+		# orjson
+		return dumps(content)

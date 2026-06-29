@@ -2,20 +2,20 @@
 Common Dash components converted from React components.
 """
 import dash_bootstrap_components as dbc
-from dash import html, clientside_callback, Output, Input, State, callback, dcc, ClientsideFunction
+from dash import html, clientside_callback, Output, Input, State, callback, ClientsideFunction
 from dash.development.base_component import Component
 from dash_extensions import Purify
-from typing import Optional
+from typing import Any, Optional
 
 __all__ = ["create_header_component", "create_notification_component", "create_footer_component"]
 
 
 def create_login_component():
 	return [
-		dcc.Interval(
-			id="check-user",
-			max_intervals=1,
-		),
+		# dcc.Interval(
+		# 	id="check-user",
+		# 	max_intervals=1,
+		# ),
 		html.Div([
 				html.Button(children="Menu", className="dropbtn"), # TODO: Add the menu icon here
 				html.Div(children=[
@@ -105,7 +105,9 @@ def create_header_component(description: Optional[list[Component]] = None):
 		*description,
 
 		# Notification component
-		create_notification_component()
+		create_notification_component(),
+
+		create_banner_component()
 	], fluid=True)
 
 
@@ -121,6 +123,25 @@ def create_notification_component() -> html.Center:
 		dbc.Alert(
 			Purify(id="notification-html"),
 			id="notification",
+			dismissable=True,
+			is_open=False,
+			fade=False
+		)
+	])
+
+
+def create_banner_component() -> html.Center:
+	"""
+	Create notification component for alerts.
+
+	Returns:
+		html.Center: Centered Banner
+	"""
+
+	return html.Center([
+		dbc.Alert(
+			Purify(id="banner-html"),
+			id="banner",
 			dismissable=True,
 			is_open=False,
 			fade=False
@@ -170,6 +191,18 @@ def create_footer_component():
 						href="https://arxiv.org/abs/2103.10631",
 						target="_blank",
 						style={"display": "block", "marginBottom": "5px"}
+					),
+					html.A(
+						"Terms of Service",
+						href="/terms-of-service",
+						target="_blank",
+						style={"display": "block", "marginBottom": "5px"}
+					),
+					html.A(
+						"Privacy Policy",
+						href="/privacy-policy",
+						target="_blank",
+						style={"display": "block", "marginBottom": "5px"}
 					)
 				])
 			])
@@ -182,37 +215,45 @@ clientside_callback(
 		namespace="clientside",
 		function_name="setTheme"
 	),
-	Output("theme", "data"),
+	Output("storage", "data"),
 	Input("theme-button", "value"),
-	State("theme", "data")
+	State("storage", "data")
 )
+
+
+clientside_callback(
+	ClientsideFunction(
+		namespace="clientside",
+		function_name="update_info_banner"
+	),
+	Output("banner", "is_open"),
+	Output("banner-html", "html"),
+	Output("storage", "data"),
+	State("storage", "data"),
+	State("exsclaim-store", "data"),
+	_allow_dynamic_callbacks=True
+)
+
 
 
 @callback(
-	[
-		Output("signup-banner", "children"),
-		Output("welcome-banner", "children"),
-	],
-	[
-		Input("check-user", "n_intervals"),
-	],
-	[
-		State("exsclaim-store", "data")
-	],
+	Output("signup-banner", "children"),
+	Output("welcome-banner", "children"),
+	State("exsclaim-store", "data"),
 	_allow_dynamic_callbacks=True
 )
-async def get_username_if_logged_in(_, data):
+async def get_username_if_logged_in(data: dict[str, Any]):
 	from httpx import AsyncClient
 	from flask import request
 
 	cookie = request.cookies.get("session_id")
 
 	if not cookie:
-		return [html.P(children=[
+		return ([html.P(children=[
 				html.A("Signup", href="/signup"),
 				"  |  ",
 				html.A("Login", href="/login"),
-			])], ["Welcome to the EXSCLAIM UI!"]
+			])], ["Welcome to the EXSCLAIM UI!"])
 
 	async with AsyncClient() as client:
 		response = await client.get(f"{data['fast_api_url']}/user/get_username", cookies=dict(session_id=cookie))
@@ -221,10 +262,10 @@ async def get_username_if_logged_in(_, data):
 		else:
 			username = response.json()["username"]
 
-	return [
+	return (
 		html.P("Logout", id="logout-button"),
 		f"Welcome to the EXSCLAIM UI, {username}!"
-	]
+	)
 
 
 clientside_callback(
@@ -240,7 +281,7 @@ clientside_callback(
 		Output("url", "refresh", allow_duplicate=True),
 	],
 	[
-		Input("logout-button", "n_clicks")
+		Input("logout-button", "n_clicks", allow_optional=True)
 	],
 	[
 		State("exsclaim-store", "data"),

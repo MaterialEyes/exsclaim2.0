@@ -1,9 +1,11 @@
 from ..caption import LLM, ChatMessage, ResponseBase
+from ..config import settings
+
 from logging import warning, exception, info
-from ollama import AsyncClient, ChatResponse, ResponseError
+from ollama import AsyncClient, Client, ChatResponse, ResponseError
 from pydantic import ValidationError
 from re import compile
-from typing import Any, Type, Self
+from typing import Any, Type, Self, Collection, Optional
 
 __all__ = ["Ollama"]
 
@@ -11,16 +13,16 @@ __all__ = ["Ollama"]
 class Ollama(LLM):
 	__slots__ = ("model", "client")
 
-	def __init__(self, model, api_key:str = None, **kwargs):
+	def __init__(self, model, api_key: str = None, **kwargs):
 		super().__init__(model, api_key, **kwargs)
 		self.model = model
-		self.client = AsyncClient()
+		self.client = AsyncClient(host=settings.OLLAMA_HOST)
 
 	@staticmethod
 	def available_models(silent_fail: bool = True):
 		try:
-			from ollama import list as model_list
-			models = model_list()["models"]
+			client = Client(host=settings.OLLAMA_HOST)
+			models = client.list().models
 		except (ConnectionError, ResponseError) as e:
 			if silent_fail:
 				warning(f"Could not connect to Ollama. This may cause issues down the line if Ollama-based LLMs are required.")
@@ -36,7 +38,7 @@ class Ollama(LLM):
 		return tuple((model, False, label.title()) for model, label in zip(models, labels))
 
 	@staticmethod
-	def request_concurrency() -> int:
+	def request_concurrency() -> Optional[int]:
 		from os import getenv
 
 		different_models = int(getenv("OLLAMA_MAX_LOADED_MODELS", '1'))
@@ -52,7 +54,7 @@ class Ollama(LLM):
 		await self.client.generate(model=self.model, keep_alive=0)
 		info(f"Unloaded {self.model}.")
 
-	def format_messages(self, messages: tuple[ChatMessage]) -> list[dict[str, Any]]:
+	def format_messages(self, messages: Collection[ChatMessage]) -> list[dict[str, Any]]:
 		new_messages = [None] * len(messages)
 
 		for i, message in enumerate(messages):
