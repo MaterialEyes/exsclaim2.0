@@ -75,7 +75,8 @@ async def run_pipeline(query=None, verbose: bool = False, compress: str = None, 
 	return 0
 
 
-async def ui(dashboard_configuration: PathLike[str] = None, api_configuration: PathLike[str] = None, blocking: bool = False):
+async def ui(dashboard_configuration: PathLike[str] = None, api_configuration: PathLike[str] = None, blocking: bool = False,
+			 pid_folder: Optional[Path] = None):
 	from signal import signal, SIGINT, SIGTERM, SIGQUIT
 	from subprocess import Popen
 
@@ -98,7 +99,18 @@ async def ui(dashboard_configuration: PathLike[str] = None, api_configuration: P
 	dashboard = Popen(["/usr/local/bin/gunicorn", "-c", dashboard_configuration, "exsclaim.dashboard:server"],
 		  cwd=str(exsclaim_dir / "dashboard"))
 
-	# TODO: Write the PIDs to a file
+	if pid_folder is None:
+		pid_folder = Path("/tmp")
+		if not pid_folder.exists():
+			pid_folder = None
+
+	if pid_folder is not None:
+		with open(pid_folder / "exsclaim-dashboard.pid", 'w') as f:
+			f.write(f"{dashboard.pid}")
+
+		with open(pid_folder / "exsclaim-api.pid", 'w') as f:
+			f.write(f"{api.pid}")
+
 	if not blocking:
 		return 0
 
@@ -219,6 +231,7 @@ async def launch(args=None):
 	view_subparser.add_argument("-dc", "--dashboard_configuration", help="The path to the gunicorn configuration file for the dashboard. Example at https://github.com/benoitc/gunicorn/blob/bacbf8aa5152b94e44aa5d2a94aeaf0318a85248/examples/example_config.py")
 	view_subparser.add_argument("-ac", "--api_configuration", help="The path to the gunicorn configuration file for the api.")
 	view_subparser.add_argument("-B", "--blocking", action="store_true", help="If the program should wait for the subprocesses to finish before closing.")
+	view_subparser.add_argument("-p", "--pid-folder", type=Path, help="The path to the folder where the pid files are stored. Default is /tmp if it exists, else None.")
 
 	results_subparsers = subparsers.add_parser("upload_results", help="Upload the EXSCLAIM results to the PostgreSQL database if they results weren't fully uploaded.")
 	results_subparsers.add_argument("json", help="The path to the `exsclaim.json` file.")
@@ -247,8 +260,6 @@ async def launch(args=None):
 	                   help="If there is a collision between the current dataset and the new dataset, the data in the old dataset with the same conflicting IDs will be kept.")
 	group.add_argument("-n", "--prioritize_new_data", action="store_true",
 	                   help="If there is a collision between the current dataset and the new dataset, the data in the new dataset with the same conflicting IDs will be kept.")
-	for subparser in (query_subparser, view_subparser):
-		subparser.add_argument("--force_ollama", action="store_true", help="Fails if EXSCLAIM can't connect to the Ollama API.")
 
 	parsed_args = parser.parse_args(args)
 	args = vars(parsed_args)

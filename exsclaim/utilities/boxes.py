@@ -9,7 +9,8 @@ boxes and their properties (like center point)
 from numpy import ndarray
 
 
-__all__ = ["convert_coords_to_labelbox", "convert_labelbox_to_coords", "find_box_center", "crop_from_geometry", "is_contained"]
+__all__ = ["convert_coords_to_labelbox", "convert_labelbox_to_coords", "find_box_center", "crop_from_geometry", "is_contained",
+           "convert_geometry_to_coords"]
 
 
 def convert_coords_to_labelbox(x1:int, y1:int, x2:int, y2:int):
@@ -29,6 +30,16 @@ def convert_labelbox_to_coords(geometry:list[dict[str, float | int]]):
     y1 = min([point["y"] for point in geometry])
     x2 = max([point["x"] for point in geometry])
     y2 = max([point["y"] for point in geometry])
+    return x1, y1, x2, y2
+
+
+def convert_geometry_to_coords(geometry: dict[str, float | int]):
+    """Converts from [{"x": x1, "y": y1}, ...] to (x1, y1, ...)"""
+    # print(geometry)
+    x1 = geometry["x0"]
+    y1 = geometry["y0"]
+    x2 = geometry["x1"]
+    y2 = geometry["y1"]
     return x1, y1, x2, y2
 
 

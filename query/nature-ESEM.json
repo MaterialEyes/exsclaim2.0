@@ -11,9 +11,9 @@
             "synonyms":["Environmental SEM", "Environmental Scanning Electron Microscope"]
         }
     },
-    "llm": "gpt-3.5-turbo",
-    "open": false,
-    "save_format": ["boxes", "save_subfigures"],
+    "llm": "llama3.1",
+    "open": true,
+    "save_format": ["boxes", "save_subfigures", "visualization"],
     "logging": ["print", "exsclaim.log"],
     "results_dir": "/opt/project/output"
 }

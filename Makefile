@@ -1,7 +1,7 @@
 UV := $(shell which uv)
 VENV_DIR := $(shell pwd)/build/venv/bin
 PYTHON := $(VENV_DIR)/python
-EXSCLAIM_VERSION := $(shell cat exsclaim/version.py | sed 's/[^0-9.]//g')
+EXSCLAIM_VERSION := $(shell cat exsclaim/version.py | sed 's/[^0-9.b]//g')
 ifeq ($(UV),)
 	# UV isn't installed
 	PY := $(shell python3 -c "from sys import executable as ex; print(ex)" || python -c "from sys import executable as ex; print(ex)")
@@ -27,7 +27,7 @@ build/venv: build/create_directory
 
 build/exsclaim: build/create_directory
 	mkdir build/exsclaim
-	cp -aru exsclaim/*.* exsclaim/api exsclaim/db exsclaim/captions exsclaim/figures exsclaim/tests exsclaim/utilities build/exsclaim/
+	cp -aru exsclaim/*.* exsclaim/api exsclaim/db exsclaim/figures exsclaim/llms exsclaim/tests exsclaim/utilities build/exsclaim/
 	cp -aru requirements.txt setup.py pyproject.toml LICENSE README.md MANIFEST.in build
 	printf "\ninclude requirements.txt\n" >> build/MANIFEST.in
 

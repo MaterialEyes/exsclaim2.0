@@ -41,7 +41,6 @@ class OpenAI(LLM):
 				formatted_message["content"] = content
 			else:
 				formatted_message["content"] = message.content
-				formatted_message["type"] = "input_text"
 
 			new_messages[i] = formatted_message
 

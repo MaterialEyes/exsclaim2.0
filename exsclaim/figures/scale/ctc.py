@@ -2,11 +2,16 @@
 #  https://github.com/githubharald/CTCDecoder/blob/master/src/BeamSearch.py
 from __future__ import division, print_function
 
-from pathlib import Path
 from .lm import LanguageModel
 
+from pathlib import Path
+from typing import Optional
 
-__all__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "get_legal_next_characters", "postprocess_ctc", "run_ctc"]
+import logging
+import torch
+
+
+__all__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "postprocess_ctc", "run_ctc"]
 
 
 class BeamEntry:
@@ -29,7 +34,7 @@ class BeamEntry:
         return self._prNonBlank
 
     @prNonBlank.setter
-    def prNonBlank(self, prNonBlank:int):
+    def prNonBlank(self, prNonBlank: int):
         self._prNonBlank = prNonBlank
 
     @property
@@ -38,7 +43,7 @@ class BeamEntry:
         return self._prBlank
 
     @prBlank.setter
-    def prBlank(self, prBlank:int):
+    def prBlank(self, prBlank: int):
         self._prBlank = prBlank
 
     @property
@@ -47,7 +52,7 @@ class BeamEntry:
         return self._labeling
 
     @labeling.setter
-    def labeling(self, labeling:tuple):
+    def labeling(self, labeling: tuple):
         self._labeling = labeling
 
 
@@ -90,13 +95,13 @@ def applyLM(parentBeam, childBeam, classes, lm):
     childBeam.lmApplied = True
 
 
-def addBeam(beamState, labeling):
+def addBeam(beamState: BeamState, labeling):
     """add beam if it does not yet exist"""
     if labeling not in beamState.entries:
         beamState.entries[labeling] = BeamEntry()
 
 
-def ctcBeamSearch(mat, classes, lm, beamWidth=25):
+def ctcBeamSearch(mat: torch.Tensor, classes: str, lm: LanguageModel, beamWidth=25):
     """beam search as described by Hwang et al. and Graves et al."""
 
     blankIdx = len(classes)
@@ -182,37 +187,33 @@ def ctcBeamSearch(mat, classes, lm, beamWidth=25):
 # Added by MaterialEyes
 
 
-def get_legal_next_characters(path, sequence_length=8):
-    from .train_label_reader import valid_next_char
-    return valid_next_char(path, sequence_length=sequence_length)
-
-
-def postprocess_ctc(results) -> tuple[float, str, float]:
+def postprocess_ctc(results: torch.Tensor, logger: Optional[logging.Logger] = None) -> tuple[float, str, float]:
     classes = "0123456789mMcCuUnN .A"
     idx_to_class = classes + "-"
     for result, confidence in results:
-        confidence = float(confidence)
+        confidence = confidence.detach().item()
 
         word = "".join(map(lambda step: idx_to_class[step], result)).strip().replace('-', '')
         try:
             number, unit = word.split()
             number = float(number)
-            if unit.lower() == "n":
-                unit = "nm"
-            elif unit.lower() == "c":
-                unit = "cm"
-            elif unit.lower() == "u":
-                unit = "um"
-            if unit.lower() in ["nm", "mm", "cm", "um", "a"]:
+
+            lower_unit = unit.lower()
+            if lower_unit in {"n", "c", "u"}:
+                unit = f"{lower_unit}m"
+
+            if lower_unit in {"nm", "mm", "cm", "um", "a"}:
                 return number, unit, confidence
-        except Exception:
+        except BaseException as e:
+            if logger is not None:
+                logger.exception("An error occurred while processing ctc.", exc_info=e)
             continue
     return -1, "m", 0
 
 
-def run_ctc(probs, classes) -> tuple[float, str, float]:
+def run_ctc(probs: torch.Tensor, classes: str, logger: Optional[logging.Logger] = None) -> tuple[float, str, float]:
     current_file = Path(__file__).resolve(strict=True)
     language_model_file = "corpus.txt"
     language_model = LanguageModel(current_file.parent / language_model_file, classes)
     top_results = ctcBeamSearch(probs, classes, lm=language_model, beamWidth=15)
-    return postprocess_ctc(top_results)
+    return postprocess_ctc(top_results, logger)

@@ -25,6 +25,7 @@ exsclaim/dashboard/node_modules
 exsclaim/figures/checkpoints/*
 
 **/__pycache__
+*.pyc
 
 default.env
 .env

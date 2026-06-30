@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod, ABCMeta
 from asyncio import Semaphore
 from base64 import b64encode
 from io import BytesIO
+from json import dumps
 from PIL import Image
 from pydantic import BaseModel, Field
 from pydantic_core import ValidationError
@@ -197,16 +198,17 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	async def parse_captions(self, caption: str) -> tuple[dict[str, str], list[str]]:
 		messages = [
-			ChatMessage(role="system", content=dedent("""\
-				You are an experienced material scientist. 
-				Please parse the given caption with the response only containing a valid JSON object that can be plugging into Pydantic's BaseModel.model_validation_json. 
-				Do not add any markdown wrappers or code blocks, only the raw JSON object. 
-				The `keywords` key should hold a list of broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. 
-				The `captions` key should be a list of objects, where each object holds the letter sublabel in the `label` key and the parsed subcaption in the `caption` key. 
-				Please include any HTML tags from the full caption in the separated caption values. 
-				Remove as little content as possible when splitting the subcaptions, and having duplicated content across labels is okay. 
-				If there is no full caption then return an object with `keywords` and `captions` being empty lists. 
-				Do not hallucinate or create content that does not exist in the provided text.""")),
+			ChatMessage(role="system", content=(
+				"You are an experienced material scientist. " 
+				"Please parse the given caption with the response only containing a valid JSON object that can be plugging into Pydantic's BaseModel.model_validation_json. " 
+				"Do not add any markdown wrappers or code blocks, only the raw JSON object. " 
+				"The `keywords` key should hold a list of broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. " 
+				"The `captions` key should be a list of objects, where each object holds the letter sublabel in the `label` key and the parsed subcaption in the `caption` key. " 
+				"Please include any HTML tags from the full caption in the separated caption values. " 
+				"Remove as little content as possible when splitting the subcaptions, and having duplicated content across labels is okay. " 
+				"If there is no full caption then return an object with `keywords` and `captions` being empty lists. " 
+				"Do not hallucinate or create content that does not exist in the provided text."
+			)),
 			ChatMessage(role="user", content=caption)
 		]
 
@@ -215,9 +217,12 @@ class LLM(ABC, metaclass=LLMMeta):
 				info = await self.get_response(messages, response_format=CaptionInfo)
 				break
 			except ValidationError as error:
-				for e in error.errors(include_url=False):
-					messages.append(ChatMessage(role="assistant", content=e["input"]))
-					messages.append(ChatMessage(role="user", content=e["msg"]))
+				messages.append(ChatMessage(role="user", content=f"Your previous response could not be parsed: {dumps(error.errors())}"))
+				# for e in error.errors(include_url=False):
+				# 	messages.append(ChatMessage(role="user", content=f"Your previous response could not be parsed. "
+				# 								f"Validation error:\n```{e['msg']}```. "
+				# 								f"Previous output:\n```{e['input']}```. "
+				# 								"Please regenerate the JSON object."))
 
 		captions = {entry.label: entry.caption for entry in info.captions}
 		return captions, info.keywords

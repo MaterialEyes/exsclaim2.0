@@ -15,6 +15,7 @@ from orjson import dumps
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import Enum as SAEnum, Column, ForeignKeyConstraint, CheckConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+# from sqlalchemy.sql.schema import SchemaItem
 from sqlmodel import text, SQLModel, Field, DateTime
 from typing import Annotated, Literal, Optional, Any
 from uuid import UUID

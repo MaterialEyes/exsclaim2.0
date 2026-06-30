@@ -7,7 +7,7 @@ except ImportError:
 
 from dash import html, dcc, clientside_callback, ClientsideFunction, Output, Input, State, callback, register_page
 from json import dumps
-from plotly.graph_objs import Figure
+# from plotly.graph_objs import Figure
 
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc

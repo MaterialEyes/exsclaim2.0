@@ -398,13 +398,9 @@ def update_keywords(keyword_type, data):
 	Output("images-container", "children"),
 	Output("scale-max-width", "value"),
 	Output("scale-max-height", "value"),
-	[
-		Input("layout-state", "data"),
-	],
-	[
-		State("scale-max-width", "value"),
-		State("scale-max-height", "value"),
-	],
+	Input("layout-state", "data"),
+	State("scale-max-width", "value"),
+	State("scale-max-height", "value"),
 	prevent_initial_call=True,
 	_allow_dynamic_callbacks=True
 )
@@ -416,9 +412,9 @@ async def update_images(data, max_width, max_height):
 	if not data.get("results_available", True):
 		match data.get("status", Status.ERROR.value).rstrip("."):
 			case Status.STOPPED.value:
-				return [no_update, html.Div("This run was stopped by the user or admin, please re-submit your query.", className="text-center")], no_update, no_update
+				return no_update, [html.Div("This run was stopped by the user or admin, please re-submit your query.", className="text-center")], no_update, no_update
 			case Status.ERROR.value:
-				return [no_update, html.Div("The results for this run are unavailable due to an error interrupting the pipeline. Please re-submit your query later.", className="text-center")], no_update, no_update
+				return no_update, [html.Div("The results for this run are unavailable due to an error interrupting the pipeline. Please re-submit your query later.", className="text-center")], no_update, no_update
 
 	all_subfigures = data.get("all_subfigures", [])
 

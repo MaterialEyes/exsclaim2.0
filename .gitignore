@@ -10,6 +10,15 @@ test*.py
 TODO*
 *.passwd
 data/
+.git_hooks
+secrets/
+
+# Official documents for the website
+exsclaim/dashboard/assets/privacy_policy.html
+exsclaim/dashboard/assets/terms_of_service.html
+
+# The raw LLM files being server
+llama/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

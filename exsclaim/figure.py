@@ -195,7 +195,7 @@ class FigureSeparator(ExsclaimTool):
 		logps = self.scale_label_recognition_model(image.to(self.device))
 		probs = torch.exp(logps)
 		probs = probs.squeeze(0)
-		magnitude, unit, confidence = ctc.run_ctc(probs, classes)
+		magnitude, unit, confidence = ctc.run_ctc(probs, classes, self.logger)
 		return magnitude, unit, float(confidence)
 
 	@staticmethod

@@ -65,12 +65,13 @@ def get_unit():
         text = unit1
     label = ""
     for character in text:
-        if character == "\u212b":
-            label_char = "A"
-        elif character == "\u03bc":
-            label_char = "u"
-        else:
-            label_char = character
+        match character:
+            case "\u212b":
+                label_char = "A"
+            case "\u03bc":
+                label_char = "u"
+            case _:
+                label_char = character
         label += label_char
     return text, label
 

@@ -79,7 +79,8 @@ RUN --mount=type=cache,target=/tmp/pip \
     rm -rf /var/lib/apt/lists/* && \
     mkdir -p /opt/exsclaim && \
     chmod 775 /opt/exsclaim && \
-    chown $UID:$GID /opt/exsclaim
+    chown $UID:$GID /opt/exsclaim && \
+    rm -rf /opt/install/exsclaim
 
 WORKDIR /opt/exsclaim
 

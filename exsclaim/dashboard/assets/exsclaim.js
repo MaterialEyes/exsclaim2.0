@@ -384,7 +384,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			const hide = {display: "none"};
 
 			if(visible_ids === null || visible_ids === undefined){
-				return [ids.map(() => { return {display: "block"}; }), `Figure Results: ${ids.length}`,
+				return [ids.map(() => show), `Figure Results: ${ids.length}`,
 				ids.length === 0 ? show : hide];
 			}
 
