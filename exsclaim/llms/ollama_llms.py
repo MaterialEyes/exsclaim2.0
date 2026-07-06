@@ -15,7 +15,6 @@ class Ollama(LLM):
 
 	def __init__(self, model, api_key: str = None, **kwargs):
 		super().__init__(model, api_key, **kwargs)
-		self.model = model
 		self.client = AsyncClient(host=settings.OLLAMA_HOST)
 
 	@staticmethod

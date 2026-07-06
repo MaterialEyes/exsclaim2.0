@@ -14,9 +14,8 @@ __all__ = ["OpenAI", "OPEN_AI_LLMs"]
 class OpenAI(LLM):
 	def __init__(self, model: OPEN_AI_LLMs, api_key: str, timeout=NOT_GIVEN, **kwargs):
 		super().__init__(model, api_key, **kwargs)
-		self.model = model
 		api_key = api_key or getenv("OPENAI_API_KEY", None)
-		self.client = AsyncOpenAI(api_key=api_key, base_url=kwargs.get("base_url", None), timeout=timeout)
+		self.client = AsyncOpenAI(api_key=api_key)
 
 	@staticmethod
 	def available_models():

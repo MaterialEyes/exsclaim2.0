@@ -58,4 +58,4 @@ orjson==3.11.9
 # Used with the Dashboard
 dash_bootstrap_components==2.0.4
 gunicorn[gevent]==26.0.0
-certifi==2026.5.20
+certifi==2026.6.17

@@ -239,8 +239,8 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			const fast_api_url = data.public_fastapi_url;
 			let updated_data = { ...current_data };
 
-			const status = await fetch_status(fast_api_url, result_id);
-			switch(status.status){
+			const response = await fetch_status(fast_api_url, result_id);
+			switch(response.status){
 				case "Running.":
 					throw window.dash_clientside.PreventUpdate;
 				case "Finished.":
@@ -248,13 +248,13 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 				case "Closed due to an error.":
 				case "Killed.":
 					updated_data = Object.assign(updated_data, {
-						status: status,
+						status: response.status,
 						results_available: false,
 						articles_loaded: true,
 						figures_loaded: true,
 						subfigures_loaded: true,
 					});
-					return [updated_data, true, {"display": "none"}, {"display": "block"}];
+					return [updated_data, true, {"display": "block"}];
 			}
 
 			// Results are ready, fetch all data
@@ -292,9 +292,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			const subfigures_loaded = updated_data.subfigures_loaded ?? false;
 
 			if (articles_loaded && figures_loaded && subfigures_loaded) {
-				return [updated_data, true, {"display": "none"}, {"display": "block"}];
+				return [updated_data, true, {"display": "block"}];
 			} else {
-				return [updated_data, false, window.dash_clientside.no_update, window.dash_clientside.no_update];
+				return [updated_data, false, window.dash_clientside.no_update];
 			}
 		},
 
@@ -586,8 +586,8 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 			setInterval(() => document.querySelectorAll("[data-start]").forEach((td) => {
 				td.innerText = formatTimespan((Date.now() - td.dataset.start) / 1000);
-			}), 1000);
-			return [table_header, false, false];
+			}), 175);
+			return [table_header, false];
 		},
 
 		update_data_table: async function(n_clicks, exsclaim_data){

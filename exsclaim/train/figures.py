@@ -250,6 +250,7 @@ async def train_model(figures_input_model: Optional[Model] = None, labels_input_
 	process_data_split(train, "train", images_path, subfigure_coords, label_coords, classify_path, class_id_mapping)
 	process_data_split(val, "val",  images_path, subfigure_coords, label_coords, classify_path, class_id_mapping)
 
+	class_id_mapping_names = repr(list(class_id_mapping.keys()))
 	for path, yaml in zip((subfigures_path, subfig_labels_path), (figures_yaml, labels_yaml)):
 		path.mkdir(parents=True, exist_ok=True)
 		target_path = path / "images"
@@ -261,8 +262,8 @@ async def train_model(figures_input_model: Optional[Model] = None, labels_input_
 				path: {path}
 				train: images/train
 				val: images/val
-				nc: 13
-				names: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm']
+				nc: {len(class_id_mapping)}
+				names: {class_id_mapping_names}
 			"""))
 
 	# Save class ID mapping to a file
@@ -280,7 +281,7 @@ async def train_model(figures_input_model: Optional[Model] = None, labels_input_
 		imgsz=608,
 		project=project,
 		seed=random_state,
-		workers=1,
+		# workers=1,
 		patience=3
 	)
 
@@ -298,9 +299,9 @@ async def train_model(figures_input_model: Optional[Model] = None, labels_input_
 	classify.train(data=str(classify_path), name=classifier_name, **train_kwargs)
 	classify.save(classification_save_path)
 
-	# wandb.init(wandb_project)
-	# wandb.log_model(model_path)
-	# wandb.finish()
+	# if wandb_project is not None:
+	# 	with wandb.init(wandb_project) as run:
+	# 		run.log_model(model_path)
 
 	if isinstance(dataset_dir, TemporaryDirectory):
 		dataset_dir.cleanup()

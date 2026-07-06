@@ -74,12 +74,15 @@ class FigureSeparator(ExsclaimTool):
 		try:
 			self.subfigure_bbox = YOLO(yolov11_subfigure_bbox)
 			self.subfigure_bbox.to(self.device)
+			self.logger.info("Subfigure bounding box model has been loaded.")
 
 			self.subfigure_label = YOLO(yolov11_subfigure_label)
 			self.subfigure_label.to(self.device)
+			self.logger.info("Subfigure label bounding box model has been loaded.")
 
 			self.classification_model = YOLO(yolov11_classifier)
 			self.classification_model.to(self.device)
+			self.logger.info("Subfigure classification model has been loaded.")
 		except BaseException as e:
 			self.logger.exception("Error loading YOLO models.")
 			raise ExsclaimToolException from e

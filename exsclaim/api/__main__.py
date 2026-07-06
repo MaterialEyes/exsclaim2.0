@@ -54,12 +54,20 @@ def my_schema():
 def create_logger(settings):
 	printer_handler = logging.StreamHandler()
 	printer_handler.setFormatter(exsclaim.PrinterFormatter())
-	file_handler = TimedRotatingFileHandler(settings.LOGS_PATH / "exsclaim-api.log", backupCount=2,
+	printer_handler.setLevel(logging.INFO)
+
+	file_handler = TimedRotatingFileHandler(settings.LOGS_PATH / "exsclaim-api.log", backupCount=14,
 											interval=1, when="D")
 	file_handler.setFormatter(exsclaim.ExsclaimFormatter())
+	file_handler.setLevel(logging.INFO)
 
-	logging.basicConfig(level=logging.INFO,
-						handlers=(printer_handler, file_handler),
+	debug_file_handler = TimedRotatingFileHandler(settings.LOGS_PATH / "exsclaim-api-debug.log", backupCount=14,
+											interval=1, when="D")
+	debug_file_handler.setFormatter(exsclaim.ExsclaimFormatter())
+	debug_file_handler.setLevel(logging.DEBUG)
+
+	logging.basicConfig(level=logging.DEBUG,
+						handlers=(printer_handler, file_handler, debug_file_handler),
 						force=True)
 	return logging.getLogger(__name__)
 
@@ -153,12 +161,12 @@ def get_app() -> FastAPI:
 
 app = None
 
-if __name__ == "__main__":
-	from asyncio import run
-	from hypercorn.asyncio import serve
-	from hypercorn.config import Config
-	app = get_app()
-
-	config = Config.from_pyfile(Path(__file__).parent / "config.py")
-
-	run(serve(app, config))
+# if __name__ == "__main__":
+# 	from asyncio import run
+# 	from hypercorn.asyncio import serve
+# 	from hypercorn.config import Config
+# 	app = get_app()
+#
+# 	config = Config.from_pyfile(Path(__file__).parent / "config.py")
+#
+# 	run(serve(app, config))

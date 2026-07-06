@@ -263,7 +263,7 @@ class CaptionDistributor(ExsclaimTool):
 		Absolute path to caption nlp model
 	"""
 
-	def __init__(self, search_query:dict, **kwargs):
+	def __init__(self, search_query: dict, **kwargs):
 		kwargs.setdefault("logger_name", __name__ + ".CaptionDistributor")
 		super().__init__(search_query, **kwargs)
 		self.llm: LLM = LLM.from_search_query(search_query)
@@ -303,10 +303,15 @@ class CaptionDistributor(ExsclaimTool):
 		super()._appendJSON(exsclaim_json, data=map(lambda figure: figure.split('/')[-1], data), filename=filename)
 
 	async def load(self):
-		await self.llm.load()
+		self.logger.debug(f"Loading LLM: {self.llm.model}.")
+		load_status = await self.llm.load(logger=self.logger)
+		if load_status:
+			self.logger.info(f"Finished loading LLM: {self.llm.model}.")
 
 	async def unload(self):
-		await self.llm.unload()
+		self.logger.debug(f"Unloading LLM: {self.llm.model}.")
+		await self.llm.unload(logger=self.logger)
+		self.logger.info(f"Finished unloading LLM: {self.llm.model}.")
 
 	async def _runner(self, exsclaim_json: dict, search_query: dict, figure: str, new_separated: set, lock: Lock,
 					 semaphore: OptionalSemaphore, i: int, num_captions: int):
@@ -365,22 +370,21 @@ class CaptionDistributor(ExsclaimTool):
 		# Figure extra goes here
 		new_separated = set()
 
-		counter = 1
 		figures = [
 			value["figure_name"]
 			for value in exsclaim_json.values()
 			if value["figure_name"] not in separated
 		]
 
-		num_figures = len(figures)
+		num_captions = len(figures)
 		lock = Lock()
 		concurrency = self.llm.request_concurrency()
 		semaphore = OptionalSemaphore(concurrency)
 		await gather(*[
-			self._runner(exsclaim_json, search_query, _path, new_separated, lock, semaphore, i+1, num_figures)
+			self._runner(exsclaim_json, search_query, _path, new_separated, lock, semaphore, i+1, num_captions)
 			for i, _path in enumerate(figures)
 		])
 
-		self._end_timer(t0, f"{counter:,} figures")
+		self._end_timer(t0, f"{num_captions:,} captions")
 		self._appendJSON(exsclaim_json, data=new_separated, filename="_captions")
 		return exsclaim_json

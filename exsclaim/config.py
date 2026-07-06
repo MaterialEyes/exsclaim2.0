@@ -2,12 +2,15 @@ from datetime import datetime as dt
 from multiprocessing import cpu_count
 from os import getenv
 from pathlib import Path
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from re import match
+from re import match, compile
 from typing import Optional
 
 __all__ = ["ExsclaimSettings", "settings", "UISettings", "ui_settings", "get_variables", "orcid_settings", "ORCIDSettings"]
+
+
+BOOL_REGEX = compile("^0?$")
 
 
 class ExsclaimSettings(BaseSettings):
@@ -15,7 +18,7 @@ class ExsclaimSettings(BaseSettings):
 	model_config = SettingsConfigDict(env_prefix="EXSCLAIM_", secrets_dir=("/run/secrets/", "/var/run"))
 
 	ALLOW_PDF_PATHS: bool = Field(
-		default=not match("^0?$", getenv("EXSCLAIM_ALLOW_PDF_PATHS", "0").strip()),
+		default=False,
 		description="",
 		examples=[],
 	)
@@ -33,7 +36,7 @@ class ExsclaimSettings(BaseSettings):
 		return Path(self.CHECKPOINTS).resolve()
 
 	DEBUG: bool = Field(
-		default=not match("^0?$", getenv("EXSCLAIM_DEBUG", "0").strip()),
+		default=False,
 		description="If the service should run in DEBUG mode, which would allow for hot-reloading of the code and more detailed crash errors. Having the value unset or set as '0' turns of debug mode.",
 		examples=["0", "1", ""],
 	)
@@ -114,21 +117,49 @@ class ExsclaimSettings(BaseSettings):
 		"""The pathlib.Path object representing the directory value in self.UNSCRAPED_HTML_PATH."""
 		return Path(self.UNSCRAPED_HTML).resolve() if self.UNSCRAPED_HTML is not None else None
 
+	@field_validator("OLLAMA_HOST", "LLAMA_CPP_HOST")
+	@classmethod
+	def domain_has_no_trailing_slash(cls, url: Optional[str]) -> Optional[str]:
+		if url is None:
+			return url
+		return url.rstrip("/")
+
+	@field_validator("ALLOW_PDF_PATHS", "DEBUG", mode="before")
+	@classmethod
+	def boolean(cls, value) -> bool:
+		if isinstance(value, bool):
+			return value
+
+		if value is None:
+			return False
+
+		if isinstance(value, str):
+			return BOOL_REGEX.match(value) is None
+
+		raise ValueError(f"Unknown boolean-coercion type: {type(value).__name__} with value {value}.")
+
 
 class ORCIDSettings(BaseSettings):
 	model_config = SettingsConfigDict(env_prefix="ORCID_", secrets_dir=("/run/secrets/", "/var/run"))
 
-	URL: str = Field(
+	URL: Optional[str] = Field(
 		default=getenv("ORCID_URL", "https://orcid.org").rstrip('/'),
 		description="The URL that points to ORCID",
 		examples=["https://orcid.org", "https://sandbox.orcid.org"],
 	)
 
-	CLIENT_ID: str = Field(
+	@field_validator("URL")
+	@classmethod
+	def url_has_no_trailing_slash(cls, url: str) -> Optional[str]:
+		if url is None:
+			return url
+		return url.rstrip("/")
+
+	CLIENT_ID: Optional[str] = Field(
 		description="",
 	)
 
-	CLIENT_SECRET: str = Field(
+	CLIENT_SECRET: Optional[str] = Field(
 		description="",
 	)
 
@@ -137,7 +168,7 @@ class UISettings(ExsclaimSettings):
 	"""Gets access to the environment variables necessary for running the UI (API and Dashboard)."""
 
 	DASHBOARD_URL: Optional[str] = Field(
-		_dashboard_url.strip('/') if (_dashboard_url := getenv("EXSCLAIM_DASHBOARD_URL", None)) else None,
+		# _dashboard_url.strip('/') if (_dashboard_url := getenv("EXSCLAIM_DASHBOARD_URL", None)) else None,
 		description="The full URL that a user would use to access the UI.",
 		examples=["http://localhost:3000", "https://exsclaim.local", "https://exsclaim.materialeyes.org"],
 	)
@@ -150,24 +181,30 @@ class UISettings(ExsclaimSettings):
 	)
 
 	DOMAIN: str = Field(
-		default=getenv("EXSCLAIM_DOMAIN", "").strip('/'),
+		# default=getenv("EXSCLAIM_DOMAIN", "").strip('/'),
 		description="The domain that a user would use to access the API and Dashboard through a proxy such as NGINX.",
 		examples=["https://exsclaim.local", "https://exsclaim-dev.materialeyes.org"],
 	)
 
 	FAST_API_URL: str = Field(
-		default=getenv("EXSCLAIM_FAST_API_URL", "http://localhost:8000").rstrip('/'),
+		default="http://localhost:8000",
+		# default=getenv("EXSCLAIM_FAST_API_URL", "http://localhost:8000").rstrip('/'),
 		description="The URL that a user inside the docker network would use to access the API i.e. from another service within Docker Compose.",
 		examples=["http://localhost:8000", "http://python:8000"],
 	)
 
 	PUBLIC_API_URL: str = Field(
-		default=getenv("EXSCLAIM_PUBLIC_FAST_API_URL", getenv("EXSCLAIM_FAST_API_URL", "http://localhost:8000")).rstrip('/'),
+		default="http://localhost:8000",
 		description="The URL that any user outside of the Docker network would use to access the API, i.e. from the computer hosting the Docker Compose services or an external computer.",
 		examples=["https://api.exsclaim.local", "https://api.exsclaim-dev.materialeyes.org"],
 	)
 
 	PROJECT_NAME: str = "EXSCLAIM API"
+
+	@field_validator("DOMAIN", "FAST_API_URL", "PUBLIC_API_URL", "DASHBOARD_URL")
+	@classmethod
+	def domain_has_no_trailing_slash(cls, url: str) -> str:
+		return url.rstrip("/")
 
 
 settings = ExsclaimSettings()

@@ -7,7 +7,6 @@ import dash_bootstrap_components as dbc
 
 from certifi import where
 from dash import html, dcc, callback, clientside_callback, ClientsideFunction, Output, Input, State, no_update, ALL
-from dash.exceptions import PreventUpdate
 from dash_extensions import Purify
 
 from exsclaim.api import Status
@@ -115,19 +114,13 @@ def create_layout_component(result_id: UUID, base_url: str, public_api_url: str)
 
 def create_loading_component():
 	"""Create loading component."""
-	return dbc.Container(style={"display": "block", "padding-bottom": "1.25em"}, children=[
-		dbc.Row([
-			dbc.Col([
-				dcc.Loading(
-					html.Div("Loading results...", className="text-center"),
-					color="#93fad9",
-					display="show",
-					fullscreen=False,
-					type="circle"
-				)
-			], width=12, className="text-center")
-		])
-	])
+	return dcc.Loading(
+		# html.Div("Loading results...", className="text-center"),
+		color="#93fad9",
+		display="hide",
+		fullscreen=False,
+		type="circle"
+	)
 
 
 def create_search_page_component(base_url, public_api_url: str, result_id: UUID):
@@ -328,18 +321,14 @@ clientside_callback(
 		namespace="clientside",
 		function_name="update_layout_state"
 	),
-	[
-		Output("layout-state", "data"),
-		Output("api-polling-interval", "disabled"),
-		Output("loading-container", "style"),
-		Output("main-content", "style")
-	],
-	[
-		Input("api-polling-interval", "n_intervals")
-	],
-	[
-		State("layout-state", "data"),
-		State("exsclaim-store", "data"),
+	Output("layout-state", "data"),
+	Output("api-polling-interval", "disabled"),
+	Output("main-content", "style"),
+	Input("api-polling-interval", "n_intervals"),
+	State("layout-state", "data"),
+	State("exsclaim-store", "data"),
+	running=[
+		(Output("loading-container", "display"), "show", "hide")
 	]
 )
 
@@ -353,7 +342,7 @@ def update_result_id(data):
 	"""Update result ID display."""
 	if data and "results_id" in data:
 		return data["results_id"]
-	raise PreventUpdate
+	return no_update
 
 
 @callback(

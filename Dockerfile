@@ -93,8 +93,12 @@ LABEL authors="Len Washington III"
 
 USER root
 
+COPY pycharm_requirements.txt .
+
 RUN touch ~/.xinitrc && chmod +x ~/.xinitrc && \
-    pip install ipython==9.2.0 pydevd==3.3.0 pydevd-pycharm~=262.8117.23 pytest==8.4.1 scipy-stubs==1.16.0.2 trio==0.32.0 --root-user-action ignore --cache-dir /tmp/pip && \
+	. ~/.bashrc && \
+    uv pip install --system --system-certs -r pycharm_requirements.txt && \
+    rm pycharm_requirements.txt && \
     chmod -R 775 /opt && \
     chown -R exsclaim:root /opt && \
     mkdir -p /home/exsclaim/.cache/torch/hub/checkpoints/ && \

@@ -1,0 +1,12 @@
+ipython==9.15.0
+pydevd==3.5.0
+pydevd-pycharm~=262.8117.23
+pytest==9.1.1
+scipy-stubs==1.18.0.0
+trio==0.33.0
+
+huggingface-hub==1.21.0
+accelerate==1.14.0
+safetensors==0.8.0
+transformers==5.12.1
+wandb==0.28.0

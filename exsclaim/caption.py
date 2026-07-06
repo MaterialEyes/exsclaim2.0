@@ -7,6 +7,7 @@ from asyncio import Semaphore
 from base64 import b64encode
 from io import BytesIO
 from json import dumps
+from logging import Logger
 from PIL import Image
 from pydantic import BaseModel, Field
 from pydantic_core import ValidationError
@@ -149,7 +150,7 @@ class LLM(ABC, metaclass=LLMMeta):
 	_classes = set()
 
 	def __init__(self, model: str, api_key: str = None, *args, **kwargs):
-		...
+		self.model = model
 
 	@staticmethod
 	def models() -> dict[str, tuple[type["LLM"], bool, str]]:
@@ -183,11 +184,11 @@ class LLM(ABC, metaclass=LLMMeta):
 	async def __aexit__(self, *args, **kwargs):
 		await self.unload()
 
-	async def load(self) -> Self:
+	async def load(self, logger: Logger) -> bool:
 		"""Does any needed preparation to load the model."""
-		return self
+		return True
 
-	async def unload(self):
+	async def unload(self, logger: Logger):
 		"""Does any needed preparation to unload the model."""
 		...
 

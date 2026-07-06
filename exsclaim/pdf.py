@@ -29,7 +29,7 @@ class PDFScraper(ExsclaimTool):
 		self.new_pdfs_visited = set()
 
 	async def load(self):
-		await LLM.from_search_query(self.search_query).load()
+		await LLM.from_search_query(self.search_query).load(self.logger)
 
 	async def unload(self):
 		await LLM.from_search_query(self.search_query).unload()

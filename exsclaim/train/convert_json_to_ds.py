@@ -5,12 +5,11 @@ import huggingface_hub as hf
 
 from datetime import datetime as dt, timezone as tz
 from httpx import Client
-from json import dumps
 from orjson import loads
 from pathlib import Path
 from PIL import Image
 from re import match
-from typing import Any, Callable, Collection, Literal
+from typing import Any, Collection
 
 
 __all__ = ["convert_json_to_ds", "append_to_hub"]
@@ -85,20 +84,6 @@ def convert_json_to_ds(exsclaim_jsons: Collection[Path | dict[str, Any]]) -> tup
 	caption_ds = datasets.Dataset.from_list(captions, features=caption_features)
 
 	return image_ds, caption_ds
-
-
-def llama_instructions(full_caption: str, sub_captions: dict[str, str]) -> str:
-	from json import dumps
-
-	sub_captions = dumps({i["Label"]: i["Text"] for i in sub_captions})
-
-	return f"<SFT><s>[INST] {full_caption} [/INST] {sub_captions} \n"
-
-
-def create_instruction_file(captions: datasets.Dataset, output_file: Path, instruction_formatter: Callable[[str, dict[str, str]], str] = llama_instructions) -> None:
-	with open(output_file, "w") as f:
-		for full, sub in zip(captions["Caption"], captions["Subcaptions"]):
-			f.write(instruction_formatter(full, sub))
 
 
 def append_to_hub(repo_id: str, dataset: datasets.Dataset, prioritize_old_data: bool = False, **kwargs) -> datasets.Dataset:

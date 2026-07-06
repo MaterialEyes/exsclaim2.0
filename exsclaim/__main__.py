@@ -61,11 +61,6 @@ async def run_pipeline(query=None, verbose: bool = False, compress: str = None, 
 			save_location, _ = splitext(compress_location or str(pipeline.results_directory))
 			make_archive(save_location, compress, root_dir=str(pipeline.results_directory.parent), base_dir=name)
 
-			try:
-				chmod(save_location, 0o775)
-			except PermissionError:
-				pipeline.logger.warning(f"Could not change the permissions of {save_location} to 775.")
-
 	except PipelineInterruptionException as e:
 		pipeline.logger.exception("The pipeline could not successfully finish running.")
 		if hasattr(e, "errno"):
@@ -82,7 +77,7 @@ async def ui(dashboard_configuration: PathLike[str] = None, api_configuration: P
 
 	exsclaim_dir = Path(__file__).parent.resolve()
 
-	def get_configuration(configuration: PathLike[str], folder:str) -> str:
+	def get_configuration(configuration: PathLike[str], folder: str) -> str:
 		configuration = configuration or (exsclaim_dir / folder / "config.py")
 
 		if not isfile(configuration):
