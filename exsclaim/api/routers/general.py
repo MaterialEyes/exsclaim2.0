@@ -9,6 +9,7 @@ from datetime import datetime as dt
 from fastapi import APIRouter, status
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.responses import JSONResponse
+from hashlib import sha256
 from pytz import utc
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +26,7 @@ router = APIRouter()
 cache = dict()
 
 
-async def get(url: str) -> Response | bytes:
+async def get(url: str) -> tuple[Response | bytes, str]:
 	global cache
 	if url in cache:
 		return cache[url]
@@ -36,9 +37,10 @@ async def get(url: str) -> Response | bytes:
 			return Response(status_code=status.HTTP_301_MOVED_PERMANENTLY, headers={"Location": url})
 		content = await response.content.read()
 
-	cache[url] = content
+	etag = sha256(content).hexdigest()
+	cache[url] = (content, etag)
 
-	return content
+	return content, etag
 
 
 def get_host_from_request(request: Request) -> str:
@@ -52,7 +54,7 @@ async def get_dark_ui(map_file: bool = False) -> Response:
 	if map_file:
 		dark_ui += ".map"
 
-	content = await get(dark_ui)
+	content, _ = await get(dark_ui)
 	if isinstance(content, bytes):
 		return Response(content, media_type="text/css", status_code=status.HTTP_200_OK, headers={"Location": dark_ui})
 	return content
@@ -109,13 +111,12 @@ async def favicon(request: Request) -> Response:
 	if hasattr(request.app, "favicon"):
 		return Response(request.app.favicon, media_type="image/x-icon", status_code=status.HTTP_200_OK)
 
-	content = await get(
-		"https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico")
+	content, etag = await get("https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico")
 	if isinstance(content, Response):
 		return content
 
 	request.app.favicon = content
-	return Response(content, media_type="image/x-icon", status_code=status.HTTP_200_OK)
+	return Response(content, media_type="image/x-icon", headers={"ETag": etag}, status_code=status.HTTP_200_OK)
 
 
 @router.api_route("/swagger-dark-ui.css", methods=["GET", "HEAD"], include_in_schema=False)

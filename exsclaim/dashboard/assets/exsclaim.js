@@ -254,7 +254,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 						figures_loaded: true,
 						subfigures_loaded: true,
 					});
-					return [updated_data, true, {"display": "block"}];
+					return [updated_data, true, {"display": "block"}, "hide"];
 			}
 
 			// Results are ready, fetch all data
@@ -292,9 +292,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			const subfigures_loaded = updated_data.subfigures_loaded ?? false;
 
 			if (articles_loaded && figures_loaded && subfigures_loaded) {
-				return [updated_data, true, {"display": "block"}];
+				return [updated_data, true, {"display": "block"}, "hide"];
 			} else {
-				return [updated_data, false, window.dash_clientside.no_update];
+				return [updated_data, false, window.dash_clientside.no_update, window.dash_clientside.no_update];
 			}
 		},
 
@@ -586,8 +586,8 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 			setInterval(() => document.querySelectorAll("[data-start]").forEach((td) => {
 				td.innerText = formatTimespan((Date.now() - td.dataset.start) / 1000);
-			}), 175);
-			return [table_header, false];
+			}), 167);
+			return [table_header, false, "hide"];
 		},
 
 		update_data_table: async function(n_clicks, exsclaim_data){

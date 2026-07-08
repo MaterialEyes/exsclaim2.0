@@ -7,11 +7,10 @@ except ImportError:
 from argparse import ArgumentParser
 from atexit import register
 from json import load
-from os import PathLike, chmod
-from os.path import splitext, isfile
+from os import PathLike
+from os.path import isfile
 from pathlib import Path
 from typing import Optional
-from shutil import make_archive
 from uuid import UUID
 
 
@@ -22,13 +21,14 @@ def on_terminate():
 
 	for handler in logger.handlers:
 		handler.flush()
+		handler.close()
 
 	logging.shutdown()
 
 
-async def run_pipeline(query=None, verbose: bool = False, compress: str = None, compress_location: str = None,
+async def run_pipeline(query=None, verbose: bool = False, compress: Optional[str] = None, compress_location: Optional[str] = None,
 					   journal_scraper: bool = False, pdf_scraper: bool = False, caption_distributor: bool = False,
-					   figure_separator: bool = False, run_id: UUID = None, **kwargs):
+					   figure_separator: bool = False, run_id: Optional[UUID] = None, **kwargs):
 	if query is None:
 		raise ValueError("The search query is required.")
 
@@ -45,29 +45,23 @@ async def run_pipeline(query=None, verbose: bool = False, compress: str = None, 
 		if not search_query.get("logging", None):
 			search_query["logging"] = ["print"]
 
-		if "print" not in search_query["logging"]:
+		elif "print" not in search_query["logging"]:
 			search_query["logging"].append("print")
 
 	pipeline = Pipeline(search_query)
 	try:
-		results = await pipeline.run(caption_distributor=caption_distributor, pdf_scraper=pdf_scraper,
-									 journal_scraper=journal_scraper, figure_separator=figure_separator, run_id=run_id)
-
-		for handler in pipeline.logger.handlers:
-			handler.flush()
-
-		if compress:
-			name = search_query["name"]
-			save_location, _ = splitext(compress_location or str(pipeline.results_directory))
-			make_archive(save_location, compress, root_dir=str(pipeline.results_directory.parent), base_dir=name)
-
+		await pipeline.run(caption_distributor=caption_distributor, pdf_scraper=pdf_scraper,
+						   journal_scraper=journal_scraper, figure_separator=figure_separator, run_id=run_id)
+		exit_code = 0
 	except PipelineInterruptionException as e:
-		pipeline.logger.exception("The pipeline could not successfully finish running.")
-		if hasattr(e, "errno"):
-			return e.errno
-		return -1
+		pipeline.logger.exception("The pipeline could not successfully finish running.", exc_info=e)
+		exit_code = e.errno if hasattr(e, "errno") else 1
+	finally:
+		pipeline.close_file_handlers()
+		if compress is not None:
+			pipeline.compress_results(compress, compress_location)
 
-	return 0
+	return exit_code
 
 
 async def ui(dashboard_configuration: PathLike[str] = None, api_configuration: PathLike[str] = None, blocking: bool = False,

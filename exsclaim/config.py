@@ -4,7 +4,7 @@ from os import getenv
 from pathlib import Path
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from re import match, compile
+from re import compile
 from typing import Optional
 
 __all__ = ["ExsclaimSettings", "settings", "UISettings", "ui_settings", "get_variables", "orcid_settings", "ORCIDSettings"]
@@ -37,7 +37,13 @@ class ExsclaimSettings(BaseSettings):
 
 	DEBUG: bool = Field(
 		default=False,
-		description="If the service should run in DEBUG mode, which would allow for hot-reloading of the code and more detailed crash errors. Having the value unset or set as '0' turns of debug mode.",
+		description="If the service should run in DEBUG mode, which would allow for hot-reloading of the code and more detailed crash errors. Having the value unset or set as '0' turns off debug mode.",
+		examples=["0", "1", ""],
+	)
+
+	DISPLAY_TQDM: bool = Field(
+		default=False,
+		description="If tqdm progress bars should be displayed during the pipeline.",
 		examples=["0", "1", ""],
 	)
 
@@ -124,7 +130,7 @@ class ExsclaimSettings(BaseSettings):
 			return url
 		return url.rstrip("/")
 
-	@field_validator("ALLOW_PDF_PATHS", "DEBUG", mode="before")
+	@field_validator("ALLOW_PDF_PATHS", "DEBUG", "DISPLAY_TQDM", mode="before")
 	@classmethod
 	def boolean(cls, value) -> bool:
 		if isinstance(value, bool):
@@ -156,10 +162,12 @@ class ORCIDSettings(BaseSettings):
 		return url.rstrip("/")
 
 	CLIENT_ID: Optional[str] = Field(
+		default=None,
 		description="",
 	)
 
 	CLIENT_SECRET: Optional[str] = Field(
+		default=None,
 		description="",
 	)
 
@@ -168,7 +176,7 @@ class UISettings(ExsclaimSettings):
 	"""Gets access to the environment variables necessary for running the UI (API and Dashboard)."""
 
 	DASHBOARD_URL: Optional[str] = Field(
-		# _dashboard_url.strip('/') if (_dashboard_url := getenv("EXSCLAIM_DASHBOARD_URL", None)) else None,
+		default="http://localhost:3000",
 		description="The full URL that a user would use to access the UI.",
 		examples=["http://localhost:3000", "https://exsclaim.local", "https://exsclaim.materialeyes.org"],
 	)
@@ -181,9 +189,9 @@ class UISettings(ExsclaimSettings):
 	)
 
 	DOMAIN: str = Field(
-		# default=getenv("EXSCLAIM_DOMAIN", "").strip('/'),
+		default="localhost",
 		description="The domain that a user would use to access the API and Dashboard through a proxy such as NGINX.",
-		examples=["https://exsclaim.local", "https://exsclaim-dev.materialeyes.org"],
+		examples=["https://exsclaim.local", "https://exsclaim-dev.materialeyes.org", "http://localhost"],
 	)
 
 	FAST_API_URL: str = Field(
@@ -215,10 +223,10 @@ orcid_settings = ORCIDSettings()
 def get_variables(port_env: str, default_port: str, log_subfolder: str) -> dict:
 	log_dir = settings.LOGS_PATH / log_subfolder
 	log_dir.mkdir(parents=True, exist_ok=True)
-	time = dt.now().strftime("%Y-%m-%d")
+	date = dt.now().strftime("%Y-%m-%d")
 
-	accesslog = log_dir / f"access-{time}.log"
-	errorlog = log_dir / f"error-{time}.log"
+	accesslog = log_dir / f"access-{date}.log"
+	errorlog = log_dir / f"error-{date}.log"
 
 	for log in (accesslog, errorlog):
 		log.touch(exist_ok=True)

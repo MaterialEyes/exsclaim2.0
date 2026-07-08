@@ -29,7 +29,7 @@ __all__ = ["BaseModel", "NTFY", "Query", "ExsclaimSQLModel", "Article", "Figure"
 def gen_uuid7() -> UUID:
 	from sys import version_info
 	if version_info >= (3, 14):
-		from uuid import uuid7, uuid5
+		from uuid import uuid7
 		return uuid7()
 
 	from uuid_utils import uuid7
@@ -327,7 +327,6 @@ class Banner(SQLModel, table=True):
 	)
 
 
-
 class NTFY(BaseModel):
 	"""A base model representing the necessary info to send an NTFY notification."""
 	url: Annotated[str, Path(title=f"The url to the NTFY server, with the topic included (e.g. {create_link('https://ntfy.sh/exsclaim')})")]
@@ -336,8 +335,8 @@ class NTFY(BaseModel):
 
 	@field_validator("url", mode="before")
 	@classmethod
-	def validate_llm(cls, url: str) -> str:
-		"""Checks if the given LLM is valid."""
+	def validate_url(cls, url: str) -> str:
+		"""Checks if the given NTFY server is valid."""
 		try:
 			with Client() as client:
 				response: Response = client.get(url)

@@ -11,7 +11,7 @@
             "synonyms":["Environmental SEM", "Environmental Scanning Electron Microscope"]
         }
     },
-    "llm": "llama3.1",
+    "llm": "Llama-8.0B-BF16",
     "open": true,
     "save_format": ["boxes", "save_subfigures", "visualization"],
     "logging": ["print", "exsclaim.log"],

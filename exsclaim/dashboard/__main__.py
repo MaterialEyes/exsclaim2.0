@@ -28,15 +28,19 @@ def create_logger(settings) -> logging.Logger:
 	printer_handler = logging.StreamHandler()
 	printer_handler.setFormatter(PrinterFormatter())
 	printer_handler.setLevel(logging.INFO)
+
 	file_handler = logging.FileHandler(settings.LOGS_PATH / "exsclaim-dashboard.log", "a")
 	file_handler.setFormatter(ExsclaimFormatter())
 	file_handler.setLevel(logging.DEBUG)
 
-	logging.basicConfig(level=logging.DEBUG,
-						handlers=(printer_handler, file_handler),
-						force=True)
+	handlers = (printer_handler, file_handler)
+	logging.basicConfig(level=logging.INFO, force=True, handlers=[printer_handler])
+						# handlers=handlers,
 
-	return logging.getLogger(__name__)
+	logger = logging.getLogger("exsclaim.dashboard")
+	for handler in handlers:
+		logger.addHandler(handler)
+	return logger
 
 
 def error_handler(exception: Exception) -> None:

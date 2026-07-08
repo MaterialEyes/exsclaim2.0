@@ -4,7 +4,7 @@ from ..caption import LLM
 from .openai_llms import OpenAI, NOT_GIVEN
 from ..config import settings
 
-from httpx import Client, AsyncClient, ReadTimeout, Timeout
+from httpx import Client, AsyncClient, ReadTimeout, Timeout, TimeoutException
 from os import getenv
 from orjson import loads
 from pathlib import Path
@@ -19,10 +19,10 @@ __all__ = ["LlamaCPP"]
 SEE_REGEX = compile("data: (.+)\\s?")
 
 
-def _get_context() -> Optional[ssl.SSLContext]:
+def _get_context() -> ssl.SSLContext | bool:
 	cert_path = getenv("LLAMA_ARG_SSL_CERT_FILE")
 	if cert_path is None:
-		return None
+		return True
 
 	if not Path(cert_path).is_file():
 		raise FileNotFoundError(f"Llama.cpp certificate file not found at {cert_path}.")
@@ -80,7 +80,7 @@ class LlamaCPP(OpenAI):
 		:param logging.Logger logger:
 		:param endpoint:
 		:param message_filter: A filter that checks if the given server side event is what is needed to stop blocking.
-		:return: True if the model has been confirmed as fully loaded, False if the request was succesfully sent but the load status is unknown
+		:return: True if the model has been confirmed as fully loaded, False if the request was successfully sent but the load status is unknown
 		:rtype:
 		"""
 		timeout = Timeout(5, read=timeout)
@@ -89,6 +89,11 @@ class LlamaCPP(OpenAI):
 				async with client.stream("GET", "/models/sse") as response:
 					async with AsyncClient(base_url=settings.LLAMA_CPP_HOST, verify=self._ctx) as client2:
 						response2 = await client2.post(f"/models/{endpoint}", json={"model": self.model}, headers={"Content-Type": "application/json"})
+						if response2.status_code == 400:
+							json = response2.json()
+							if json["error"]["message"] == "model is already running":
+								return True
+
 						response2.raise_for_status()
 
 					if response.status_code != 200:
@@ -104,7 +109,10 @@ class LlamaCPP(OpenAI):
 						if data["model"] == self.id and data["event"] == "status_change" and message_filter(data):
 							return True
 		except ReadTimeout as e:
-			logger.info(f"Did not receive any new server side events in the last {timeout:,} seconds.", exc_info=e)
+			logger.info(f"Did not receive any new server side events in the last {timeout.read:,} seconds.", exc_info=e)
+			return False
+		except TimeoutException as e:
+			logger.info(f"Could not connect to server side events to see when the LLM was fully loaded.", exc_info=e)
 			return False
 
 	async def load(self, logger: "logging.Logger"):

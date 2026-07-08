@@ -1,9 +1,11 @@
+from .config import settings
 from .figure import FigureSeparator
 from .pdf import PDFScraper
 from .exceptions import *
 from .notifications import *
 from .tool import ExsclaimTool, CaptionDistributor, JournalScraper
 from .utilities import paths, PrinterFormatter, ExsclaimFormatter, convert_geometry_to_coords
+from .utilities.uuid import gen_uuid7
 from .db import Database
 
 import cv2
@@ -19,12 +21,12 @@ from json import load, dump
 from os.path import isfile, splitext
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from re import sub
+from re import sub, match
+from shutil import rmtree
 from sqlalchemy.exc import SQLAlchemyError
 from textwrap import wrap, dedent
 from typing import Any, Callable, Optional
 from uuid import UUID
-from uuid_utils import uuid7
 
 
 __all__ = ["Pipeline", "SaveMethods", "PipelineInterruptionException"]
@@ -38,7 +40,7 @@ class SaveMethods(Flag):
 	CSV = auto()
 
 	@classmethod
-	def from_str(cls, string:str):
+	def from_str(cls, string: str):
 		match string.lower():
 			case "save_subfigures" | "subfigures":
 				return cls.SUBFIGURES
@@ -108,25 +110,33 @@ class Pipeline:
 
 		# Set up file structure
 		base_results_dir = paths.initialize_results_dir(self.query_dict.get("results_dir", None))
-		self.query_dict.setdefault("run_id", str(uuid7()))
+		self.query_dict.setdefault("run_id", str(gen_uuid7()))
+		run_id = self.query_dict["run_id"]
 
 		self.results_directory = base_results_dir / self.query_dict["name"]
 		self.results_directory.mkdir(exist_ok=True)
 
 		# region Set up logging
+		print_handler = logging.StreamHandler()
+		print_handler.setFormatter(PrinterFormatter())
+
 		handlers = []
 		for log_output in self.query_dict.get("logging", []):
 			if log_output.lower() == "print":
-				handler = logging.StreamHandler()
-				handler.setFormatter(PrinterFormatter())
+				logging.basicConfig(level=logging.INFO, force=True, handlers=[print_handler])
 			else:
 				log_output = self.results_directory / log_output
 				handler = logging.FileHandler(filename=log_output, mode="w+")
 				handler.setFormatter(ExsclaimFormatter())
-			handlers.append(handler)
 
-		logging.basicConfig(level=logging.INFO, handlers=handlers, force=True)
-		self.logger = logging.getLogger(__name__)
+				handler.setLevel(logging.INFO)
+				handlers.append(handler)
+
+		logger_name = f"{self.query_dict["name"]}_{run_id}" # __main__
+		self.logger = logging.getLogger(logger_name)
+		for handler in handlers:
+			self.logger.addHandler(handler)
+
 		self.logger.info(f"Results will be located in: `{self.results_directory}` with run id {self.query_dict['run_id']}.")
 		# endregion
 
@@ -251,9 +261,8 @@ class Pipeline:
 
 			# run each ExsclaimTool on search query
 			for tool in tools:
-				await tool.load()
-				exsclaim_dict = await tool.run(query_dict, exsclaim_dict)
-				await tool.unload()
+				async with tool:
+					exsclaim_dict = await tool.run(query_dict, exsclaim_dict)
 
 			self.exsclaim_dict = exsclaim_dict # TODO: Add the version number and reformat appropriately
 
@@ -574,7 +583,7 @@ class Pipeline:
 			Creates images and text files in <save_path>/boxes folders
 			showing details about each subfigure
 		"""
-		def append_bbox(geometry, lst:list):
+		def append_bbox(geometry, lst: list):
 			coords = convert_geometry_to_coords(geometry)
 			bounding_box = tuple(map(int, coords))
 			lst.append(bounding_box)
@@ -763,3 +772,30 @@ class Pipeline:
 				csv_writer.writerows(rows)
 
 		return csv_info
+
+	def close_file_handlers(self):
+		for handler in self.logger.handlers:
+			handler.flush()
+			if isinstance(handler, logging.FileHandler):
+				handler.close()
+
+	def compress_results(self, compress: str, compress_location: Optional[str | Path]):
+		from os.path import splitext
+		from shutil import make_archive
+
+		# Compress results
+		name = self.query_dict["name"]
+		results_directory = self.results_directory
+		save_location, _ = splitext(str(compress_location or results_directory))
+		parent = results_directory.parent
+		make_archive(save_location, compress, root_dir=str(parent), base_dir=name)
+
+		# Cleanup leftover log files, making sure that all results aren't accidentally erased
+		if parent == settings.RESULTS_PATH or settings.RESULTS_PATH.is_relative_to(parent):
+			self.logger.warning(f"Almost removed {settings.RESULTS_PATH=} when removing results directory {parent=}.")
+			return
+
+		rmtree(parent)
+		if parent.is_dir():
+			left_over_files = tuple(results_directory.rglob("*"))
+			self.logger.warning(f"Removed results directory after compression, but {len(left_over_files):,} files were found in it afterwards.")

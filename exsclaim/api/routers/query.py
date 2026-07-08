@@ -2,17 +2,19 @@ from ...config import ExsclaimSettings
 from ..models import *
 
 import logging
+import tarfile
 
 from asyncio import all_tasks, create_task, CancelledError, Task
 from datetime import datetime as dt
 from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, status
+from hashlib import sha256
 from json import dump
 from os import listdir
 from pathlib import Path
 from sqlalchemy import select, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from shutil import make_archive, rmtree, get_archive_formats
+from shutil import make_archive, get_archive_formats
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse
 from tarfile import open as tar_open
@@ -41,10 +43,8 @@ def get_pipeline_task_name(result_id: UUID) -> str:
 	return f"pipeline_{result_id}"
 
 
-async def run_exsclaim(_id: UUID, search_query_location: Path, session: AsyncSession, logger: logging.Logger, profile: bool = False):
+async def run_exsclaim(_id: UUID, search_query_location: Path, session: AsyncSession, logger: logging.Logger):
 	db_result: Status = Status.ERROR
-	result_code = -1
-
 	pipeline_task = create_task(exsclaim_pipeline(query=search_query_location, journal_scraper=True,
 												  caption_distributor=True, figure_separator=True,
 												  compress="gztar",
@@ -57,16 +57,16 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, session: AsyncSes
 		if result_code == 0:
 			db_result = Status.FINISHED
 
-		results_dir = search_query_location.parent
-		if results_dir.is_dir():
-			rmtree(results_dir.absolute(), ignore_errors=True)
+		# results_dir = search_query_location.parent
+		# if results_dir.is_dir():
+		# 	rmtree(results_dir.absolute(), ignore_errors=True)
 	except (KeyboardInterrupt, CancelledError) as e:
 		db_result = Status.STOPPED
 		logger.info(f"Run {_id} was stopped during processing: {e}")
 		result_code = 1
 	except Exception as e:
 		db_result = Status.ERROR
-		logger.exception(e)
+		logger.exception(f"An error occurred when running pipeline with Result ID: {_id}.", exc_info=e)
 		result_code = -1
 	finally:
 		await session.execute(update(Results).where(Results.id == _id).values(status=db_result, end_time=dt.now()))
@@ -191,13 +191,11 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 			**search_query.tools.tools,
 		}
 
-		# profile = request.headers.get("X-Profile-Request", "0") == "1"
-		profile = False
 		logger = request.app.logger
 		with open(results_dir / "search_query.json", "w") as f:
 			dump(exsclaim_input, f, indent='\t')
 
-		background_tasks.add_task(run_exsclaim, uuid, results_dir / "search_query.json", session, logger, profile)
+		background_tasks.add_task(run_exsclaim, uuid, results_dir / "search_query.json", session, logger)
 
 		db_json = exsclaim_input.copy()
 		db_json["model_key"] = "model_key" in db_json.keys()
@@ -606,6 +604,49 @@ async def download(request: Request, result_id: UUID, compression: str = "defaul
 
 	return FileResponse(results_file, status_code=status.HTTP_200_OK, stat_result=results_file.stat(),
 						headers={"Content-Disposition": f"inline ; filename = \"{filename}\""})
+
+
+@router.api_route("/results/{result_id}/logs", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
+async def download_logs(request: Request, result_id: UUID):
+	session = request.state.session
+	logger = request.state.logger
+
+	results = await session.execute(select(Results).where(Results.id == result_id))
+	result: Results = results.scalar_one_or_none()
+
+	if not User.has_permission(request.state.user_id, result):
+		return Response(f"There is no query recorded in our database with id: {result_id}.",
+		                status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
+
+	name = result.search_query["name"]
+	missing_logs = Response(f"Could not find the saved results in our server, even though they should have been saved.",
+							status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
+
+	if result.status == Status.RUNNING:
+		logs_path = settings.RESULTS_PATH / str(result_id) / name / "exsclaim.log"
+		if not logs_path.exists():
+			logger.error(f"Could not find the log file for run \"{result_id}\" in {logs_path}.")
+			return missing_logs
+
+		with open(logs_path, "rb") as f:
+			logs = f.read()
+	else:
+		results_path = settings.RESULTS_PATH / f"{result_id}.tar.gz"
+		if not (results_path.exists() and tarfile.is_tarfile(results_path)):
+			logger.error(f"Could not find the log file for run \"{result_id}\" in {results_path}.")
+			return missing_logs
+
+		with tarfile.open(results_path, "r:gz") as tar:
+			try:
+				f = tar.extractfile(f"{name}/exsclaim.log")
+				logs: bytes = f.read().strip()
+			except KeyError as e:
+				logger.exception(f"Could not find the log file for run \"{result_id}\" in {results_path}.", exc_info=e)
+				return Response("Could not find log file in the saved results file.", status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
+
+	digest = sha256(logs).hexdigest()
+	return Response(logs, status_code=status.HTTP_200_OK, headers={"ETag": digest, "Content-Length": str(len(logs))},
+	                media_type="text/plain")
 
 
 @router.api_route("/results/{result_id}/publicize", methods=["POST", "HEAD"], tags=["Using EXSCLAIM"])

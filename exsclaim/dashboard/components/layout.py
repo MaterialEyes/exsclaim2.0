@@ -115,7 +115,7 @@ def create_layout_component(result_id: UUID, base_url: str, public_api_url: str)
 def create_loading_component():
 	"""Create loading component."""
 	return dcc.Loading(
-		# html.Div("Loading results...", className="text-center"),
+		html.Div("Loading results...", className="text-center"),
 		color="#93fad9",
 		display="hide",
 		fullscreen=False,
@@ -324,12 +324,10 @@ clientside_callback(
 	Output("layout-state", "data"),
 	Output("api-polling-interval", "disabled"),
 	Output("main-content", "style"),
+	Output("loading-container", "display"),
 	Input("api-polling-interval", "n_intervals"),
 	State("layout-state", "data"),
 	State("exsclaim-store", "data"),
-	running=[
-		(Output("loading-container", "display"), "show", "hide")
-	]
 )
 
 

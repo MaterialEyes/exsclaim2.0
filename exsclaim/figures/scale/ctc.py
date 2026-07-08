@@ -197,17 +197,17 @@ def postprocess_ctc(results: torch.Tensor, logger: Optional[logging.Logger] = No
         try:
             number, unit = word.split()
             number = float(number)
-
             lower_unit = unit.lower()
-            if lower_unit in {"n", "c", "u"}:
-                unit = f"{lower_unit}m"
-
-            if lower_unit in {"nm", "mm", "cm", "um", "a"}:
-                return number, unit, confidence
-        except BaseException as e:
+        except ValueError as e:
             if logger is not None:
-                logger.exception("An error occurred while processing ctc.", exc_info=e)
+                logger.exception(f"An error occurred while trying to split \"{word}\"", exc_info=e)
             continue
+
+        if lower_unit in {"n", "c", "u"}:
+            unit = f"{lower_unit}m"
+
+        if lower_unit in {"nm", "mm", "cm", "um", "a"}:
+            return number, unit, confidence
     return -1, "m", 0
 
 

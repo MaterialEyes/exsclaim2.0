@@ -66,10 +66,13 @@ def create_logger(settings):
 	debug_file_handler.setFormatter(exsclaim.ExsclaimFormatter())
 	debug_file_handler.setLevel(logging.DEBUG)
 
-	logging.basicConfig(level=logging.DEBUG,
-						handlers=(printer_handler, file_handler, debug_file_handler),
-						force=True)
-	return logging.getLogger(__name__)
+	handlers = (printer_handler, file_handler, debug_file_handler)
+	logging.basicConfig(level=logging.INFO, force=True, handlers=[printer_handler])
+						# handlers=handlers,
+	logger = logging.getLogger("exsclaim.api")
+	for handler in handlers:
+		logger.addHandler(handler)
+	return logger
 
 
 def flush_logger(app: FastAPI):
@@ -121,7 +124,7 @@ def get_middleware(settings, logger) -> tuple[Middleware, ...]:
 			CORSMiddleware,
 			allow_origins=origins,
 			allow_credentials=True,
-			allow_methods=["GET", "POST", "OPTIONS"],
+			allow_methods=["GET", "POST", "OPTIONS", "HEAD"],
 			allow_headers=["*"],
 		),
 		Middleware(RequestLoggerMiddleware, logger=logger),

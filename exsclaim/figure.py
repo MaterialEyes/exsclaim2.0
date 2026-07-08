@@ -7,6 +7,9 @@ from .utilities import boxes, load_model_from_checkpoint, download_model_checkpo
 import cv2
 import numpy as np
 import torch
+if settings.DISPLAY_TQDM:
+	import tqdm
+	# from .utilities.tqdm import set_stream_handlers_to_tqdm, remove_tqdm_from_set_stream_handlers
 
 from pathlib import Path
 from PIL import Image
@@ -164,7 +167,12 @@ class FigureSeparator(ExsclaimTool):
 			if value["figure_name"] not in separated
 		)
 
-		for counter, _path in enumerate(figures, start=counter):
+		figures_enum = enumerate(figures, start=counter)
+		# if settings.DISPLAY_TQDM:
+		# 	figures_enum = tqdm.tqdm(figures_enum, total=len(figures), desc="Separating Figures", unit="fig")
+			# set_stream_handlers_to_tqdm(self.logger, figures_enum)
+
+		for counter, _path in figures_enum:
 			self.display_info(f">>> ({counter:,} of {+len(figures):,}) Extracting images from: {_path}")
 
 			try:
@@ -180,6 +188,7 @@ class FigureSeparator(ExsclaimTool):
 				self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 				new_separated = set()
 
+		# remove_tqdm_from_set_stream_handlers(self.logger)
 		self._end_timer(t0, f"{counter:,} figures")
 		self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 		return exsclaim_dict
@@ -360,7 +369,8 @@ class FigureSeparator(ExsclaimTool):
 			iou=0.45,
 			max_det=100,
 			agnostic_nms=False,
-			stream=False
+			stream=False,
+			verbose=settings.DEBUG
 		)
 		result = results[0]
 
@@ -390,7 +400,7 @@ class FigureSeparator(ExsclaimTool):
 		# Get full path to figure
 		figure_path = self.results_directory / "figures" / figure_path
 
-		img: np.ndarray = cv2.imread(str(figure_path), cv2.IMREAD_COLOR)
+		img: np.ndarray = cv2.imread(figure_path, cv2.IMREAD_COLOR)
 		height, width, _ = img.shape
 		binary_img = np.zeros((height, width, 1))
 
@@ -450,7 +460,8 @@ class FigureSeparator(ExsclaimTool):
 				iou=0.45,
 				max_det=100,
 				agnostic_nms=False,
-				stream=False
+				stream=False,
+				verbose=settings.DEBUG
 			)
 
 			result = classification_results[0]

@@ -26,7 +26,7 @@ def create_runs_component():
 		),
 		dcc.Loading(
 			color="#93fad9",
-			display="hide",
+			display="show",
 			fullscreen=False,
 			type="circle",
 			id="exsclaim-runs"
@@ -54,12 +54,9 @@ clientside_callback(
 	),
 	Output("previous-runs", "html"),
 	Output("check-run-status", "disabled"),
+	Output("exsclaim-runs", "display"),
 	Input("load-previous-runs", "n_intervals"),
 	State("exsclaim-store", "data"),
-	running=[
-		(Output("exsclaim-runs", "display"), "show", "hide")
-	],
-	prevent_initial_call=True
 )
 
 

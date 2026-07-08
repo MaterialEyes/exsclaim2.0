@@ -14,7 +14,7 @@ from .journal import JournalFamily
 from .utilities import initialize_results_dir, PrinterFormatter
 
 from abc import ABC, abstractmethod
-from asyncio import gather, Lock, Semaphore
+from asyncio import Lock, TaskGroup, as_completed
 from json import dump, load, JSONEncoder
 from logging import getLogger, StreamHandler
 from os import PathLike
@@ -24,6 +24,10 @@ from time import time_ns as timer
 from typing import Iterable, Optional, Collection
 
 import numpy as np
+if settings.DISPLAY_TQDM:
+	from tqdm.asyncio import tqdm_asyncio
+	# from tqdm.contrib.logging import logging_redirect_tqdm
+	from .utilities.tqdm import tqdm_logging_redirect
 
 
 __all__ = ["ExsclaimTool", "JournalScraper", "CaptionDistributor"]
@@ -53,6 +57,12 @@ class ExsclaimTool(ABC):
 
 		self.logger = logger
 		self.search_query = search_query
+
+	async def __aenter__(self):
+		await self.load()
+
+	async def __aexit__(self, exc_type, exc_val, exc_tb):
+		await self.unload()
 
 	async def load(self):
 		...
@@ -179,8 +189,8 @@ class JournalScraper(ExsclaimTool):
 				with open(error_dir / f"{e.url.split('/')[-1]}.html", 'w') as f:
 					f.write(await e.html.prettify())
 		
-	async def runner(self, exsclaim_json:dict, search_query:dict, article:str, journal_family_name:str, html_directory: Path,
-					 lock:Lock):
+	async def runner(self, exsclaim_json: dict, search_query: dict, article: str, journal_family_name: str, html_directory: Path,
+					 lock: Lock):
 		# Extract figures, captions, and metadata from each article
 		t0 = self._start_timer()
 		self.display_info(f">>> Extracting figures from: {article.split('/')[-1]}")
@@ -246,9 +256,14 @@ class JournalScraper(ExsclaimTool):
 				raise e
 
 		lock = Lock()
-		await gather(*[
-			self.runner(exsclaim_json, search_query, extension, journal_family_name, html_directory, lock) for extension in extensions
-		])
+		async with TaskGroup() as tg:
+			tasks = [tg.create_task(self.runner(exsclaim_json, search_query, extension, journal_family_name, html_directory, lock))
+					 for extension in extensions]
+			if settings.DISPLAY_TQDM:
+				pbar = tqdm_asyncio(as_completed(tasks), total=len(tasks), desc=f"Scraping articles from {journal_family_name}")
+				with tqdm_logging_redirect(self.logger):
+					for f in pbar:
+						await f
 
 		return exsclaim_json
 
@@ -303,13 +318,13 @@ class CaptionDistributor(ExsclaimTool):
 		super()._appendJSON(exsclaim_json, data=map(lambda figure: figure.split('/')[-1], data), filename=filename)
 
 	async def load(self):
-		self.logger.debug(f"Loading LLM: {self.llm.model}.")
+		self.logger.info(f"Loading LLM: {self.llm.model}.")
 		load_status = await self.llm.load(logger=self.logger)
 		if load_status:
 			self.logger.info(f"Finished loading LLM: {self.llm.model}.")
 
 	async def unload(self):
-		self.logger.debug(f"Unloading LLM: {self.llm.model}.")
+		self.logger.info(f"Unloading LLM: {self.llm.model}.")
 		await self.llm.unload(logger=self.logger)
 		self.logger.info(f"Finished unloading LLM: {self.llm.model}.")
 
@@ -380,10 +395,14 @@ class CaptionDistributor(ExsclaimTool):
 		lock = Lock()
 		concurrency = self.llm.request_concurrency()
 		semaphore = OptionalSemaphore(concurrency)
-		await gather(*[
-			self._runner(exsclaim_json, search_query, _path, new_separated, lock, semaphore, i+1, num_captions)
-			for i, _path in enumerate(figures)
-		])
+		async with TaskGroup() as tg:
+			tasks = [tg.create_task(self._runner(exsclaim_json, search_query, _path, new_separated, lock, semaphore, i+1, num_captions))
+			         for i, _path in enumerate(figures)]
+			if settings.DISPLAY_TQDM:
+				pbar = tqdm_asyncio(as_completed(tasks), total=len(tasks), desc="Distributing captions")
+				with tqdm_logging_redirect(self.logger):
+					for f in pbar:
+						await f
 
 		self._end_timer(t0, f"{num_captions:,} captions")
 		self._appendJSON(exsclaim_json, data=new_separated, filename="_captions")

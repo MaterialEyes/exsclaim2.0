@@ -10,10 +10,11 @@ ultralytics==8.4.63
 aiohttp==3.14.1
 httpx==0.28.1
 brotli==1.2.0
-playwright==1.59.0
+playwright==1.61.0
 urllib3==2.7.0
 beautifulsoup4==4.15.0
 soupsieve==2.8.3
+tqdm==4.68.3
 
 # Connecting to the PostgreSQL database
 asyncpg==0.31.0
@@ -29,8 +30,8 @@ typing_extensions==4.15.0
 PyYAML==6.0.3
 pymupdf==1.27.2.2
 
-torch==2.12.0
-torchvision==0.27.0
+torch==2.12.1
+torchvision==0.27.1
 pytorch-model-summary==0.1.2
 datasets==5.0.0
 
