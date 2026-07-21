@@ -1,7 +1,7 @@
 from ..caption import LLM, ChatMessage, ResponseBase
 from ..config import settings
 
-from logging import warning, exception, info
+from logging import warning, exception
 from ollama import AsyncClient, Client, ChatResponse, ResponseError
 from pydantic import ValidationError
 from re import compile
@@ -24,7 +24,7 @@ class Ollama(LLM):
 			models = client.list().models
 		except (ConnectionError, ResponseError) as e:
 			if silent_fail:
-				warning(f"Could not connect to Ollama. This may cause issues down the line if Ollama-based LLMs are required.")
+				warning(f"Could not connect to Ollama. This may cause issues down the line if Ollama-based LLMs are required.", exc_info=e)
 				return tuple()
 			raise e
 
@@ -44,14 +44,16 @@ class Ollama(LLM):
 		num_parallel_requests = int(getenv("OLLAMA_NUM_PARALLEL", '1'))
 		return different_models * num_parallel_requests
 
-	async def load(self) -> Self:
+	async def load(self, logger: Optional[logging.Logger] = None) -> Self:
 		await self.client.generate(model=self.model)
-		info(f"Loaded {self.model}.")
+		if logger is not None:
+			logger.info(f"Loaded {self.model}.")
 		return self
 
-	async def unload(self):
+	async def unload(self, logger: Optional[logging.Logger] = None):
 		await self.client.generate(model=self.model, keep_alive=0)
-		info(f"Unloaded {self.model}.")
+		if logger is not None:
+			logger.info(f"Unloaded {self.model}.")
 
 	def format_messages(self, messages: Collection[ChatMessage]) -> list[dict[str, Any]]:
 		new_messages = [None] * len(messages)

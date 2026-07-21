@@ -23,17 +23,11 @@ class ExsclaimSettings(BaseSettings):
 		examples=[],
 	)
 
-	CHECKPOINTS: str = Field(
+	CHECKPOINTS_PATH: Path = Field(
 		default="/exsclaim/checkpoints",
 		description="The directory where the checkpoint files for the FigureSeparator should be stored.",
 		examples=["~/.exsclaim/checkpoints", "/exsclaim/checkpoints"],
 	)
-
-	@computed_field
-	@property
-	def CHECKPOINTS_PATH(self) -> Path:
-		"""The path object representing the directory value in self.CHECKPOINTS."""
-		return Path(self.CHECKPOINTS).resolve()
 
 	DEBUG: bool = Field(
 		default=False,
@@ -47,17 +41,10 @@ class ExsclaimSettings(BaseSettings):
 		examples=["0", "1", ""],
 	)
 
-	LLAMA_CPP_HOST: Optional[str] = Field(
-		default=None,
-		description="The directory where the checkpoint files for the FigureSeparator should be stored.",
-		examples=["http://localhost:8080", "http://llama-cpp:8080"],
-	)
-
-	LOGS: str = Field(
+	LOGS_PATH: Path = Field(
 		default="/exsclaim/logs",
 		description="The directory where the log files should be stored.",
 		examples=["~/.exsclaim/logs", "/var/logs/exsclaim", "/exsclaim/logs"],
-		env="LOGS"
 	)
 
 	OLLAMA_HOST: Optional[str] = Field(
@@ -66,64 +53,31 @@ class ExsclaimSettings(BaseSettings):
 		examples=["http://localhost:11434", "http://ollama:11434"],
 	)
 
-	@computed_field
-	@property
-	def LOGS_PATH(self) -> Path:
-		"""The pathlib.Path object representing the directory value in self.LOGS_PATH."""
-		return Path(self.LOGS).resolve()
-
-	RESULTS: str = Field(
-		default="/exsclaim/results",
+	RESULTS_PATH: Path = Field(
+		default=Path.home().resolve() / ".exsclaim",
 		description="The directory where the results from the pipeline should be stored.",
 		examples=["~/.exsclaim/results", "/exsclaim/results"],
-		env="RESULTS"
 	)
 
-	@computed_field
-	@property
-	def RESULTS_PATH(self) -> Path:
-		"""The pathlib.Path object representing the directory value in self.RESULTS_PATH."""
-		return Path(self.RESULTS).resolve() if self.RESULTS is not None else Path.home().resolve() / ".exsclaim"
-
-	UNCLASSIFIED_SUBFIGURES: Optional[str] = Field(
-		default=getenv("EXSCLAIM_UNCLASSIFIED_SUBFIGURES", None),
+	UNCLASSIFIED_SUBFIGURES_PATH: Optional[Path] = Field(
+		default=None,
 		description="The directory where subfigures that could not have been classified should be stored (in case future models should be trained on it).",
 		examples=["~/.exsclaim/training/unclassified", "/exsclaim/training/unclassified"],
 	)
 
-	@computed_field
-	@property
-	def UNCLASSIFIED_SUBFIGURES_PATH(self) -> Optional[Path]:
-		"""The pathlib.Path object representing the directory value in self.UNCLASSIFIED_SUBFIGURES_PATH."""
-		return Path(self.UNCLASSIFIED_SUBFIGURES).resolve() if self.UNCLASSIFIED_SUBFIGURES is not None else None
-
-	UNDETECTED_SUBFIGURES: Optional[str] = Field(
+	UNDETECTED_SUBFIGURES_PATH: Optional[Path] = Field(
 		default=None,
 		description="The directory where images that had no detected subfigures should be stored (in case future models should be trained on it).",
 		examples=["~/.exsclaim/training/undetected", "/exsclaim/training/undetected"],
-		env="UNDETECTED_SUBFIGURES"
 	)
 
-	@computed_field
-	@property
-	def UNDETECTED_SUBFIGURES_PATH(self) -> Optional[Path]:
-		"""The pathlib.Path object representing the directory value in self.UNDETECTED_SUBFIGURES_PATH."""
-		return Path(self.UNDETECTED_SUBFIGURES).resolve() if self.UNDETECTED_SUBFIGURES is not None else None
-
-	UNSCRAPED_HTML: Optional[str] = Field(
+	UNSCRAPED_HTML_PATH: Optional[Path] = Field(
 		default=None,
 		description="The directory where the HTML of articles that incurred an error should be stored (in case of debugging possible bugs in the code).",
 		examples=["~/.exsclaim/training/unscraped", "/exsclaim/training/unscraped"],
-		env="UNSCRAPED_HTML"
 	)
 
-	@computed_field
-	@property
-	def UNSCRAPED_HTML_PATH(self) -> Optional[Path]:
-		"""The pathlib.Path object representing the directory value in self.UNSCRAPED_HTML_PATH."""
-		return Path(self.UNSCRAPED_HTML).resolve() if self.UNSCRAPED_HTML is not None else None
-
-	@field_validator("OLLAMA_HOST", "LLAMA_CPP_HOST")
+	@field_validator("OLLAMA_HOST")
 	@classmethod
 	def domain_has_no_trailing_slash(cls, url: Optional[str]) -> Optional[str]:
 		if url is None:
@@ -132,7 +86,7 @@ class ExsclaimSettings(BaseSettings):
 
 	@field_validator("ALLOW_PDF_PATHS", "DEBUG", "DISPLAY_TQDM", mode="before")
 	@classmethod
-	def boolean(cls, value) -> bool:
+	def validate_boolean(cls, value) -> bool:
 		if isinstance(value, bool):
 			return value
 
@@ -143,6 +97,20 @@ class ExsclaimSettings(BaseSettings):
 			return BOOL_REGEX.match(value) is None
 
 		raise ValueError(f"Unknown boolean-coercion type: {type(value).__name__} with value {value}.")
+
+	@field_validator("CHECKPOINTS_PATH", "LOGS_PATH", "RESULTS_PATH", "UNDETECTED_SUBFIGURES_PATH", "UNCLASSIFIED_SUBFIGURES_PATH",
+					 "UNSCRAPED_HTML_PATH", mode="after")
+	@classmethod
+	def validate_paths(cls, path: Optional[Path]) -> Optional[Path]:
+		if path is None:
+			return None
+
+		path = path.resolve()
+
+		if not path.is_dir():
+			path.mkdir(parents=True, exist_ok=True)
+
+		return path
 
 
 class ORCIDSettings(BaseSettings):
@@ -185,7 +153,6 @@ class UISettings(ExsclaimSettings):
 		default=3000,
 		description="The port that a user would use to access the Dashboard.",
 		examples=[3000, 80, 8080],
-		env="DASHBOARD_PORT"
 	)
 
 	DOMAIN: str = Field(

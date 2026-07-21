@@ -7,13 +7,13 @@ ifeq ($(UV),)
 	PY := $(shell python3 -c "from sys import executable as ex; print(ex)" || python -c "from sys import executable as ex; print(ex)")
 	PIP_INSTALL := $(PYTHON) -m pip install
 	MAKE_VENV := $(PY) -m venv build/venv
-	INSTALL_EXSCLAIM := $(PY) -m pip install ./dist/exsclaim-$(EXSCLAIM_VERSION)-py3-none-any.whl[ollama]
+	INSTALL_EXSCLAIM := $(PY) -m pip install ./dist/exsclaim-$(EXSCLAIM_VERSION)-py3-none-any.whl
 	BUILD := $(PYTHON) -m build
 else
 	# UV is installed
 	PIP_INSTALL := $(UV) pip install --python $(PYTHON)
 	MAKE_VENV := $(UV) venv build/venv
-	INSTALL_EXSCLAIM := $(UV) pip install --system --system-certs ./dist/exsclaim-$(EXSCLAIM_VERSION)-py3-none-any.whl[ollama]
+	INSTALL_EXSCLAIM := $(UV) pip install --system --system-certs ./dist/exsclaim-$(EXSCLAIM_VERSION)-py3-none-any.whl
 	BUILD := $(UV) build
 endif
 

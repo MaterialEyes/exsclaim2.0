@@ -790,6 +790,7 @@ async def download_checkpoint(checkpoint: str) -> Response:
 		return Response("Could not find any checkpoints. Please try again later.",
 						status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
 
+	checkpoint = Path(checkpoint).name # Prevents users from using ../../.. to read in from external directories
 	checkpoint_path = checkpoint_folder / checkpoint
 	if not checkpoint_path.exists():
 		return Response(f"Could not find checkpoint \"{checkpoint}\".", status_code=status.HTTP_404_NOT_FOUND,

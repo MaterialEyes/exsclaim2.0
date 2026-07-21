@@ -47,7 +47,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 		self.logger = logger
 
 	@staticmethod
-	def get_log_time(diff:float) -> str:
+	def get_log_time(diff: float) -> str:
 		if diff < 1:
 			return f"{diff * 1000:,.4f}ms"
 		return f"{diff:,.2f}s"

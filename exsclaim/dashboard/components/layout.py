@@ -115,7 +115,7 @@ def create_layout_component(result_id: UUID, base_url: str, public_api_url: str)
 def create_loading_component():
 	"""Create loading component."""
 	return dcc.Loading(
-		html.Div("Loading results...", className="text-center"),
+		# html.Div("Loading results...", className="text-center"),
 		color="#93fad9",
 		display="hide",
 		fullscreen=False,

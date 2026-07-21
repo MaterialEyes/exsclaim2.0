@@ -1,95 +1,85 @@
 """Functions for interacting with postgres database"""
 from .models import *
 
-from configparser import ConfigParser, NoSectionError
 from logging import exception
-from os import PathLike, getenv
 from pathlib import Path
-from shutil import copy
+from pydantic import Field, computed_field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.dialects.postgresql.asyncpg import AsyncAdapt_asyncpg_dbapi
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlmodel import SQLModel
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 
-__all__ = ["async_engine", "modify_database_configuration", "get_database_connection_string", "Database"]
+__all__ = ["async_engine", "Database"]
 
 
-# TODO: Turn this into a BaseSettings class?
-def get_database_connection_string(configuration_file: PathLike[str] = None, section: str = "Postgres",
-								   password_file: PathLike[str] = None) -> str:
-	"""
-	Creates a Postgres database connection string from a configuration file.
-	:param PathLike[str] configuration_file:
-	:param str section:
-	:raises configparser.NoSectionError: If the provided configuration file does not contain a section with the name provided in the section parameter.
-	:raises FileNotFoundError: If the provided password file does not exist.
-	:rtype: str
-	"""
-	def get_value(environment_name:str, default_value:str, ini_params:dict[str, str], ini_name:str=None) -> str:
-		value = getenv(environment_name, default_value)
-		value = ini_params.get(ini_name, value)
-		return value
+class PostgresSettings(BaseSettings):
+	"""Gets access to the environment variables for the PostgreSQL database."""
+	model_config = SettingsConfigDict(env_prefix="POSTGRES_", secrets_dir=("/run/secrets/", "/var/run"))
 
-	ini_params = dict()
-	if configuration_file is not None:
-		parser = ConfigParser()
-		parser.read(configuration_file)
+	USER: str = Field(
+		default="exsclaim"
+	)
 
-		if not parser.has_section(section):
-			raise NoSectionError(section)
+	PORT: int = Field(
+		default=5432
+	)
 
-		ini_params = {key: value for key, value in parser.items(section)}
+	DB: str = Field(
+		default="exsclaim"
+	)
 
-	username = get_value("POSTGRES_USER", "exsclaim", ini_params, "user")
-	port = get_value("POSTGRES_PORT", "5432", ini_params, "port")
-	database_name = get_value("POSTGRES_DB", "exsclaim", ini_params, "database")
-	host = get_value("POSTGRES_HOST", "localhost", ini_params, "host")
+	HOST: str = Field(
+		default="localhost"
+	)
 
-	password_file = password_file or getenv("POSTGRES_PASSWORD_FILE", "/run/secrets/db_password")
-	try:
-		if not (Path(password_file).exists() and Path(password_file).is_file()):
-			raise FileNotFoundError(f"Password file \"{password_file}\" does not exist.")
+	PASSWORD: Optional[str] = Field(
+		default=None
+	)
 
-		with open(password_file, "r") as f:
-			password = f.read().strip()
-	except FileNotFoundError as e:
-		password = ""
-		print(e)
+	PASSWORD_FILE: Optional[Path] = Field(
+		default=None,
+	)
 
-	# db is one of the aliases given through Docker Compose
-	url = f"postgresql+asyncpg://{username}:{password}@{host}:{port}/{database_name}"
-	return url
+	@field_validator("PASSWORD_FILE")
+	@classmethod
+	def check_if_password_file_exists(cls, file: Optional[Path]) -> Optional[Path]:
+		if file is None:
+			return file
 
+		if not file.is_file():
+			raise ValueError(f"Given Postgres password file: \"{file}\" is not a file.")
 
-def modify_database_configuration(config_path:str):
-	"""Alter database.ini to store configuration for future runs
+		return file.resolve()
 
-	Args:
-		config_path (str): path to .ini file
-	Modifies:
-		database.ini
-	"""
-	current_file = Path(__file__).resolve()
-	database_ini = current_file.parent / "database.ini"
-	config_path = Path(config_path)
-	copy(config_path, database_ini)
+	@computed_field
+	@property
+	def connection_string(self) -> str:
+		if self.PASSWORD is not None:
+			password = self.PASSWORD.strip()
+		elif self.PASSWORD_FILE is not None:
+			with open(self.PASSWORD_FILE, "r") as f:
+				password = f.read().strip()
+		else:
+			raise ValueError("A password for Postgres must be provided either through \"POSTGRES_PASSWORD\" or \"POSTGRES_PASSWORD_FILE\".")
+
+		return f"postgresql+asyncpg://{self.USER}:{password}@{self.HOST}:{self.PORT}/{self.DB}"
 
 
+_postgres_settings = PostgresSettings()
 async_engine = create_async_engine(
-	get_database_connection_string(),
+	_postgres_settings.connection_string,
 	echo=False,
 )
 
 
 class Database:
 	def __init__(self, name="exsclaim", configuration_file=None):
-		db_url = get_database_connection_string(configuration_file, name)
-
 		self.async_engine = create_async_engine(
-			db_url,
+			_postgres_settings.connection_string,
 			echo=True,
 			future=True,
 		)
@@ -157,14 +147,14 @@ class Database:
 
 		# Insert classification codes into the database
 		classification_codes = (
-			ClassificationCodes(code="MC", name="microscopy"),
-			ClassificationCodes(code="DF", name="diffraction"),
-			ClassificationCodes(code="GR", name="graph"),
-			ClassificationCodes(code="PH", name="basic_photo"),
-			ClassificationCodes(code="IL", name="illustration"),
-			ClassificationCodes(code="UN", name="unclear"),
-			ClassificationCodes(code="PT", name="parent"),
-			ClassificationCodes(code="SB", name="subfigure"),
+			ClassificationCodes(code="MC", name="Microscopy"),
+			ClassificationCodes(code="DF", name="Diffraction"),
+			ClassificationCodes(code="GR", name="Graph"),
+			ClassificationCodes(code="PH", name="Basic Photo"),
+			ClassificationCodes(code="IL", name="Illustration"),
+			ClassificationCodes(code="UN", name="Unclear"),
+			ClassificationCodes(code="PT", name="Parent"),
+			ClassificationCodes(code="SB", name="Subfigure"),
 		)
 
 		async with AsyncSession(self.async_engine) as session:

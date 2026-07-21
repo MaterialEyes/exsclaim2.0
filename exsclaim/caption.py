@@ -179,16 +179,17 @@ class LLM(ABC, metaclass=LLMMeta):
 		...
 
 	async def __aenter__(self) -> Self:
-		return await self.load()
+		await self.load()
+		return self
 
 	async def __aexit__(self, *args, **kwargs):
 		await self.unload()
 
-	async def load(self, logger: Logger) -> bool:
+	async def load(self, logger: Optional[Logger] = None) -> bool:
 		"""Does any needed preparation to load the model."""
 		return True
 
-	async def unload(self, logger: Logger):
+	async def unload(self, logger: Optional[Logger] = None):
 		"""Does any needed preparation to unload the model."""
 		...
 
