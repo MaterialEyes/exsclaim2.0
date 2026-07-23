@@ -1,5 +1,6 @@
 from ...config import ExsclaimSettings
 from ..models import *
+from .users import ActiveUser, CurrentUser
 
 import logging
 import tarfile
@@ -154,7 +155,7 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, session: AsyncSes
 		}
 	}
 }, tags=["Using EXSCLAIM"])
-async def query(request: Request, search_query: Query, background_tasks: BackgroundTasks) -> Response:
+async def query(request: Request, search_query: Query, background_tasks: BackgroundTasks, user: CurrentUser) -> Response:
 	session = request.state.session
 	logger: logging.Logger = request.state.logger
 
@@ -206,7 +207,7 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 		for sanitized_keys in ("name", "term", "synonyms"):
 			...  # TODO: Sanitize these user inputs
 
-		await session.execute(insert(Results).values(id=uuid, user_id=request.state.user_id, search_query=db_json,
+		await session.execute(insert(Results).values(id=uuid, user_id=user.id, search_query=db_json,
 												  extension=SaveExtensions.TAR))
 		await session.commit()
 
@@ -370,13 +371,13 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 				 }
 			 },
 		 })
-async def status_def(request: Request, result_id: UUID):
+async def status_def(request: Request, result_id: UUID, user: CurrentUser):
 	session: AsyncSession = request.state.session
 	logger: logging.Logger = request.state.logger
 	results = await session.execute(select(Results).where(Results.id == result_id))
 	result: Results = results.scalar_one_or_none()
 
-	if not User.has_permission(request.state.user_id, result):
+	if not User.has_permission(user, result):
 		return ExsclaimJSONResponse({
 			"results_status": "Not Found",
 			"message": f"There is no query recorded in our database with id: {result_id}."
@@ -415,12 +416,12 @@ async def status_def(request: Request, result_id: UUID):
 
 
 @router.api_route("/stop/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
-async def stop_run(request: Request, result_id: UUID):
+async def stop_run(request: Request, result_id: UUID, user: CurrentUser):
 	session: AsyncSession = request.state.session
 	results = await session.execute(select(Results).where(Results.id == result_id))
 	result: Results = results.scalar_one_or_none()
 
-	if result.user_id != request.state.user_id:
+	if result.user_id != user.id:
 		return ExsclaimJSONResponse({
 			"status": "Not Found",
 			"message": f"There is no query recorded in our database with id: {result_id}."
@@ -529,14 +530,14 @@ async def stop_run(request: Request, result_id: UUID):
 				 }
 			 },
 		 })
-async def download(request: Request, result_id: UUID, compression: str = "default",
+async def download(request: Request, result_id: UUID, user: CurrentUser, compression: str = "default",
 				   filename: Literal["name", "id"] = "id", tmp_dir_name: str = Depends(get_temp_dir)) -> Response:
 	session = request.state.session
 
 	results = await session.execute(select(Results).where(Results.id == result_id))
 	result: Results = results.scalar_one_or_none()
 
-	if not User.has_permission(request.state.user_id, result):
+	if not User.has_permission(user, result):
 		return Response(f"There is no query recorded in our database with id: {result_id}.", status_code=status.HTTP_404_NOT_FOUND,
 						media_type="text/plain")
 
@@ -607,14 +608,14 @@ async def download(request: Request, result_id: UUID, compression: str = "defaul
 
 
 @router.api_route("/results/{result_id}/logs", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
-async def download_logs(request: Request, result_id: UUID):
+async def download_logs(request: Request, result_id: UUID, user: CurrentUser):
 	session = request.state.session
 	logger = request.state.logger
 
 	results = await session.execute(select(Results).where(Results.id == result_id))
 	result: Results = results.scalar_one_or_none()
 
-	if not User.has_permission(request.state.user_id, result):
+	if not User.has_permission(user, result):
 		return Response(f"There is no query recorded in our database with id: {result_id}.",
 		                status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
@@ -650,12 +651,12 @@ async def download_logs(request: Request, result_id: UUID):
 
 
 @router.api_route("/results/{result_id}/publicize", methods=["POST", "HEAD"], tags=["Using EXSCLAIM"])
-async def publicize_result(request: Request, result_id: UUID, publicize: bool = Body(...)):
+async def publicize_result(request: Request, result_id: UUID, user: ActiveUser, publicize: bool = Body(...)):
 	session: AsyncSession = request.state.session
 	results = await session.execute(select(Results).where(Results.id == result_id))
 	results: Optional[Results] = results.scalar_one_or_none()
 
-	if results is None or results.user_id != request.state.user_id:
+	if results is None or results.user_id != user.id:
 		return Response(f"There is no query recorded in our database with id: {result_id}.",
 						status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 

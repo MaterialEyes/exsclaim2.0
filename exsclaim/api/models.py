@@ -86,6 +86,11 @@ class User(SQLModel, table=True):
 		dict(schema="users")
 	)
 
+	def __eq__(self, other) -> bool:
+		if isinstance(other, UUID):
+			return self.id == other
+		return False
+
 	id: UUID = Field(
 		default_factory=gen_uuid7,
 		title="The user's unique ID.",
@@ -142,10 +147,26 @@ class User(SQLModel, table=True):
 		nullable=True
 	)
 
+	@property
+	def jti(self) -> Optional[UUID]:
+		if not hasattr(self, "_jti"):
+			self._jti = None
+		return self._jti
+
+	@jti.setter
+	def jti(self, value: Optional[UUID]) -> None:
+		self._jti = value
+
+	@jti.deleter
+	def jti(self):
+		self._jti = None
+
 	@field_validator("email", mode="before")
 	@classmethod
-	def normalize_emails(cls, raw_email):
+	def normalize_emails(cls, raw_email: Optional[EmailStr]) -> Optional[EmailStr]:
 		"""Ensures that all emails in the database are lowercase."""
+		if raw_email is None:
+			return None
 		return raw_email.strip().lower()
 
 	@staticmethod
@@ -158,11 +179,12 @@ class User(SQLModel, table=True):
 		return compare_digest(cryptographic_hash(attempted_password, salt=self.salt), self.password_hash)
 
 	@staticmethod
-	def has_permission(viewer: UUID, results: Optional[Results]) -> bool:
+	def has_permission(viewer: User, results: Optional[Results]) -> bool:
 		if results is None:
 			return False
+
 		owner = results.user_id
-		return owner == get_guest_uuid() or owner == viewer or results.publicize_results
+		return owner == get_guest_uuid() or owner == viewer.id or results.publicize_results
 
 
 class Sessions(SQLModel, table=True):

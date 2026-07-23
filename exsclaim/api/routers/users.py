@@ -1,87 +1,242 @@
 from ...config import ui_settings, orcid_settings
 from ..models import User, Sessions, PasswordReset, Results, cryptographic_hash, generate_salt, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
+
+from exsclaim.db import get_db_session
+
 from datetime import datetime as dt, timezone as tz, timedelta as td
-from fastapi import APIRouter, Form, status
+from fastapi import APIRouter, Form, status, Depends, HTTPException, Body, Cookie
 from fastapi.encoders import jsonable_encoder
+from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
 from httpx import AsyncClient
 from starlette.requests import Request
-from starlette.responses import Response, HTMLResponse
-from pydantic import EmailStr
+from starlette.responses import Response, HTMLResponse, RedirectResponse
+from pydantic import EmailStr, BaseModel
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select, text
+from sqlmodel import select
 from typing import Annotated, Optional
-from uuid import uuid5, UUID
+from uuid import uuid4, UUID
 
-__all__ = ["router", "get_user_from_session"]
+import jwt
+import re
 
-router = APIRouter()
+__all__ = ["router", "CurrentUser", "ActiveUser"]
+
+
+router = APIRouter(prefix="/user")
 TAG = "User Management"
 
+ALGORITHM = "RS256"
 
-async def get_user_from_session(session: AsyncSession, session_key: str | bytes) -> Optional[Sessions | bool]:
-	"""
-	Gets the user attached to a session key.
-	:param sqlalchemy.ext.asyncio.AsyncSession session: The database session being used to query the database.
-	:param str | bytes session_key: The session key that was sent from the user's cookie.
-	:returns: exsclaim.api.models.Sessions object if the cookie was found, False if the cookie has expired, None if no cookie was found in the database matching what was sent.
-	"""
-	results = await session.execute(select(Sessions).where(Sessions.key == session_key))
-	session_obj = results.scalar_one_or_none()
+if (ui_settings.JWT_PUBLIC_KEY_FILE is not None) and (ui_settings.JWT_PRIVATE_KEY_FILE is not None):
+	with open(ui_settings.JWT_PRIVATE_KEY_FILE, 'rb') as f:
+		PRIVATE_KEY = f.read()
 
-	if not session_obj:
+	with open(ui_settings.JWT_PUBLIC_KEY_FILE, 'rb') as f:
+		PUBLIC_KEY = f.read()
+else:
+	from cryptography.hazmat.primitives.asymmetric import rsa
+	from logging import getLogger
+	getLogger("exsclaim.api").warning(f"Could not load secrets for JWT from private={ui_settings.JWT_PRIVATE_KEY_FILE} and public={ui_settings.JWT_PUBLIC_KEY_FILE}, so temporary secrets are being generated instead.")
+	PRIVATE_KEY = rsa.generate_private_key(public_exponent=65_537, key_size=4_096)
+	PUBLIC_KEY = PRIVATE_KEY.public_key()
+
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+DOMAIN_REGEX = re.compile("https?://")
+
+
+def get_cookie_domain() -> str:
+	return DOMAIN_REGEX.sub("", ui_settings.DOMAIN)
+
+
+def get_api_cookie_domain() -> str:
+	return DOMAIN_REGEX.sub("", ui_settings.PUBLIC_API_URL)
+
+
+async def get_guest_user() -> User:
+	async with get_db_session() as session:
+		results = await session.execute(select(User).where(User.id == get_guest_uuid()))
+		return results.scalar()
+	raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not find guest user.")
+
+
+def create_access_token(user: User) -> str:
+	now = dt.now(tz=tz.utc)
+
+	payload = {
+		"sub": str(user.id),
+		"type": "access",
+		"iat": now,
+		"exp": now + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+	}
+
+	encoded_jwt = jwt.encode(payload, PRIVATE_KEY, algorithm=ALGORITHM)
+	return encoded_jwt
+
+
+def create_refresh_token(user: User, jti: UUID):
+	now = dt.now(tz=tz.utc)
+
+	payload = {
+		"sub": str(user.id),
+		"type": "refresh",
+		"iat": now,
+		"exp": now + td(days=REFRESH_TOKEN_EXPIRE_DAYS),
+		"jti": str(jti)
+	}
+
+	encoded_jwt = jwt.encode(payload, PRIVATE_KEY, algorithm=ALGORITHM)
+	return encoded_jwt
+
+
+async def _extract_token(token: Optional[str]) -> User | HTTPException:
+	if token is None:
 		return None
 
-	session_obj: Sessions = session_obj
+	try:
+		payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
+		user_id = payload.get("sub")
+		if user_id is None:
+			return HTTPException(
+				status_code=status.HTTP_401_UNAUTHORIZED,
+				detail="Cannot refresh credentials when no credentials are given.",
+				headers={"WWW-Authenticate": "Bearer"},
+			)
 
-	if (expiration := session_obj.expiration) is not None:
-		if dt.now(tz.utc) >= expiration:
-			await session.delete(session_obj)
-			await session.commit()
-			return False
+	except jwt.InvalidTokenError:
+		return HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail="Could not validate credentials",
+			headers={"WWW-Authenticate": "Bearer"},
+		)
 
-	return session_obj
+	user_id = UUID(user_id)
+	async with get_db_session() as session:
+		user = await session.execute(select(User).where(User.id == user_id))
+		user = user.scalar()
 
-
-def get_cookie_domain(request: Request) -> str:
-	"""
-	Gets the domain that the cookies should serve on. Assuming that the API is on the api. subdomain of the UI, this will remove it allowing the cookie to be used with the API.
-	:param starlette.requests.Request request: The request object to get the domain from.
-	:returns: The domain name that the cookies should serve.
-	:rtype: str
-	"""
-	return request.url.hostname.replace("api.", "")
+	return user
 
 
-async def create_cookie(request: Request, response: Response, db_session: AsyncSession, user: User) -> Response:
-	"""
+bearer_regex = re.compile("Bearer (.+)")
 
-	Args:
-		request:
-		response:
-		db_session:
-		user:
 
-	Returns:
+async def get_current_user_from_authorization_header(request: Request) -> User:
+	auth = request.headers.get("Authorization", "")
+	match = bearer_regex.search(auth)
+	if match is None:
+		return await get_guest_user()
 
-	"""
-	salt = generate_salt(32)
-	name = cryptographic_hash(str(user.id), salt=salt)
-	session_id = uuid5(get_guest_uuid(), name)
+	user = await _extract_token(match.group(1))
+	if isinstance(user, User):
+		return user
 
-	session_id_str = str(session_id)
-	session = Sessions(user=user.id, key=session_id_str, salt=salt)
+	return await get_guest_user()
 
-	db_session.add(session)
-	await db_session.commit()
+
+async def get_current_user_from_cookie(request: Request) -> User:
+	cookie = request.cookies.get("access_token")
+
+	if cookie is None:
+		return await get_guest_user()
+
+	user = await _extract_token(cookie)
+	if isinstance(user, User):
+		return user
+
+	return await get_guest_user()
+
+
+async def get_active_user_from_authorization_header(token: Optional[str] = Depends(OAuth2PasswordBearer(tokenUrl="token"))) -> User:
+	user = await _extract_token(token)
+	if isinstance(user, HTTPException):
+		raise user
+
+	elif user is None:
+		raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials",
+		                    headers={"WWW-Authenticate": "Bearer"},)
+
+	return user
+
+
+async def get_active_user_from_cookie(cookie: str = Depends(APIKeyCookie(name="access_token", auto_error=False))) -> User:
+	user = await _extract_token(cookie)
+	if isinstance(user, HTTPException):
+		raise user
+
+	elif user is None:
+		raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials",
+		                    headers={"WWW-Cookie": "Bearer"},)
+
+	return user
+
+
+CurrentUser = Annotated[User, Depends(get_current_user_from_cookie)]
+ActiveUser = Annotated[User, Depends(get_active_user_from_cookie)]
+
+
+async def add_user_jti(user: User, jti: UUID):
+	async with get_db_session() as session:
+		await session.execute(text("INSERT INTO users.jtis VALUES(:user_id, :jti)"), dict(user_id=user.id, jti=jti))
+		await session.commit()
+
+
+async def remove_user_jti(user: User, jti: UUID):
+	async with get_db_session() as session:
+		await session.execute(text("DELETE FROM users.jtis WHERE id = :user_id AND jti = :jti"), dict(user_id=user.id, jti=jti))
+		await session.commit()
+
+	del user.jti
+
+
+async def user_has_jti(user: User, jti: UUID) -> bool:
+	async with get_db_session() as session:
+		results = await session.execute(text("SELECT EXISTS (SELECT 1 FROM users.jtis WHERE id = :user_id AND jti = :jti)"), dict(user_id=user.id, jti=jti))
+		return results.scalar()
+
+
+async def create_tokens_for_authorization_header(user: User) -> dict[str, str]:
+	new_jti = uuid4()
+	await add_user_jti(user, new_jti)
+
+	access_token = create_access_token(user)
+	refresh_token = create_refresh_token(user, new_jti)
+
+	return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+
+async def create_tokens_for_cookie(user: User, response: Response) -> Response:
+	new_jti = uuid4()
+	await add_user_jti(user, new_jti)
+
+	access_token = create_access_token(user)
+	refresh_token = create_refresh_token(user, new_jti)
+
 	response.set_cookie(
-		key="session_id",
-		value=session_id_str,
-		# httponly=True,
-		domain=get_cookie_domain(request),
+		key="access_token",
+		value=access_token,
+		httponly=True,
 		secure=True,
-		samesite="strict",
-		expires=session.expiration,
+		domain=get_cookie_domain(),
+		samesite="lax",
+		max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+		path="/"
 	)
+
+	response.set_cookie(
+		key="refresh_token",
+		value=refresh_token,
+		httponly=True,
+		secure=True,
+		domain=get_api_cookie_domain(),
+		samesite="strict",
+		max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86_400, # 86,400 seconds in a day
+		path=router.prefix + "/refresh"
+	)
+
 	return response
 
 
@@ -102,8 +257,10 @@ async def create_user(request: Request, username: Annotated[str, Form()], email:
 
 	session.add(user)
 	await session.commit()
-	response = Response(f"Account created for {email}.", status_code=status.HTTP_201_CREATED, media_type="text/plain")
-	return await create_cookie(request, response, session, user)
+
+	response = JSONResponse({"message": f"Account created for {email}."}, status_code=status.HTTP_201_CREATED)
+	response = await create_tokens_for_cookie(user, response)
+	return response
 
 
 @router.post("/login", tags=[TAG])
@@ -115,13 +272,17 @@ async def login_user(request: Request, email: Annotated[EmailStr, Form()], passw
 	if not actual_user:
 		return Response(content="Invalid email/password.", status_code=status.HTTP_401_UNAUTHORIZED, media_type="text/plain")
 
-	actual_user = actual_user
-
 	if not actual_user.verify_password(password):
 		return Response(content="Invalid email/password.", status_code=status.HTTP_401_UNAUTHORIZED, media_type="text/plain")
 
-	response = Response(status_code=status.HTTP_200_OK, media_type="text/plain", headers={"Location": request.headers["Referer"]})
-	return await create_cookie(request, response, db_session, actual_user)
+	referer = request.headers.get("Referer")
+	response = JSONResponse({"status": "Logged in successfully!"}, status_code=status.HTTP_200_OK)
+
+	if referer is not None:
+		response.headers["Location"] = referer
+
+	response = await create_tokens_for_cookie(actual_user, response)
+	return response
 
 
 @router.api_route("/login-orcid", methods=["GET", "HEAD"], tags=[TAG], include_in_schema=False)
@@ -148,31 +309,48 @@ async def login_with_orcid(request: Request, code: str): # TODO: Create a way fo
 	session: AsyncSession = request.state.session
 	results = await session.execute(select(User).where(User.orcid == json["orcid"]))
 	actual_user: Optional[User] = results.scalar_one_or_none()
-	response = Response(headers={"Location": ui_settings.DASHBOARD_URL}, status_code=308)
 	if actual_user is None:
 		# Create user
 		actual_user = User(name=json["name"], orcid=json["orcid"])
 		session.add(actual_user)
 		await session.commit()
 
-	return await create_cookie(request, response, session, actual_user)
+	response = RedirectResponse(ui_settings.DASHBOARD_URL)
+	response = await create_tokens_for_cookie(actual_user, response)
+	return response
+
+
+@router.post("/refresh", tags=[TAG])
+async def refresh(request: Request, user: ActiveUser, refresh_token: str = Cookie()):
+	try:
+		payload = jwt.decode(refresh_token, PUBLIC_KEY, algorithms=[ALGORITHM])
+	except jwt.ExpiredSignatureError:
+		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token is expired.")
+	except jwt.InvalidTokenError:
+		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token.")
+
+	if payload.get("type") != "refresh":
+		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not a refresh token.")
+
+	if not await user_has_jti(user, payload["jti"]):
+		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JTI does not match: {payload['jti']}.")
+
+	await remove_user_jti(user, payload["jti"])
+
+	response = JSONResponse({"status": "New access token provided."}, status_code=status.HTTP_202_ACCEPTED)
+	response = await create_tokens_for_cookie(user, response)
+	return response
 
 
 @router.api_route("/logout", methods=["GET", "HEAD"], tags=[TAG])
-async def logout_user(request: Request) -> Response:
-	db_session: AsyncSession = request.state.session
-	session_id = request.cookies.get("session_id")
-	if not session_id:
-		return Response("No user logged in to begin with.", status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
-
-	session = await get_user_from_session(db_session, session_id)
-	await db_session.delete(session)
-	await db_session.commit()
+async def logout_user(request: Request, user: ActiveUser) -> Response:
+	await remove_user_jti(user, user.jti)
 
 	headers = {"Location": referer} if (referer := request.headers.get("Referer")) else dict()
 	response = Response("User logged out successfully.", status_code=status.HTTP_200_OK, media_type="text/plain",
 						headers=headers)
-	response.delete_cookie(key="session_id", domain=get_cookie_domain(request))
+	response.delete_cookie(key="access_token", domain=get_cookie_domain())
+	response.delete_cookie(key="refresh_token", domain=get_api_cookie_domain())
 	return response
 
 
@@ -228,38 +406,34 @@ async def reset_password(request: Request, token: str = None, email: EmailStr = 
 
 
 @router.api_route("/get_username", methods=["GET", "HEAD"], include_in_schema=False)
-async def get_username(request: Request) -> JSONResponse:
-	user_id = request.state.user_id
+async def get_username(request: Request, user: CurrentUser) -> JSONResponse:
 	session: AsyncSession = request.state.session
 
-	if user_id is None:
-		return JSONResponse({"username": "Not Logged In."}, status_code=status.HTTP_403_FORBIDDEN)
-	elif user_id == get_guest_uuid():
-		return JSONResponse({"username": "Not Logged In."}, status_code=status.HTTP_202_ACCEPTED)
+	not_logged_in = {"username": "Not Logged In."}
+	if user is None or user.id == get_guest_uuid():
+		return JSONResponse(not_logged_in, status_code=status.HTTP_202_ACCEPTED)
 
-	result = await session.execute(text("SELECT name FROM users.users WHERE id = :id;"), params=dict(id=user_id))
-	result = result.fetchone()
-	if not result:
-		return JSONResponse({"username": "Logged in, but could not find username."}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-	return JSONResponse({"username": result[0]}, status_code=status.HTTP_200_OK)
+	return JSONResponse({"username": user.name}, status_code=status.HTTP_200_OK)
 
 
 @router.api_route("/previous_runs", methods=["GET", "HEAD"], tags=[TAG]) # TODO: Allow request to dictate which fields are found and sent
-async def previous_runs(request: Request) -> JSONResponse:
+async def previous_runs(request: Request, user: CurrentUser) -> JSONResponse:
 	session: AsyncSession = request.state.session
 
-	results = await session.execute(text("""WITH
-                                                s AS (SELECT run_id, COUNT(run_id) AS num_figures FROM results.subfigure GROUP BY run_id),
-                                                a AS (SELECT run_id, COUNT(run_id) AS num_articles FROM results.article GROUP BY run_id)
-                                            SELECT
-                                                r.id, r.status, r.search_query->>'name' AS name, r.search_query->'query'->'search_field_1'->'term' AS term,
-                                                r.start_time, r.end_time, COALESCE(r.end_time, NOW()) - r.start_time AS run_time, r.search_query->>'maximum_scraped' AS max_articles,
-                                                a.num_articles, s.num_figures
-                                            FROM results.results r
-                                                     LEFT JOIN s ON r.id = s.run_id
-                                                     LEFT JOIN a ON r.id = a.run_id
-                                            WHERE r.user_id = :user_id
-                                            ORDER BY r.start_time DESC"""), params=dict(user_id=request.state.user_id))
+	results = await session.execute(text("""\
+		WITH
+			s AS (SELECT run_id, COUNT(run_id) AS num_figures FROM results.subfigure GROUP BY run_id),
+			a AS (SELECT run_id, COUNT(run_id) AS num_articles FROM results.article GROUP BY run_id)
+		SELECT
+			r.id, r.status, r.search_query->>'name' AS name, r.search_query->'query'->'search_field_1'->'term' AS term,
+			r.start_time, r.end_time, COALESCE(r.end_time, NOW()) - r.start_time AS run_time, r.search_query->>'maximum_scraped' AS max_articles,
+			a.num_articles, s.num_figures
+		FROM results.results r
+			LEFT JOIN s ON r.id = s.run_id
+			LEFT JOIN a ON r.id = a.run_id
+		WHERE r.user_id = :user_id
+		ORDER BY r.start_time DESC
+	"""), params=dict(user_id=user.id))
 	runs = results.fetchall()
 
 	output = [None] * len(runs)

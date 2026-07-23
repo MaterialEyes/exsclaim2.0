@@ -1,19 +1,21 @@
 """Functions for interacting with postgres database"""
 from .models import *
 
+from contextlib import asynccontextmanager
 from logging import exception
 from pathlib import Path
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from sqlalchemy.dialects.postgresql.asyncpg import AsyncAdapt_asyncpg_dbapi
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlmodel import SQLModel
-from typing import Any, Optional
+from typing import Any, AsyncGenerator, Optional
 from uuid import UUID
 
+import logging
+import sqlalchemy.exc as sql_exc
 
-__all__ = ["async_engine", "Database"]
+__all__ = ["async_engine", "Database", "get_db_session"]
 
 
 class PostgresSettings(BaseSettings):
@@ -76,6 +78,17 @@ async_engine = create_async_engine(
 )
 
 
+@asynccontextmanager
+async def get_db_session(logger: Optional[logging.Logger] = None) -> AsyncGenerator[AsyncSession, None]:
+	async with AsyncSession(async_engine) as session:
+		try:
+			yield session
+		except sql_exc.SQLAlchemyError as e:
+			if logger is not None:
+				logger.critical("An error occurred with the database.", exc_info=e)
+			await session.rollback()
+
+
 class Database:
 	def __init__(self, name="exsclaim", configuration_file=None):
 		self.async_engine = create_async_engine(
@@ -111,7 +124,7 @@ class Database:
 					try:
 						session.add_all(objects)
 						await session.commit()
-					except (IntegrityError, AsyncAdapt_asyncpg_dbapi.IntegrityError) as e:
+					except (sql_exc.IntegrityError, AsyncAdapt_asyncpg_dbapi.sql_exc.IntegrityError) as e:
 						if "duplicate key value" in str(e):
 							exception("Attempted to add duplicate primary keys to the database.")
 							await session.rollback()
@@ -120,7 +133,7 @@ class Database:
 							exception(f"SQLAlchemy error found when uploading the results.")
 							await session.rollback()
 							break
-					except SQLAlchemyError:
+					except sql_exc.SQLAlchemyError:
 						exception(f"SQLAlchemy error found when uploading the results.")
 						await session.rollback()
 						break
@@ -133,6 +146,7 @@ class Database:
 		from sqlalchemy.schema import CreateSchema
 		from sqlalchemy.sql import text, select, insert
 		from ..api.models import Results, User, Sessions, get_guest_uuid
+		from ..api.db import initialize_db as api_db
 
 		async with self.async_engine.begin() as conn:
 			await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
@@ -144,6 +158,8 @@ class Database:
 			result = await conn.execute(text("SELECT COUNT(id) FROM users.users WHERE email IS NULL;"))
 			if not result.fetchone()[0]:
 				await conn.execute(insert(User).values(id=get_guest_uuid(), name="Default User"))
+
+			await api_db(conn)
 
 		# Insert classification codes into the database
 		classification_codes = (

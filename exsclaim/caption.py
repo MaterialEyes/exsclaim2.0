@@ -257,12 +257,12 @@ class LLM(ABC, metaclass=LLMMeta):
 		return tuple(keywords.keywords)
 
 	@classmethod
-	def from_search_query(cls, search_query: dict):
+	def from_search_query(cls, search_query: dict, run_id: Optional["uuid.UUID"] = None):
 		llm = search_query.get("llm", None)
 		if llm is None:
 			raise ValueError("llm key must be provided to search_query.")
 		model_key = search_query.get("model_key", None)
-		return cls(llm, model_key)
+		return cls(llm, model_key, run_id=run_id)
 
 	@staticmethod
 	def remove_control_characters(string: str) -> str:

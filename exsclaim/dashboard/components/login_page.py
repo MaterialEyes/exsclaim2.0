@@ -43,7 +43,7 @@ def create_email_component(debounce=True):
 			type="email",
 			inputmode="email",
 			placeholder="user@example.com",
-			pattern=r"^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$",
+			pattern=r"^[a-zA-Z0-9.!#$%&'*+\/=?^_`\{\|\}~\-]+@[a-zA-Z0-9\-]+(?:\.[a-zA-Z0-9\-]+)*$",
 			valid=False,
 			className="form-control",
 			debounce=debounce,
@@ -211,16 +211,16 @@ def create_login_page_layout(mode: FormMode = FormMode.LOGIN, debounce=True) -> 
 
 clientside_callback(
 	"""
-	function(username_validity, email_validity, password_validity) {
-		if(username_validity === undefined) { username_validity = false; }
+	function(email_validity, password_validity, username_validity) {
+		if(username_validity === undefined || username_validity === null) { username_validity = true; }
 		return !(username_validity && email_validity && password_validity);
 	}
 	""",
 	Output("submit-info", "disabled"),
 	[
-		Input("username", "valid", allow_optional=True),
 		Input("email", "valid"),
 		Input("password", "valid"),
+		Input("username", "valid", allow_optional=True),
 	]
 )
 
@@ -228,7 +228,7 @@ clientside_callback(
 clientside_callback(
 	ClientsideFunction(
 		namespace="user",
-		function_name="send_form_data"
+		function_name="check_email"
 	),
 	[
 		Output("email", "valid"),

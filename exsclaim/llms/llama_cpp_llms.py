@@ -7,7 +7,7 @@ from os import getenv
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
-from typing import Literal, Optional, Callable
+from typing import Literal, Optional, Callable, Coroutine
 
 import httpx
 import logging
@@ -109,7 +109,10 @@ class LlamaCPP(OpenAI):
 		if settings.SEND_RUN_ID_HEADER and (run_id := kwargs.get("run_id")) is not None:
 			headers["X-EXSCLAIM-RUN-ID"] = str(run_id)
 
-		self.http_client = httpx.AsyncClient(base_url=base_url, timeout=timeout, verify=self._ctx, headers=headers)
+		self.event_hooks: dict[str, list[Coroutine[None, None, Callable[[httpx.Request | httpx.Response], None]]]] = \
+			kwargs.get("event_hooks", dict())
+		self.http_client = httpx.AsyncClient(base_url=base_url, timeout=timeout, verify=self._ctx, headers=headers,
+											 event_hooks=self.event_hooks)
 
 		api_key = api_key or "not-needed"
 		LLM.__init__(self, model, api_key, **kwargs)
@@ -202,6 +205,11 @@ class LlamaCPP(OpenAI):
 							continue
 
 						data = loads(match.group(1))
+
+						if data["event"] == "error":
+							if data["message"].startswith("No job has been posted for run"):
+								continue
+
 						if "error" in data:
 							if logger is not None:
 								logger.info(f"An error occurred when trying to get server side events: {data['error']}")

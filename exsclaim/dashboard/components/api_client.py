@@ -25,7 +25,7 @@ async def fetch_status(client: AsyncClient, base_url: str, result_id: str) -> St
 		return Status.ERROR
 
 
-async def fetch_articles(client:AsyncClient, base_url: str, result_id: str) -> list[dict[str, Any]]:
+async def fetch_articles(client: AsyncClient, base_url: str, result_id: str) -> list[dict[str, Any]]:
 	"""Fetch articles from the API."""
 	try:
 		response = await client.get(f"{base_url}/results/v1/{result_id}/articles")
@@ -37,7 +37,7 @@ async def fetch_articles(client:AsyncClient, base_url: str, result_id: str) -> l
 		return []
 
 
-async def fetch_figures(client:AsyncClient, base_url: str, result_id: str, page: int = 1) -> list[dict[str, Any]]:
+async def fetch_figures(client: AsyncClient, base_url: str, result_id: str, page: int = 1) -> list[dict[str, Any]]:
 	"""Fetch figures from the API."""
 	try:
 		response = await client.get(f"{base_url}/results/v1/{result_id}/figures/?page={page}")
@@ -49,7 +49,7 @@ async def fetch_figures(client:AsyncClient, base_url: str, result_id: str, page:
 		return []
 
 
-async def fetch_subfigures(client:AsyncClient, base_url: str, result_id: str, page: Optional[int] = None) -> list[dict[str, Any]]:
+async def fetch_subfigures(client: AsyncClient, base_url: str, result_id: str, page: Optional[int] = None) -> list[dict[str, Any]]:
 	"""Fetch subfigures from the API."""
 	try:
 		response = await client.get(f"{base_url}/results/v1/{result_id}/subfigures/?page={page}")

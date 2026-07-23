@@ -435,8 +435,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 	user: {
 		check_password: function(password){
 			// Check if this is in login or signup mode
-			const username = document.getElementById("username");
-			if(username === null || username === undefined) { return [true, false]; }
+			// const username = document.getElementById("username");
+			// if(username === null || username === undefined) {
+			// 	// This is the login page. Validity will only be based on the length of the password.
+			// 	const valid = password.length >= 8;
+			// 	return [valid, !valid];
+			// }
 
 			const checks = [
 				["password_length", /^.{8,}$/i],
@@ -510,6 +514,20 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			} catch(e){
 				return [true, [e], "danger", current_url, false];
 			}
+		},
+
+		// TODO: Have renew credentials run just before they expire
+		renew_credentials: async function(data){
+			let response = await fetch(`${data.public_fastapi_url}/user/refresh`, {
+				method: "POST",
+				credentials: "include"
+			});
+
+			if(response.ok){
+				return window.dash_clientside.no_update;
+			}
+
+			return `Could not automatically refresh cookies. Please log out and then log back in. ${await response.text()}`;
 		},
 
 		logout: async function(n_clicks, data, current_url) {

@@ -176,10 +176,33 @@ class UISettings(ExsclaimSettings):
 
 	PROJECT_NAME: str = "EXSCLAIM API"
 
+	JWT_PUBLIC_KEY_FILE: Optional[Path] = Field(
+		default=None,
+		description="The file containing the JWT public key to use to authenticate with the API.",
+	)
+
+	JWT_PRIVATE_KEY_FILE: Optional[Path] = Field(
+		default=None,
+		description="The file containing the JWT private key to use to authenticate with the API.",
+	)
+
 	@field_validator("DOMAIN", "FAST_API_URL", "PUBLIC_API_URL", "DASHBOARD_URL")
 	@classmethod
 	def domain_has_no_trailing_slash(cls, url: str) -> str:
 		return url.rstrip("/")
+
+	@field_validator("JWT_PUBLIC_KEY_FILE", "JWT_PRIVATE_KEY_FILE")
+	@classmethod
+	def get_jwt_secrets(cls, file: Optional[Path]) -> Optional[Path]:
+		if file is None:
+			return file
+
+		file = file.resolve()
+
+		if not file.is_file():
+			raise FileNotFoundError(f"File {file} does not exist.")
+
+		return file
 
 
 settings = ExsclaimSettings()

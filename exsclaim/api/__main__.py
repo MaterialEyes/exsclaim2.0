@@ -132,7 +132,6 @@ def get_middleware(settings, logger) -> tuple[Middleware, ...]:
 		Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts),
 		Middleware(GZipMiddleware, minimum_size=1_000),
 		Middleware(SQLAlchemyMiddleware, logger=logger),
-		Middleware(UserMiddleware),
 	)
 
 
@@ -155,10 +154,9 @@ def get_app() -> FastAPI:
 	app.openapi = my_schema
 	app.configuration_ini = None
 
-	app.include_router(general_router, prefix="")
-	app.include_router(query_router, prefix="")
-	app.include_router(users_router, prefix="/user")
-	app.include_router(v1_router, prefix="/results/v1")
+	for router in (general_router, query_router, users_router, v1_router):
+		app.include_router(router)
+
 	return app
 
 

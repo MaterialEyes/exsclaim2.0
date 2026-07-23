@@ -2,7 +2,7 @@
 Common Dash components converted from React components.
 """
 import dash_bootstrap_components as dbc
-from dash import html, clientside_callback, Output, Input, State, callback, ClientsideFunction
+from dash import html, clientside_callback, Output, Input, State, callback, ClientsideFunction, dcc
 from dash.development.base_component import Component
 from dash_extensions import Purify
 from typing import Any, Optional
@@ -12,10 +12,10 @@ __all__ = ["create_header_component", "create_notification_component", "create_f
 
 def create_login_component():
 	return [
-		# dcc.Interval(
-		# 	id="check-user",
-		# 	max_intervals=1,
-		# ),
+		dcc.Interval(
+			id="check-user",
+			max_intervals=1,
+		),
 		html.Div([
 				html.Button(children="Menu", className="dropbtn"), # TODO: Add the menu icon here
 				html.Div(children=[
@@ -235,30 +235,32 @@ clientside_callback(
 )
 
 
-
 @callback(
 	Output("signup-banner", "children"),
 	Output("welcome-banner", "children"),
+	Input("check-user", "n_intervals"),
 	State("exsclaim-store", "data"),
 	_allow_dynamic_callbacks=True
 )
-async def get_username_if_logged_in(data: dict[str, Any]):
+async def get_username_if_logged_in(_, data: dict[str, Any]):
 	from httpx import AsyncClient
 	from flask import request
 
-	cookie = request.cookies.get("session_id")
+	cookie = request.cookies.get("access_token")
+
+	default_values = ([html.P(children=[
+		html.A("Signup", href="/signup"),
+		"  |  ",
+		html.A("Login", href="/login"),
+	])], ["Welcome to the EXSCLAIM UI!"])
 
 	if not cookie:
-		return ([html.P(children=[
-				html.A("Signup", href="/signup"),
-				"  |  ",
-				html.A("Login", href="/login"),
-			])], ["Welcome to the EXSCLAIM UI!"])
+		return default_values
 
 	async with AsyncClient() as client:
-		response = await client.get(f"{data['fast_api_url']}/user/get_username", cookies=dict(session_id=cookie))
+		response = await client.get(f"{data['fast_api_url']}/user/get_username", cookies=dict(access_token=cookie))
 		if response.status_code != 200:
-			username = "Unavailable"
+			return default_values
 		else:
 			username = response.json()["username"]
 

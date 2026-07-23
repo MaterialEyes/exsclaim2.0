@@ -281,7 +281,7 @@ class CaptionDistributor(ExsclaimTool):
 	def __init__(self, search_query: dict, **kwargs):
 		kwargs.setdefault("logger_name", __name__ + ".CaptionDistributor")
 		super().__init__(search_query, **kwargs)
-		self.llm: LLM = LLM.from_search_query(search_query)
+		self.llm: LLM = LLM.from_search_query(search_query, run_id=kwargs.get("run_id"))
 
 	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter,
 						 caption_dict: dict[str, str], keywords: Collection[str]):

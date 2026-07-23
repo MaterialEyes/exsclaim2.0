@@ -1,33 +1,35 @@
 import logging
 
 from .models import get_guest_uuid, gen_uuid7
-from .routers.users import get_user_from_session
-from ..db import async_engine
+from ..db import async_engine, get_db_session
 
 from asyncio import wait_for, TimeoutError as AsyncTimeoutError
 from contextvars import ContextVar
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import Response
 from starlette import status
-from starlette.types import ASGIApp
+from starlette.requests import Request
+from starlette.responses import Response, StreamingResponse
+from starlette.types import ASGIApp, Scope, Receive, Send, Message
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from time import perf_counter
 from uuid import UUID
 
+import ipaddress as ip
 
-__all__ = ["RequestLoggerMiddleware", "PreflightCacheMiddleware", "SQLAlchemyMiddleware", "UserMiddleware"]
+__all__ = ["RequestLoggerMiddleware", "PreflightCacheMiddleware", "SQLAlchemyMiddleware"]
 
 
 request_id_ctx = ContextVar("request_id")
 
 
-def format_response(_id, request: Request) -> str:
-	ip = request.headers.get('X-Forwarded-For', None)
+def format_response(_id, request: Request, ip: ip._BaseAddress = None) -> str:
 	if ip is None:
-		ip = request.client.host or "Unknown IP"
+		ip = request.headers.get('X-Forwarded-For', None)
+		if ip is None:
+			ip = request.client.host or "Unknown IP"
 
 	path = request.url.path if hasattr(request, "url") else "NULL PATH"
 	log = f"[{request_id_ctx.get()}] {{{ip} using {request.headers.get('User-Agent', 'Unknown User-Agent')}}} {path}"
@@ -54,6 +56,30 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 
 	async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
 		start_time = perf_counter()
+
+		try:
+			address = ip.ip_address(request.headers.get('X-Forwarded-For', request.client.host))
+		except ValueError as e:
+			self.logger.error(f"Could not extract an IP address for {request.client.host}, so the attempt was blocked.", exc_info=e)
+			return Response(status_code=status.HTTP_404_NOT_FOUND)
+
+		is_banned = False
+		async with get_db_session() as session:
+			results = await session.execute(text("SELECT EXISTS (SELECT 1 FROM settings.banned_ips WHERE address=:address::INET)"),
+			                             dict(address=address))
+			is_banned = results.scalar()
+
+		if is_banned:
+			immediately_stop_request = True
+			self.logger.warning(f"Banned IP: {address} tried to reach {request.url.path}. Immediately stopping request: {immediately_stop_request}.")
+
+			if immediately_stop_request:
+				return Response(status_code=status.HTTP_404_NOT_FOUND)
+			else:
+				async def send_infinite_zeroes() -> bytes:
+					while not await request.is_disconnected():
+						yield b"000"
+				return StreamingResponse(send_infinite_zeroes(), status_code=404)
 
 		request_id = request.headers.get("X-Request-Id", str(gen_uuid7()))
 		request.state.logger = self.logger
@@ -83,16 +109,16 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 				case "/favicon.ico" | "/healthcheck" | "/swagger-dark-ui.css":
 					return response
 
-			self.logger.info(f"{format_response(request_id, request)} ({response.status_code}) in {self.get_log_time(diff)}.")
+			self.logger.info(f"{format_response(request_id, request, address)} ({response.status_code}) in {self.get_log_time(diff)}.")
 
 			return response
 		except BaseException as e:
 			end_time = perf_counter()
 			diff = end_time - start_time
 
-			self.logger.exception(f"{format_response(request_id_ctx, request)} Time to error: {self.get_log_time(diff)}. Unhandled error: {e}.")
+			self.logger.exception(f"{format_response(request_id_ctx, request, address)} Time to error: {self.get_log_time(diff)}. Unhandled error: {e}.")
 			return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=f"Internal Server Error. Please try again later. Request ID: {request_id}.",
-								media_type="text/plain", headers={"X-Request-Id": request_id})
+			                media_type="text/plain", headers={"X-Request-Id": request_id})
 		finally:
 			for handler in self.logger.handlers:
 				handler.flush()
@@ -119,7 +145,7 @@ class PreflightCacheMiddleware(BaseHTTPMiddleware):
 
 
 class SQLAlchemyMiddleware(BaseHTTPMiddleware):
-	def __init__(self, app:ASGIApp, logger, dispatch=None):
+	def __init__(self, app: ASGIApp, logger, dispatch=None):
 		super().__init__(app, dispatch)
 		self.logger = logger
 		self.session_factory = sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=False)
@@ -130,7 +156,7 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
 		try:
 			response = await call_next(request)
 			await session.commit()
-		except SQLAlchemyError as e: # TODO: Check if I should use request_id_ctx instead
+		except SQLAlchemyError as e:
 			response = Response(f"Internal database error detected. Request ID: {request.state.id}.", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 								media_type="text/plain", headers={"X-Request-Id": request_id_ctx.get()})
 			await session.rollback()
@@ -139,30 +165,6 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
 			await session.close()
 
 		return response
-
-
-class UserMiddleware(BaseHTTPMiddleware):
-	async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-		session_key = request.cookies.get("session_id")
-		if session_key is None:
-			request.state.user_id = get_guest_uuid()
-			return await call_next(request)
-
-		session = await get_user_from_session(request.state.session, session_key)
-		match session:
-			case None: # Session key is wrong
-				response = Response("Session ID is invalid. Please try again.", status_code=status.HTTP_401_UNAUTHORIZED, media_type="text/plain")
-				response.delete_cookie("session_id")
-				return response
-			case False: # Session key is expired
-				headers = {
-					"Location": "/login",
-					"Referer": str(request.url),
-				}
-				return Response(status_code=status.HTTP_303_SEE_OTHER, headers=headers, media_type="text/plain")
-			case _:
-				request.state.user_id = session.user
-				return await call_next(request)
 
 
 # TODO: Finish implementing the timeout middleware

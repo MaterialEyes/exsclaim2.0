@@ -244,7 +244,7 @@ class Pipeline:
 				if pdf_scraper:
 					tools.append(PDFScraper(self.query_dict, logger=self.logger))
 				if caption_distributor:
-					tools.append(CaptionDistributor(self.query_dict, logger=self.logger))
+					tools.append(CaptionDistributor(self.query_dict, logger=self.logger, run_id=run_id))
 				if figure_separator:
 					tools.append(FigureSeparator(self.query_dict, logger=self.logger))
 			else:
