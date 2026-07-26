@@ -1,7 +1,43 @@
 // some functions to get data from the API
 
+async function api_fetch(api_url, endpoint, options = {}){
+	if(api_url === undefined){
+		throw new Error('api_url is undefined.');
+	}
+
+	endpoint = endpoint.replace(/^\//, "");
+	options = {...options, credentials: "include"};
+
+	let original_url = `${api_url}/${endpoint}`;
+	let response = await fetch(original_url, options);
+
+	if(response.status !== 401){
+		return response;
+	}
+
+	const refresh_response = await fetch(`${api_url}/user/refresh`, {
+		method: "POST",
+		credentials: "include"
+	});
+
+	if(!refresh_response.ok){
+		window.location.href = "/login";
+		return;
+	}
+
+	const access_header = parseInt(response.headers.get("X-EXSCLAIM-Access-Minutes") ?? "30");
+	const refresh_header = parseInt(response.headers.get("X-EXSCLAIM-Refresh-Days") ?? "7");
+
+	const access_expires = Date.now() + (access_header * 60000);
+	data["access_expires"] = access_expires;
+	const reload_at = access_expires - 120_000; // 120 seconds, 2 minutes
+	console.log(`Token expires in ${access_header} minutes at ${new Date(access_expires)}. Should be calling renew_credentials at ${new Date(reload_at)}.`);
+
+	return [data, await fetch(original_url, options)];
+}
+
 const fetch_status = async (baseUrl, id) => {
-	const response = await fetch(`${baseUrl}/status/${id}`, {
+	const response = await api_fetch(baseUrl, `/status/${id}`, {
 		method: "GET",
 		headers: {
 			"Access-Control-Allow-Origin": "*",
@@ -39,14 +75,14 @@ const fetch_status = async (baseUrl, id) => {
  * @returns {Promise<any>}
  */
 const fetch_articles = async (baseUrl, id) => {
-	const response = await fetch(`${baseUrl}/results/v1/${id}/articles`, {
+	const response = await api_fetch(baseUrl, `/results/v1/${id}/articles`, {
 		method: "GET",
 		headers: {
 			"Access-Control-Allow-Origin": "*",
 			"Content-Type": "application/json"
 		},
 		credentials: "include"
-	})
+	});
 
 	const json = await response.json();
 	if(response.ok){
@@ -64,14 +100,14 @@ const fetch_articles = async (baseUrl, id) => {
  * @returns {Promise<any>}
  */
 const fetch_figures = async (baseUrl, id, num=-1) => {
-	const response = await fetch(`${baseUrl}/results/v1/${id}/figures?page=${num}`, {
+	const response = await api_fetch(baseUrl, `/results/v1/${id}/figures?page=${num}`, {
 		method: "GET",
 		headers: {
 			"Access-Control-Allow-Origin": "*",
 			"Content-Type": "application/json"
 		},
 		credentials: "include"
-	})
+	});
 
 	const json = await response.json();
 	if(response.ok){
@@ -89,14 +125,14 @@ const fetch_figures = async (baseUrl, id, num=-1) => {
  * @returns {Promise<any>}
  */
 const fetch_subfigures = async (baseUrl, id, num=-1) => {
-	const response = await fetch(`${baseUrl}/results/v1/${id}/subfigures?page=${num}`, {
+	const response = await api_fetch(baseUrl, `/results/v1/${id}/subfigures?page=${num}`, {
 		method: "GET",
 		headers: {
 			"Access-Control-Allow-Origin": "*",
 			"Content-Type": "application/json"
 		},
 		credentials: "include"
-	})
+	});
 
 	const json = await response.json();
 	if(response.ok){
@@ -111,7 +147,7 @@ const fetch_subfigures = async (baseUrl, id, num=-1) => {
  * @returns {Promise<any>}
  */
 const fetch_classification_codes = async (baseUrl) => {
-	const response = await fetch(`${baseUrl}/classification_codes`, {
+	const response = await api_fetch(baseUrl, "/classification_codes", {
 		method: "GET",
 		headers: {
 			"Access-Control-Allow-Origin": "*",
@@ -203,11 +239,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 		},
 
 		update_info_banner: async function(store, data) {
-			let url = `${data.public_fastapi_url}/banner`;
+			let url = "/banner";
 			if(store.last_seen_banner !== undefined && store.last_seen_banner !== null){
 				url += `?last_seen_banner=${store.last_seen_banner}`;
 			}
-			const response = await fetch(url, {
+
+			const response = await api_fetch(data.public_fastapi_url, url, {
 				method: "GET",
 				headers: {
 					"Access-Control-Allow-Origin": "*",
@@ -477,16 +514,17 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			return [valid, !valid];
 		},
 
-		send_form_data: async function(n_clicks, username, email, password, data, current_url) {
+		send_form_data: async function(n_clicks, username, email, password, data) {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 			const formData = new FormData();
 			let target_link;
+			const is_login = username === undefined || username === null;
 
-			if(username === undefined || username === null){
-				target_link = `${data.public_fastapi_url}/user/login`;
+			if(is_login){
+				target_link = "/user/login";
 			}
 			else{
-				target_link = `${data.public_fastapi_url}/user/create_user`;
+				target_link = "/user/create_user";
 				formData.append("username", username);
 			}
 
@@ -494,46 +532,71 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			formData.append("password", password);
 
 			try{
-				const response = await fetch(target_link, {
+				const response = await api_fetch(data.public_fastapi_url, target_link, {
 					method: "POST",
 					body: formData,
 					credentials: "include"
 				});
 
 				if(!response.ok){
-					return [true, [await response.text()], "danger", current_url, false];
+					return [true, [await response.text()], "danger", window.dash_clientside.no_update, false];
 					// Redirect back to where ever they came from
 				}
 
-				const cookieHeader = response.headers.get("Set-Cookie");
-				if(cookieHeader){
-					document.cookie = cookieHeader;
-				}
+				// const cookieHeader = response.headers.get("Set-Cookie");
+				// if(cookieHeader){
+				// 	document.cookie = cookieHeader;
+				// }
 
 				return [false, [], "success", document.referrer, true];
 			} catch(e){
-				return [true, [e], "danger", current_url, false];
+				return [true, [e], "danger", window.dash_clientside.no_update, false];
 			}
 		},
 
-		// TODO: Have renew credentials run just before they expire
+		check_credentials: async function(_, data, interval){
+			const response = await api_fetch(data.public_fastapi_url, "/user/remaining_access", {
+				credentials: "include"
+			});
+			const json = await response.json();
+
+			switch (response.status) {
+				case 200: // Access token is still usable
+					// Checks if the token expires 2 minutes before the next time this is called
+					const remaining = (json.remaining - 120) * 1000;
+					if(remaining <= interval){
+						this.renew_credentials(data);
+					}
+					return window.dash_clientside.no_update;
+				case 400: // Not logged in
+				case 406: // Token has expired, need to renew immediately
+					this.renew_credentials(data);
+					return window.dash_clientside.no_update;
+				case 401:
+				default:
+					return true;
+			}
+		},
+
 		renew_credentials: async function(data){
-			let response = await fetch(`${data.public_fastapi_url}/user/refresh`, {
+			let response = await api_fetch(data.public_fastapi_url, "/user/refresh", {
 				method: "POST",
 				credentials: "include"
 			});
 
-			if(response.ok){
-				return window.dash_clientside.no_update;
+			if(!response.ok){
+				console.error(`Could not automatically refresh cookies. Please log out and then log back in. ${await response.text()}`);
+				window.location.href = "/login";
+				return data;
 			}
 
-			return `Could not automatically refresh cookies. Please log out and then log back in. ${await response.text()}`;
+			return data;
 		},
 
 		logout: async function(n_clicks, data, current_url) {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 			try{
-				const response = await fetch(`${data.public_fastapi_url}/user/logout`, {
+				const response = await api_fetch(data.public_fastapi_url, "/user/logout", {
 					method: "GET",
 					credentials: "include"
 				});
@@ -557,7 +620,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 
 			const api_url = data.public_fastapi_url;
-			const response = await fetch(`${api_url}/user/previous_runs`, {
+			const response = await api_fetch(api_url, "/user/previous_runs", {
 				method: "GET",
 				headers: {
 					"Access-Control-Allow-Origin": "*",
@@ -676,7 +739,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			const api_url = stored_data.public_fastapi_url;
 
 			try{
-				const response = await fetch(`${api_url}/query`, {
+				const response = await api_fetch(api_url, "/query", {
 					method: "POST",
 					body: JSON.stringify(input_data),
 					credentials: "include",
@@ -725,7 +788,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 
 			const api_url = data.public_fastapi_url;
-			const response = await fetch(`${api_url}/user/previous_runs`, {
+			const response = await api_fetch(api_url, "/user/previous_runs", {
 				method: "GET",
 				headers: {
 					"Access-Control-Allow-Origin": "*",
@@ -808,7 +871,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 					let subfigures = await fetch_subfigures(api_url, selected_run);
 
-					let response = await fetch(`${api_url}/results/v1/${selected_run}/subfigure_labels`, init);
+					let response = await api_fetch(api_url, `/results/v1/${selected_run}/subfigure_labels`, init);
 					let labels = await response.json();
 
 					let class_codes = await fetch_classification_codes(api_url);

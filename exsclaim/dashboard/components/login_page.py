@@ -247,22 +247,28 @@ clientside_callback(
 		namespace="user",
 		function_name="send_form_data"
 	),
-	[
-		Output("notification", "is_open", allow_duplicate=True),
-		Output("notification", "children", allow_duplicate=True),
-		Output("notification", "color", allow_duplicate=True),
-		Output("url", "href", allow_duplicate=True),
-		Output("url", "refresh", allow_duplicate=True),
-	],
-	[
-		Input("submit-info", "n_clicks")
-	],
-	[
-		State("username", "value", allow_optional=True),
-		State("email", "value"),
-		State("password", "value"),
-		State("exsclaim-store", "data"),
-		State("url", "href"),
-	],
+	Output("notification", "is_open", allow_duplicate=True),
+	Output("notification", "children", allow_duplicate=True),
+	Output("notification", "color", allow_duplicate=True),
+	Output("url", "href", allow_duplicate=True),
+	Output("url", "refresh", allow_duplicate=True),
+	Input("submit-info", "n_clicks"),
+	State("username", "value", allow_optional=True),
+	State("email", "value"),
+	State("password", "value"),
+	State("exsclaim-store", "data"),
+	prevent_initial_call=True
+)
+
+
+clientside_callback(
+	ClientsideFunction(
+		namespace="user",
+		function_name="check_credentials"
+	),
+	Output("check-credentials", "disabled"),
+	Input("check-credentials", "n_intervals"),
+	State("exsclaim-store", "data"),
+	State("check-credentials", "interval"),
 	prevent_initial_call=True
 )

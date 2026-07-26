@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
 	flush_logger(app)
 
 
-def get_middleware(settings, logger) -> tuple[Middleware, ...]:
+def get_middleware(settings, logger: logging.Logger) -> tuple[Middleware, ...]:
 	origins = [
 		"https://exsclaim.materialeyes.org",
 		"https://exsclaim-dev.materialeyes.org",
@@ -126,6 +126,7 @@ def get_middleware(settings, logger) -> tuple[Middleware, ...]:
 			allow_credentials=True,
 			allow_methods=["GET", "POST", "OPTIONS", "HEAD"],
 			allow_headers=["*"],
+			expose_headers=["X-EXSCLAIM-Access-Minutes", "X-EXSCLAIM-Refresh-Days"]
 		),
 		Middleware(RequestLoggerMiddleware, logger=logger),
 		Middleware(PreflightCacheMiddleware),

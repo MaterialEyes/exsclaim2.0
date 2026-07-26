@@ -9,7 +9,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
 from httpx import AsyncClient
 from starlette.requests import Request
-from starlette.responses import Response, HTMLResponse, RedirectResponse
+from starlette.responses import Response, HTMLResponse, RedirectResponse, PlainTextResponse
 from pydantic import EmailStr, BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -98,18 +98,24 @@ async def _extract_token(token: Optional[str]) -> User | HTTPException:
 
 	try:
 		payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
-		user_id = payload.get("sub")
-		if user_id is None:
-			return HTTPException(
-				status_code=status.HTTP_401_UNAUTHORIZED,
-				detail="Cannot refresh credentials when no credentials are given.",
-				headers={"WWW-Authenticate": "Bearer"},
-			)
-
-	except jwt.InvalidTokenError:
+	except jwt.InvalidTokenError as e:
 		return HTTPException(
 			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail="Could not validate credentials",
+			detail=f"Could not validate credentials: {e}",
+			headers={"WWW-Authenticate": "Bearer"},
+		)
+	except jwt.ExpiredSignatureError as e:
+		return HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail=f"Credentials are expired.",
+			headers={"WWW-Authenticate": "Bearer"},
+		)
+
+	user_id = payload.get("sub")
+	if user_id is None:
+		return HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail="Cannot refresh credentials when no credentials are given.",
 			headers={"WWW-Authenticate": "Bearer"},
 		)
 
@@ -150,7 +156,11 @@ async def get_current_user_from_cookie(request: Request) -> User:
 	return await get_guest_user()
 
 
-async def get_active_user_from_authorization_header(token: Optional[str] = Depends(OAuth2PasswordBearer(tokenUrl="token"))) -> User:
+AccessTokenHeader = Annotated[Optional[str], Depends(OAuth2PasswordBearer(tokenUrl="token"))]
+AccessTokenCookie = Annotated[str, Depends(APIKeyCookie(name="access_token", auto_error=False))]
+
+
+async def get_active_user_from_authorization_header(token: AccessTokenHeader) -> User:
 	user = await _extract_token(token)
 	if isinstance(user, HTTPException):
 		raise user
@@ -162,7 +172,7 @@ async def get_active_user_from_authorization_header(token: Optional[str] = Depen
 	return user
 
 
-async def get_active_user_from_cookie(cookie: str = Depends(APIKeyCookie(name="access_token", auto_error=False))) -> User:
+async def get_active_user_from_cookie(request: Request, cookie: AccessTokenCookie) -> User:
 	user = await _extract_token(cookie)
 	if isinstance(user, HTTPException):
 		raise user
@@ -236,6 +246,9 @@ async def create_tokens_for_cookie(user: User, response: Response) -> Response:
 		max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86_400, # 86,400 seconds in a day
 		path=router.prefix + "/refresh"
 	)
+
+	response.headers["X-EXSCLAIM-Access-Minutes"] = str(ACCESS_TOKEN_EXPIRE_MINUTES)
+	response.headers["X-EXSCLAIM-Refresh-Days"] = str(REFRESH_TOKEN_EXPIRE_DAYS)
 
 	return response
 
@@ -445,3 +458,35 @@ async def previous_runs(request: Request, user: CurrentUser) -> JSONResponse:
 		output[i] = run
 
 	return JSONResponse(jsonable_encoder(output), status_code=status.HTTP_200_OK)
+
+
+@router.api_route("/remaining_access", methods=["GET", "HEAD"], include_in_schema=False)
+async def check_access_token_remaining_time(request: Request, token: AccessTokenCookie) -> User:
+	if token is None:
+		return JSONResponse(dict(detail="Not logged in."), status_code=status.HTTP_400_BAD_REQUEST)
+
+	try:
+		payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
+	except jwt.InvalidTokenError as e:
+		return JSONResponse({"detail": f"Invalid token given: {e}."}, status_code=status.HTTP_401_UNAUTHORIZED)
+	except jwt.ExpiredSignatureError as e:
+		return JSONResponse({"detail": "Token has already expired."}, status_code=status.HTTP_406_NOT_ACCEPTABLE)
+
+	expiration = payload.get("exp")
+	if expiration is None:
+		return JSONResponse({"detail": "Expiration is somehow missing from the token."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+	expiration = dt.fromtimestamp(expiration, tz=tz.utc)
+	diff = expiration - dt.now(tz=tz.utc)
+	seconds = diff.total_seconds()
+
+	response = {
+		"detail": f"Access token remains valid for another {seconds} seconds.",
+		"remaining": seconds,
+	}
+	return JSONResponse(response, status_code=status.HTTP_200_OK)
+
+
+# @router.api_route("/get_jwt_public_key", methods=["GET", "HEAD"], tags=[TAG])
+# async def get_public_key(request: Request):
+# 	return PlainTextResponse(PUBLIC_KEY, status_code=status.HTTP_200_OK)

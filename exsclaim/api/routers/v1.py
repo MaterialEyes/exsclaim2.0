@@ -15,7 +15,7 @@ router = APIRouter(prefix="/results/v1")
 TAG = "Results from Queries"
 
 
-async def check_run_owner(user: User, session: AsyncSession):
+async def check_run_owner(user: User, session: AsyncSession, results_id: UUID):
 	query = await session.execute(select(Results).where(Results.id == results_id))
 	results: Optional[Results] = query.scalar_one_or_none()
 
@@ -29,8 +29,8 @@ async def check_run_owner(user: User, session: AsyncSession):
 		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{description}s not found.")
 
 
-async def get_item(cls, results_id: UUID, _id: str, user: User, session: AsyncSession, error_msg:Callable[[str], str]):
-	await check_run_owner(user, session)
+async def get_item(cls, results_id: UUID, _id: str, user: User, session: AsyncSession, error_msg: Callable[[str], str]):
+	await check_run_owner(user, session, results_id)
 	
 	statement = select(cls).where(cls.id == _id).where(cls.run_id == results_id)
 	results = await session.execute(statement)
@@ -43,7 +43,7 @@ async def get_item(cls, results_id: UUID, _id: str, user: User, session: AsyncSe
 
 
 async def get_items(cls, results_id: UUID, user: User, session: AsyncSession, page: Optional[int] = None):
-	await check_run_owner(user, session)
+	await check_run_owner(user, session, results_id)
 
 	statement = select(cls).where(cls.run_id == results_id)
 	if isinstance(page, int) and page != -1:

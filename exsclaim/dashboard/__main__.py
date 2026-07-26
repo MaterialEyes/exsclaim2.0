@@ -69,6 +69,10 @@ def get_app() -> Dash:
 	public_fastapi_url = ui_settings.PUBLIC_API_URL
 
 	app.layout = html.Div([
+		dcc.Interval(
+			id="check-credentials",
+			interval=300_000 # Check every 5 minutes
+		),
 		dcc.Store(
 			id="storage",
 			storage_type="local",
