@@ -5,6 +5,9 @@
 - Users can now delete their account
 - EXSCLAIM can block IP's belonging to users trying to exploit obvious URL paths (.env, .git, etc)
 - Individual items will check the owner before yielding any results
+- Users can merge an account they created with their email with an account they created with their ORCID.
+- Users can update their usernames.
+- `/user/login` and `/user/signup` now use a BaseModel as the way to retrieve information, which changes how users post to them.
 
 ## Dashboard
 - Fixed a bug that wouldn't allow users to log in with their email and password

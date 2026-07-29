@@ -533,7 +533,10 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 		send_form_data: async function(n_clicks, username, email, password, data) {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
-			const formData = new FormData();
+			const login_info = {
+				email: email,
+				password: password,
+			}
 			let target_link;
 			const is_login = username === undefined || username === null;
 
@@ -542,16 +545,16 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			}
 			else{
 				target_link = "/user/create_user";
-				formData.append("username", username);
+				login_info.username = username;
 			}
-
-			formData.append("email", email);
-			formData.append("password", password);
 
 			try{
 				const response = await api_fetch(data.public_fastapi_url, target_link, {
 					method: "POST",
-					body: formData,
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify(login_info),
 					credentials: "include"
 				});
 

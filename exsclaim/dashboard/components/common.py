@@ -258,7 +258,7 @@ async def get_username_if_logged_in(_, data: dict[str, Any]):
 		return default_values
 
 	async with AsyncClient() as client:
-		response = await client.get(f"{data['fast_api_url']}/user/get_username", cookies=dict(access_token=cookie))
+		response = await client.get(f"{data['fast_api_url']}/user/username", cookies=dict(access_token=cookie))
 		if response.status_code != 200:
 			return default_values
 		else:

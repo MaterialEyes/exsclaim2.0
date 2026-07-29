@@ -88,6 +88,8 @@ class User(SQLModel, table=True):
 	def __eq__(self, other) -> bool:
 		if isinstance(other, UUID):
 			return self.id == other
+		elif hasattr(other, "id"):
+			return self.id == other.id
 		return False
 
 	id: UUID = Field(

@@ -27,7 +27,7 @@ build/venv: build/create_directory
 
 build/exsclaim: build/create_directory
 	mkdir build/exsclaim
-	cp -aru exsclaim/*.* exsclaim/api exsclaim/db exsclaim/figures exsclaim/llms exsclaim/tests exsclaim/utilities build/exsclaim/
+	cp -aru exsclaim/*.* exsclaim/api exsclaim/db exsclaim/figures exsclaim/llms exsclaim/utilities build/exsclaim/
 	cp -aru requirements.txt setup.py pyproject.toml LICENSE README.md MANIFEST.in build
 	printf "\ninclude requirements.txt\n" >> build/MANIFEST.in
 

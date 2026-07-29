@@ -98,6 +98,7 @@ def test_user_methods(client: TestClient, name: str = None, email: str = None, p
 	faker = Faker()
 
 	name = name or faker.name()
+	new_username = faker.name()
 	email = email or faker.email()
 	password = password or faker.password()
 
@@ -106,7 +107,7 @@ def test_user_methods(client: TestClient, name: str = None, email: str = None, p
 
 	# Create account
 	create_user_info = dict(username=name, email=email, password=password)
-	response = client.post("/user/create_user", data=create_user_info)
+	response = client.post("/user/create_user", json=create_user_info)
 	assert response.status_code == 201, f"Account not properly created: {response.text}"
 
 	# The client has reported issues with setting the cookies, so it needs to be done manually
@@ -135,28 +136,36 @@ def test_user_methods(client: TestClient, name: str = None, email: str = None, p
 	assert response.status_code == 401, f"Logout when not logged in did not work as expected: {response.text}"
 
 	# Get guest name
-	response = client.get("/user/get_username")
+	response = client.get("/user/username")
 	assert response.status_code == 202, f"Could not get \"not logged in\" message: {response.text}"
 	assert check_username(response, "Not Logged In."), f"Username {name} is not correct."
 
 	# Login
-	response = client.post("/user/login", data=dict(email=email, password=password))
+	response = client.post("/user/login", json=dict(email=email, password=password))
 	assert response.status_code == 200, "Login was not successful."
 	set_cookies(client, response)
 	assert has_cookie(client, response, "access_token"), f"Logging in did not provide the access token: {response.text}"
 	assert has_cookie(client, response, "refresh_token"), f"Logging in did not provide the refresh token: {response.text}"
 
 	# Get username
-	response = client.get("/user/get_username")
+	response = client.get("/user/username")
 	assert response.status_code == 200, f"Could not get username: {response.text}"
 	assert check_username(response, name), f"Username {name} is not correct."
 
+	# Change username
+	response = client.patch("/user/username", content=new_username)
+	assert response.status_code == 200, f"Could not get username: {response.json()}"
+
+	response = client.get("/user/username")
+	assert response.status_code == 200, f"Could not get username: {response.text}"
+	assert check_username(response, new_username), f"Updating the username didn't work"
+
 	# Create account with previously used email
-	response = client.post("/user/create_user", data=create_user_info)
-	assert response.status_code == 409, "Creating an account that already exists did not respond as expected."
+	response = client.post("/user/create_user", json=create_user_info)
+	assert response.status_code == 409, f"Creating an account that already exists did not respond as expected: {response.text}"
 
 	# Delete the account
-	response = client.delete("/user/delete")
+	response = client.delete("/user/remove-user")
 	assert response.status_code == 200, f"Could not properly delete account: {response.text}"
 
 
