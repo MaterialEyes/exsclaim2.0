@@ -1,7 +1,6 @@
 from ...config import ui_settings, orcid_settings
-from ..models import User, Sessions, PasswordReset, Results, cryptographic_hash, generate_salt, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
-
-from exsclaim.db import get_db_session
+from ...db import get_db_session
+from ..models import User, PasswordReset, Results, cryptographic_hash, generate_salt, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
 
 from datetime import datetime as dt, timezone as tz, timedelta as td
 from fastapi import APIRouter, Form, status, Depends, HTTPException, Body, Cookie
@@ -11,7 +10,7 @@ from httpx import AsyncClient
 from starlette.requests import Request
 from starlette.responses import Response, HTMLResponse, RedirectResponse, PlainTextResponse
 from pydantic import EmailStr, BaseModel
-from sqlalchemy import text
+from sqlalchemy import text, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 from typing import Annotated, Optional
@@ -19,6 +18,7 @@ from uuid import uuid4, UUID
 
 import jwt
 import re
+import sqlalchemy.exc as sql_exc
 
 __all__ = ["router", "CurrentUser", "ActiveUser"]
 
@@ -271,7 +271,7 @@ async def create_user(request: Request, username: Annotated[str, Form()], email:
 	session.add(user)
 	await session.commit()
 
-	response = JSONResponse({"message": f"Account created for {email}."}, status_code=status.HTTP_201_CREATED)
+	response = JSONResponse({"detail": f"Account created for {email}."}, status_code=status.HTTP_201_CREATED)
 	response = await create_tokens_for_cookie(user, response)
 	return response
 
@@ -429,7 +429,7 @@ async def get_username(request: Request, user: CurrentUser) -> JSONResponse:
 	return JSONResponse({"username": user.name}, status_code=status.HTTP_200_OK)
 
 
-@router.api_route("/previous_runs", methods=["GET", "HEAD"], tags=[TAG]) # TODO: Allow request to dictate which fields are found and sent
+@router.api_route("/previous_runs", methods=["GET", "HEAD"], tags=[TAG]) # TODO: Add filters
 async def previous_runs(request: Request, user: CurrentUser) -> JSONResponse:
 	session: AsyncSession = request.state.session
 
@@ -487,6 +487,21 @@ async def check_access_token_remaining_time(request: Request, token: AccessToken
 	return JSONResponse(response, status_code=status.HTTP_200_OK)
 
 
-# @router.api_route("/get_jwt_public_key", methods=["GET", "HEAD"], tags=[TAG])
-# async def get_public_key(request: Request):
-# 	return PlainTextResponse(PUBLIC_KEY, status_code=status.HTTP_200_OK)
+@router.delete("/delete")
+async def delete_user(request: Request, user: ActiveUser) -> JSONResponse:
+	async with get_db_session() as session:
+		try:
+			await session.execute(delete(User).where(User.id == user.id))
+			await session.commit()
+		except sql_exc.SQLAlchemyError as e:
+			await session.rollback()
+			request.state.logger.exception(f"Could not successfully delete user {user.id}.", exc_info=e)
+			return JSONResponse({"detail": "An error occurred while trying to delete user."}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+	return JSONResponse(dict(detail="Successfully deleted user from database.", user=user.name, id=str(user.id)),
+						status_code=status.HTTP_200_OK)
+
+
+@router.api_route("/get_jwt_public_key", methods=["GET", "HEAD"], tags=[TAG])
+async def get_public_key(request: Request):
+	return PlainTextResponse(PUBLIC_KEY, status_code=status.HTTP_200_OK)

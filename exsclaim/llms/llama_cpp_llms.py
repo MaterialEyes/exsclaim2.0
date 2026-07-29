@@ -1,4 +1,4 @@
-from ..caption import LLM
+from ..caption import LLM, LLMOptions
 from .openai_llms import OpenAI
 
 from openai import AsyncOpenAI, NotGiven, NOT_GIVEN
@@ -149,7 +149,7 @@ class LlamaCPP(OpenAI):
 			response.raise_for_status()
 			models = response.json()["data"]
 		return tuple(
-			(model["id"], False, model["aliases"][0] if len(model["aliases"]) > 0 else model["id"]) for model in models
+			LLMOptions(model["id"], True, False, model["aliases"][0] if len(model["aliases"]) > 0 else model["id"]) for model in models
 		)
 
 	def convert_alias_to_id(self) -> str:

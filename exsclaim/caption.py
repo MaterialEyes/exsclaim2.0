@@ -13,10 +13,10 @@ from pydantic import BaseModel, Field
 from pydantic_core import ValidationError
 from re import sub
 from textwrap import dedent
-from typing import Literal, Iterable, Type, Optional, Any, TypeVar, Self, Collection
+from typing import Literal, Iterable, Type, Optional, Any, TypeVar, Self, Collection, NamedTuple
 
 
-__all__ = ["ChatMessage", "LLMMeta","LLM", "CaptionEntry", "Captions", "Keywords", "ResponseBase", "OptionalSemaphore"]
+__all__ = ["ChatMessage", "LLMOptions", "LLMMeta","LLM", "CaptionEntry", "Captions", "Keywords", "ResponseBase", "OptionalSemaphore"]
 
 
 ResponseBase = TypeVar("ResponseBase", bound=str | BaseModel)
@@ -90,8 +90,15 @@ class ChatMessage:
 		return repr(self)
 
 
+class LLMOptions(NamedTuple):
+	id: str
+	allows_api_key: bool
+	requires_api_key: bool
+	display_name: str
+
+
 class LLMMeta(ABCMeta):
-	models: dict[str, tuple[Type, bool, Optional[str]]] = dict()
+	models: dict[str, tuple[Type, bool, bool, Optional[str]]] = dict()
 	unscanned_classes = []
 	classes = set()
 
@@ -112,7 +119,7 @@ class LLMMeta(ABCMeta):
 
 		model_name = args[0]
 		try:
-			actual_cls, needs_api_key, _ = LLMMeta.models[model_name]
+			actual_cls, *_ = LLMMeta.models[model_name]
 		except KeyError as e:
 			raise ExsclaimToolException(f"{model_name} is not an available model.") from e
 		return actual_cls.__call__(*args, **kwargs)
@@ -123,8 +130,8 @@ class LLMMeta(ABCMeta):
 
 	def append_llms(cls):
 		for scan_cls in LLMMeta.unscanned_classes:
-			for model, needs_api_key, label in scan_cls.available_models():
-				LLMMeta.models[model] = (scan_cls, needs_api_key, label)
+			for model, allows_api_key, needs_api_key, label in scan_cls.available_models():
+				LLMMeta.models[model] = (scan_cls, allows_api_key, needs_api_key, label)
 
 		LLMMeta.unscanned_classes.clear()
 		LLM._models = LLMMeta.models
@@ -153,7 +160,7 @@ class LLM(ABC, metaclass=LLMMeta):
 		self.model = model
 
 	@staticmethod
-	def models() -> dict[str, tuple[type["LLM"], bool, str]]:
+	def models() -> dict[str, tuple[type["LLM"], bool, bool, str]]:
 		"""Returns a dictionary containing each available LLM.
 		Each key is the name of the LLM, and the value includes the class that will instantiate the model, if the model needs an API key/password,
 		and an optional readable name."""
@@ -161,7 +168,7 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	@staticmethod
 	@abstractmethod
-	def available_models() -> Iterable[tuple[str, bool, str]]:
+	def available_models() -> Iterable[LLMOptions]:
 		"""Returns a list of tuples describing the available models.
 		Each tuple should contain the name of the model and a boolean indicating if it requires an api_key/password (True) or not (False)."""
 		...
@@ -204,7 +211,7 @@ class LLM(ABC, metaclass=LLMMeta):
 				"You are an experienced material scientist. " 
 				"Please parse the given caption with the response only containing a valid JSON object that can be plugging into Pydantic's BaseModel.model_validation_json. " 
 				"Do not add any markdown wrappers or code blocks, only the raw JSON object. " 
-				"The `keywords` key should hold a list of broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. " 
+				"The `keywords` key should hold a list of three to five (3-5) broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. " 
 				"The `captions` key should be a list of objects, where each object holds the letter sublabel in the `label` key and the parsed subcaption in the `caption` key. " 
 				"Please include any HTML tags from the full caption in the separated caption values. " 
 				"Remove as little content as possible when splitting the subcaptions, and having duplicated content across labels is okay. " 
@@ -227,7 +234,7 @@ class LLM(ABC, metaclass=LLMMeta):
 				# 								"Please regenerate the JSON object."))
 
 		captions = {entry.label: entry.caption for entry in info.captions}
-		return captions, info.keywords
+		return captions, info.keywords[:5] # TODO: Make sure the keywords are unique
 
 	# TODO: Add deprecations to these methods
 	async def separate_captions(self, caption: str) -> dict[str, str]:

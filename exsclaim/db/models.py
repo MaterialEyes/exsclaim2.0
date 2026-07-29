@@ -40,7 +40,10 @@ class ClassificationCodes(SQLModel, table=True):
 
 class Article(ExsclaimSQLModel, table=True):
 	__tablename__ = "article"
-	__table_args__ = dict(schema="results")
+	__table_args__ = (
+		ForeignKeyConstraint(["run_id"], ["results.results.id"], ondelete="CASCADE", onupdate="CASCADE"),
+		dict(schema="results")
+	)
 
 	id: str = Field(
 		primary_key=True,

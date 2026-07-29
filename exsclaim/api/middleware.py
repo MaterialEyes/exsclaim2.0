@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 
 from .models import get_guest_uuid, gen_uuid7
@@ -8,7 +9,7 @@ from contextvars import ContextVar
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette import status
 from starlette.requests import Request
-from starlette.responses import Response, StreamingResponse
+from starlette.responses import Response, StreamingResponse, JSONResponse
 from starlette.types import ASGIApp, Scope, Receive, Send, Message
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -18,11 +19,16 @@ from time import perf_counter
 from uuid import UUID
 
 import ipaddress as ip
+import re
 
 __all__ = ["RequestLoggerMiddleware", "PreflightCacheMiddleware", "SQLAlchemyMiddleware"]
 
 
 request_id_ctx = ContextVar("request_id")
+BLOCKED_PATHS = [
+	re.compile("^/?.env", re.IGNORECASE),
+	re.compile("^/?.git.*", re.IGNORECASE),
+]
 
 
 def format_response(_id, request: Request, ip: ip._BaseAddress = None) -> str:
@@ -54,6 +60,25 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 			return f"{diff * 1000:,.4f}ms"
 		return f"{diff:,.2f}s"
 
+	def path_is_blocked(self, url: "starlette.datastructures.URL") -> bool:
+		# TODO: Create a more comprehensive set of banned endpoints
+		for regex in BLOCKED_PATHS:
+			if regex.match(url.path):
+				return True
+		return False
+
+	def block_request(self, address: ipaddress._BaseAddress, request: Request, immediately_stop_request: bool = True):
+		self.logger.warning(f"Banned IP: {address} tried to reach {request.url.path}. Immediately stopping request: {immediately_stop_request}.")
+
+		if immediately_stop_request:
+			return Response(status_code=status.HTTP_404_NOT_FOUND)
+		else:
+			async def send_infinite_zeroes() -> bytes:
+				while not await request.is_disconnected():
+					yield b"000"
+
+			return StreamingResponse(send_infinite_zeroes(), status_code=404)
+
 	async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
 		start_time = perf_counter()
 
@@ -65,21 +90,22 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 
 		is_banned = False
 		async with get_db_session() as session:
-			results = await session.execute(text("SELECT EXISTS (SELECT 1 FROM settings.banned_ips WHERE address=:address::INET)"),
+			results = await session.execute(text("SELECT EXISTS (SELECT 1 FROM settings.banned_ips WHERE address=:address)"),
 			                             dict(address=address))
 			is_banned = results.scalar()
 
 		if is_banned:
-			immediately_stop_request = True
-			self.logger.warning(f"Banned IP: {address} tried to reach {request.url.path}. Immediately stopping request: {immediately_stop_request}.")
+			return self.block_request(address, request)
 
-			if immediately_stop_request:
-				return Response(status_code=status.HTTP_404_NOT_FOUND)
-			else:
-				async def send_infinite_zeroes() -> bytes:
-					while not await request.is_disconnected():
-						yield b"000"
-				return StreamingResponse(send_infinite_zeroes(), status_code=404)
+		if self.path_is_blocked(request.url):
+			async with get_db_session() as session:
+				await session.execute(
+					text("INSERT INTO settings.banned_ips(address, reason) VALUES (:address, :reason);"),
+					dict(address=address, reason=f"Attempted to access: {request.url.path}"[:90])
+				)
+				await session.commit()
+
+			return self.block_request(address, request)
 
 		request_id = request.headers.get("X-Request-Id", str(gen_uuid7()))
 		request.state.logger = self.logger
@@ -157,7 +183,8 @@ class SQLAlchemyMiddleware(BaseHTTPMiddleware):
 			response = await call_next(request)
 			await session.commit()
 		except SQLAlchemyError as e:
-			response = Response(f"Internal database error detected. Request ID: {request.state.id}.", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			response = JSONResponse(dict(detail="Internal database error detected.", request_id=request.state.id),
+								status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 								media_type="text/plain", headers={"X-Request-Id": request_id_ctx.get()})
 			await session.rollback()
 			self.logger.exception(f"{format_response(request_id_ctx.get(), request)} Database Error occurred: {e}.")

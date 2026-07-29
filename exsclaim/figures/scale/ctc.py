@@ -5,13 +5,13 @@ from __future__ import division, print_function
 from .lm import LanguageModel
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Generator
 
 import logging
 import torch
 
 
-__all__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "postprocess_ctc", "run_ctc"]
+__all__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "postprocess_ctc", "run_ctc", "Results"]
 
 
 class BeamEntry:
@@ -184,10 +184,13 @@ def ctcBeamSearch(mat: torch.Tensor, classes: str, lm: LanguageModel, beamWidth=
     return last.sort()[:10]
 
 
+Results = Generator[tuple[float, str, float], None, None]
+
+
 # Added by MaterialEyes
 
 
-def postprocess_ctc(results: torch.Tensor, logger: Optional[logging.Logger] = None) -> tuple[float, str, float]:
+def postprocess_ctc(results: torch.Tensor, logger: Optional[logging.Logger] = None) -> Results:
     classes = "0123456789mMcCuUnN .A"
     idx_to_class = classes + "-"
     for result, confidence in results:
@@ -203,17 +206,17 @@ def postprocess_ctc(results: torch.Tensor, logger: Optional[logging.Logger] = No
                 logger.exception(f"An error occurred while trying to split \"{word}\"", exc_info=e)
             continue
 
-        if lower_unit in {"n", "c", "u"}:
+        if lower_unit in {"n", "c", "u", "a"}:
             unit = f"{lower_unit}m"
 
-        if lower_unit in {"nm", "mm", "cm", "um", "a"}:
-            return number, unit, confidence
-    return -1, "m", 0
+        if lower_unit in {"nm", "mm", "cm", "um", "am"}:
+            yield number, unit, confidence
+    raise StopIteration
 
 
-def run_ctc(probs: torch.Tensor, classes: str, logger: Optional[logging.Logger] = None) -> tuple[float, str, float]:
+def run_ctc(probs: torch.Tensor, classes: str, logger: Optional[logging.Logger] = None) -> Results:
     current_file = Path(__file__).resolve(strict=True)
     language_model_file = "corpus.txt"
     language_model = LanguageModel(current_file.parent / language_model_file, classes)
     top_results = ctcBeamSearch(probs, classes, lm=language_model, beamWidth=15)
-    return postprocess_ctc(top_results, logger)
+    yield from postprocess_ctc(top_results, logger)

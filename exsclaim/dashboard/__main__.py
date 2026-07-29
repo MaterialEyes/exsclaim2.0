@@ -63,7 +63,7 @@ def get_app() -> Dash:
 				   {"property": "og:image", "content": f"{ui_settings.DOMAIN}/banner"},
 			   ],
 			   health_endpoint="/healthcheck", server=server)
-	available_llms, show_api_key = get_llms()
+	available_llms, show_api_key, required_api_key = get_llms()
 
 	fastapi_url = ui_settings.FAST_API_URL
 	public_fastapi_url = ui_settings.PUBLIC_API_URL
@@ -88,6 +88,7 @@ def get_app() -> Dash:
 				fast_api_url=fastapi_url,
 				available_llms=available_llms,
 				show_api_key=show_api_key,
+				required_api_key=required_api_key,
 				public_fastapi_url=public_fastapi_url
 			)),
 		dcc.Location(id="url", refresh=False),

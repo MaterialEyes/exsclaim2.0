@@ -270,5 +270,4 @@ clientside_callback(
 	Input("check-credentials", "n_intervals"),
 	State("exsclaim-store", "data"),
 	State("check-credentials", "interval"),
-	prevent_initial_call=True
 )

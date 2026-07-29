@@ -1,3 +1,38 @@
+# Version 2.5.1
+## API
+- Switched the session-based cookies to JWTs.
+- Users can now delete results from the database (assuming that the run was started while they were logged in to their account)
+- Users can now delete their account
+- EXSCLAIM can block IP's belonging to users trying to exploit obvious URL paths (.env, .git, etc)
+- Individual items will check the owner before yielding any results
+
+## Dashboard
+- Fixed a bug that wouldn't allow users to log in with their email and password
+- Added HTML `<time>` tags to the previous runs
+
+## Pipeline
+- Moved the compressing methods inside of the `Pipeline` class.
+- All of the tools can now act as context managers, automatically loading and unloading, even if there's an error.
+
+### Database
+- Added a foreign key constraint that requires articles in `results.article` to attach to runs in `results.results`.
+- Moved the Postgres configuration information into a `pydantic.BaseSettings` class.
+
+### Captions
+- The `LlamaCPP` class now handles its environment variable through pydantic's BaseSettings. 
+- `LlamaCPP` can listen to the llama-server's Server Side Events (SSE) to see when the model is loaded.
+- `LlamaCPP` can now accept the path to a cert file if the Llama server's SSL certificate is signed with a local certificate authority (CA).
+- LLMs now have the option to accept optional API keys, in case the LLM server responds differently to anonymous users versus authorized users.
+
+### Figures
+- All scale lines are saved as results instead of just the first scale line.
+
+## Other
+- Moved the tests outside of the module
+- Added webhooks as a notification type
+- Realized that the beta versions of 2.5.1* have been listed as 2.5.0b*, even though 2.5.0 was already created.
+- Changed the ExsclaimSettings to directly parse environment variables into `pathlib.Path`s when needed.
+
 # Version 2.5.0
 ## API
 - Users can now allow other users publicize their runs so other viewers can see them

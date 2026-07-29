@@ -24,7 +24,7 @@ def layout() -> html.Div:
 		from exsclaim.dashboard.components.query import create_query_component, get_llms
 
 	journal_families = [name for name, cls in JournalFamily]
-	available_llms, show_api_key = get_llms()
+	available_llms, show_api_key, requires_api_key = get_llms()
 	return html.Div([
 		# Header
 		create_header_component(),

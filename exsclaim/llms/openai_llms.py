@@ -1,4 +1,4 @@
-from ..caption import LLM, ChatMessage, ResponseBase
+from ..caption import LLM, ChatMessage, ResponseBase, LLMOptions
 
 from logging import exception, error
 from os import getenv
@@ -20,7 +20,7 @@ class OpenAI(LLM):
 	@staticmethod
 	def available_models():
 		return tuple(
-			(model, True, model.replace("gpt", "GPT")) for model in get_args(OPEN_AI_LLMs)
+			LLMOptions(model, True, True, model.replace("gpt", "GPT")) for model in get_args(OPEN_AI_LLMs)
 		)
 
 	@staticmethod

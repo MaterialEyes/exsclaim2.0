@@ -15,14 +15,13 @@ from orjson import dumps
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import Enum as SAEnum, Column, ForeignKeyConstraint, CheckConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
-# from sqlalchemy.sql.schema import SchemaItem
 from sqlmodel import text, SQLModel, Field, DateTime
 from typing import Annotated, Literal, Optional, Any
 from uuid import UUID
 
 
 __all__ = ["BaseModel", "NTFY", "Query", "ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
-		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Results", "User", "get_guest_uuid", "Sessions",
+		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Results", "User", "get_guest_uuid",
 		   "gen_uuid7", "PasswordReset", "generate_salt", "cryptographic_hash", "ExsclaimJSONResponse", "Output", "Banner"]
 
 
@@ -185,34 +184,6 @@ class User(SQLModel, table=True):
 
 		owner = results.user_id
 		return owner == get_guest_uuid() or owner == viewer.id or results.publicize_results
-
-
-class Sessions(SQLModel, table=True):
-	__tablename__ = "sessions"
-	__table_args__ = (
-		ForeignKeyConstraint(["user"], ["users.users.id"],
-							 ondelete="CASCADE", onupdate="CASCADE"),
-		dict(schema="users")
-	)
-
-	user: UUID = Field(title="The user's ID")
-	key: UUID = Field(primary_key=True)
-	salt: bytes = Field()
-	created: dt = Field(
-		default_factory=lambda: dt.now(tz.utc),
-		sa_column=Column(
-			DateTime(timezone=True),
-			server_default=text("NOW()"),
-			nullable=False,
-		)
-	)
-	expiration: Optional[dt] = Field(
-		sa_column=Column(
-			DateTime(timezone=True),
-			server_default=text("NOW() + '1 DAYS'::INTERVAL"),
-			nullable=True,
-		)
-	)
 
 
 class PasswordReset(SQLModel, table=True):

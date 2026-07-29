@@ -1,4 +1,4 @@
-from ..caption import LLM, ChatMessage, ResponseBase
+from ..caption import LLM, LLMOptions, ChatMessage, ResponseBase
 from ..config import settings
 
 from logging import warning, exception
@@ -34,7 +34,7 @@ class Ollama(LLM):
 		models = tuple({tag_regex.search(model.model).group(1) for model in models})
 		labels = (space_regex.sub(r"\1 \2", model) for model in models)
 
-		return tuple((model, False, label.title()) for model, label in zip(models, labels))
+		return tuple(LLMOptions(model, False, False, label.title()) for model, label in zip(models, labels))
 
 	@staticmethod
 	def request_concurrency() -> Optional[int]:

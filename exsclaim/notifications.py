@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 from aiohttp import ClientSession, ClientConnectionError
-from logging import getLogger
-from typing import Optional, Type
+from typing import Collection, Optional, Type
 from uuid import UUID
 
+import httpx
+import logging
 
 __all__ = ["Notifications", "NTFY", "Email", "CouldNotNotifyException"]
 
@@ -15,7 +16,7 @@ class CouldNotNotifyException(BaseException):
 class Notifications(ABC):
 	"""An interface designed to notify the user in various ways."""
 	def __init__(self, **kwargs):
-		self.logger = kwargs.get("logger", getLogger(self.__class__.__name__))
+		self.logger = kwargs.get("logger", logging.getLogger("exsclaim.api"))
 
 	@staticmethod
 	@abstractmethod
@@ -23,12 +24,12 @@ class Notifications(ABC):
 		...
 
 	@abstractmethod
-	async def notify(self, data: dict | str, name:str, id: Optional[UUID] = None, exception: Exception = None):
+	async def notify(self, data: dict | str, name: str, id: Optional[UUID] = None, exception: Exception = None):
 		...
 
 	@classmethod
 	@abstractmethod
-	def from_json(cls, json:dict) -> "Notifications":
+	def from_json(cls, json: dict) -> "Notifications":
 		...
 
 	@staticmethod
@@ -63,7 +64,7 @@ class NTFY(Notifications):
 		priority = json.get("priority", "3")
 		return cls(url, access_token, priority=priority)
 
-	async def notify(self, data: dict | str, name:str, id: Optional[UUID] = None, exception: Exception = None):
+	async def notify(self, data: dict | str, name: str, id: Optional[UUID] = None, exception: Exception = None):
 		from .config import ui_settings
 
 		if isinstance(data, dict):
@@ -98,7 +99,7 @@ class NTFY(Notifications):
 
 
 class Email(Notifications):
-	def __init__(self, recipients:tuple[str], **kwargs):
+	def __init__(self, recipients: tuple[str], **kwargs):
 		super().__init__(**kwargs)
 		self._recipients = recipients
 
@@ -116,3 +117,42 @@ class Email(Notifications):
 
 	async def notify(self, data: dict | str, name: str, id: Optional[UUID] = None, exception: Exception = None):
 		self.logger.error(f"Setup notifications through email.")
+
+
+class Webhook(Notifications):
+	def __init__(self, url: str, authorization: Optional[str] = None, **kwargs):
+		super().__init__(**kwargs)
+		self._post_url = url
+		self._authorization = authorization
+
+	@staticmethod
+	def json_name() -> str:
+		return "webhook"
+
+	@classmethod
+	def from_json(cls, json: dict):
+		url = json.get("url", None)
+		if url is None:
+			raise ValueError("The URL must be provided for Webhook notifications.")
+		authorization = json.get("authorization", None)
+		return cls(url, authorization)
+
+	async def notify(self, data: dict | str, name: str, id: Optional[UUID] = None, exception: Exception = None):
+		from .config import ui_settings
+
+		data = data.copy()
+		if exception is not None:
+			from traceback import format_exception
+			data["exception"] = ' '.join(format_exception(exception))
+		else:
+			data["exception"] = None
+
+		headers = dict()
+		if self._authorization is not None:
+			headers["Authorization"] = self._authorization
+
+		async with httpx.AsyncClient() as session:
+			try:
+				await session.post(self._post_url, data=data, headers=headers)
+			except httpx.HTTPError as e:
+				raise CouldNotNotifyException from e

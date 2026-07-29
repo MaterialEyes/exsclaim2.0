@@ -13,11 +13,11 @@ from hashlib import sha256
 from json import dump
 from os import listdir
 from pathlib import Path
-from sqlalchemy import select, update, insert
+from sqlalchemy import select, update, insert, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from shutil import make_archive, get_archive_formats
 from starlette.requests import Request
-from starlette.responses import Response, FileResponse
+from starlette.responses import Response, FileResponse, JSONResponse
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
 from typing import Literal, Optional
@@ -462,76 +462,76 @@ async def stop_run(request: Request, result_id: UUID, user: CurrentUser):
 
 
 @router.api_route("/results/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
-		 responses={
-			 200: {
-				 "description": "Results Compressed and Included.",
-				 "content": {
-					 "application/octet-stream": {
-						 "schema": {
-							 "type": "string"
-						 },
-						 "example": ""
-					 }
-				 }
-			 },
-			 202: {
-				 "description": "Query Currently Running.",
-				 "content": {
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": "The results are still being compiled.",
-					 }
-				 }
-			 },
-			 404: {
-				 "description": "ID Not Found.",
-				 "content": {
-					 "text/plain": {
-						 "schema": {
-							 "type": "string"
-						 },
-						 "example": f"There is no query recorded in our database with id: \"{_EXAMPLE_UUID}\"."
-					 }
-				 }
-			 },
-			 422: {
-				 "description": "Improper UUID Format for ID or Improper Compression Value.",
-				 "content": {
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": "unknown archive format 'gztar21'",
-					 }
-				 }
-			 },
-			 501: {
-				 "description": "Internal Database Error.",
-				 "content": {
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": f"The database has an unknown status for id \"{_EXAMPLE_UUID}\" and cannot send the results at this time."
-					 }
-				 }
-			 },
-			 503: {
-				 "description": "Error caused the query to not finish which results in no results.",
-				 "content": {
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": "The results could not be compiled due to an error. Please submit your query again."
-					 }
-				 }
-			 },
-		 })
+                  responses={
+					  200: {
+						  "description": "Results Compressed and Included.",
+						  "content": {
+							  "application/octet-stream": {
+								  "schema": {
+									  "type": "string"
+								  },
+								  "example": ""
+							  }
+						  }
+					  },
+					  202: {
+						  "description": "Query Currently Running.",
+						  "content": {
+							  "text/plain": {
+								  "schema": {
+									  "type": "string",
+								  },
+								  "example": "The results are still being compiled.",
+							  }
+						  }
+					  },
+					  404: {
+						  "description": "ID Not Found.",
+						  "content": {
+							  "text/plain": {
+								  "schema": {
+									  "type": "string"
+								  },
+								  "example": f"There is no query recorded in our database with id: \"{_EXAMPLE_UUID}\"."
+							  }
+						  }
+					  },
+					  422: {
+						  "description": "Improper UUID Format for ID or Improper Compression Value.",
+						  "content": {
+							  "text/plain": {
+								  "schema": {
+									  "type": "string",
+								  },
+								  "example": "unknown archive format 'gztar21'",
+							  }
+						  }
+					  },
+					  501: {
+						  "description": "Internal Database Error.",
+						  "content": {
+							  "text/plain": {
+								  "schema": {
+									  "type": "string",
+								  },
+								  "example": f"The database has an unknown status for id \"{_EXAMPLE_UUID}\" and cannot send the results at this time."
+							  }
+						  }
+					  },
+					  503: {
+						  "description": "Error caused the query to not finish which results in no results.",
+						  "content": {
+							  "text/plain": {
+								  "schema": {
+									  "type": "string",
+								  },
+								  "example": "The results could not be compiled due to an error. Please submit your query again."
+							  }
+						  }
+					  },
+				  })
 async def download(request: Request, result_id: UUID, user: CurrentUser, compression: str = "default",
-				   filename: Literal["name", "id"] = "id", tmp_dir_name: str = Depends(get_temp_dir)) -> Response:
+                   filename: Literal["name", "id"] = "id", tmp_dir_name: str = Depends(get_temp_dir)) -> Response:
 	session = request.state.session
 
 	results = await session.execute(select(Results).where(Results.id == result_id))
@@ -539,7 +539,7 @@ async def download(request: Request, result_id: UUID, user: CurrentUser, compres
 
 	if not User.has_permission(user, result):
 		return Response(f"There is no query recorded in our database with id: {result_id}.", status_code=status.HTTP_404_NOT_FOUND,
-						media_type="text/plain")
+		                media_type="text/plain")
 
 	# Set the filename to be id by default
 	if compression != "default":
@@ -567,10 +567,10 @@ async def download(request: Request, result_id: UUID, user: CurrentUser, compres
 			return Response("The results are still being compiled.", status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
 		case Status.STOPPED:
 			return Response("The results were closed by user or admin intervention.",
-							status_code=status.HTTP_200_OK, media_type="text/plain")
+			                status_code=status.HTTP_200_OK, media_type="text/plain")
 		case Status.ERROR:
 			return Response("The results could not be compiled due to an error. Please submit your query again.",
-							status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
+			                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
 		case Status.FINISHED:
 			...
 		case _:
@@ -604,7 +604,25 @@ async def download(request: Request, result_id: UUID, user: CurrentUser, compres
 		filename = results_file.name
 
 	return FileResponse(results_file, status_code=status.HTTP_200_OK, stat_result=results_file.stat(),
-						headers={"Content-Disposition": f"inline ; filename = \"{filename}\""})
+	                    headers={"Content-Disposition": f"inline ; filename = \"{filename}\""})
+
+
+@router.delete("/results/{result_id}", tags=["Using EXSCLAIM"])
+async def delete_results(request: Request, result_id: UUID, user: CurrentUser) -> Response:
+	session = request.state.session
+
+	results = await session.execute(select(Results).where(Results.id == result_id))
+	result: Results = results.scalar_one_or_none()
+
+	if result is None or not User.has_permission(user, result):
+		return JSONResponse(dict(detail=f"There is no query recorded in our database with id: {result_id}.", result_id=str(result_id)),
+		                    status_code=status.HTTP_404_NOT_FOUND)
+	if result.user_id == get_guest_uuid():
+		return JSONResponse(dict(detail="Runs started by guest users (anonymous/not logged in) cannot be deleted."),
+		                    status_code=status.HTTP_401_UNAUTHORIZED)
+
+	results = await session.execute(delete(Results).where(Results.id == result_id))
+	return JSONResponse(dict(detail="Run deleted", result_id=str(result_id)), status_code=status.HTTP_200_OK)
 
 
 @router.api_route("/results/{result_id}/logs", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])

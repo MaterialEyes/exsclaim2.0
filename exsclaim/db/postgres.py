@@ -85,7 +85,7 @@ async def get_db_session(logger: Optional[logging.Logger] = None) -> AsyncGenera
 			yield session
 		except sql_exc.SQLAlchemyError as e:
 			if logger is not None:
-				logger.critical("An error occurred with the database.", exc_info=e)
+				logger.critical("An error occurred with a database transaction.", exc_info=e)
 			await session.rollback()
 
 
@@ -145,7 +145,7 @@ class Database:
 	async def initialize_database(self):
 		from sqlalchemy.schema import CreateSchema
 		from sqlalchemy.sql import text, select, insert
-		from ..api.models import Results, User, Sessions, get_guest_uuid
+		from ..api.models import Results, User, get_guest_uuid
 		from ..api.db import initialize_db as api_db
 
 		async with self.async_engine.begin() as conn:

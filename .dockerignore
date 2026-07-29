@@ -8,7 +8,7 @@ gen
 
 **/exsclaim.egg-info
 
-.git_hooks
+.git
 build
 dist
 logs
@@ -27,6 +27,4 @@ exsclaim/figures/checkpoints/*
 **/__pycache__
 *.pyc
 
-default.env
-.env
-.git*
+**.env

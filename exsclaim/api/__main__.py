@@ -66,9 +66,8 @@ def create_logger(settings):
 	debug_file_handler.setFormatter(exsclaim.ExsclaimFormatter())
 	debug_file_handler.setLevel(logging.DEBUG)
 
-	handlers = (printer_handler, file_handler, debug_file_handler)
+	handlers = (file_handler, debug_file_handler)
 	logging.basicConfig(level=logging.INFO, force=True, handlers=[printer_handler])
-						# handlers=handlers,
 	logger = logging.getLogger("exsclaim.api")
 	for handler in handlers:
 		logger.addHandler(handler)

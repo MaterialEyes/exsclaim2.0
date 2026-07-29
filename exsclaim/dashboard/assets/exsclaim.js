@@ -173,8 +173,8 @@ const getLocale = function() {
 	return navigator.languages && navigator.languages.length ? navigator.languages[0] : navigator.language;
 }
 
-const formatTimespan = function(seconds, locale) {
-	const time = {
+const getTimeUnits = function(seconds){
+	return {
 		days: Math.floor(seconds / 86400),
 		hours: Math.floor((seconds % 86400) / 3600),
 		minutes: Math.floor((seconds % 3600) / 60),
@@ -182,7 +182,24 @@ const formatTimespan = function(seconds, locale) {
 		milliseconds: Math.floor((seconds * 1000) % 1000),
 		// nanoseconds: Math.floor((seconds * 1000000) % 1000)
 	};
+}
+
+const formatTimespan = function(seconds, locale) {
+	const time = getTimeUnits(seconds);
 	return new Intl.DurationFormat(locale, { style: "digital" }).format(time);
+}
+
+const formatDuration = function(seconds) {
+	let time = getTimeUnits(seconds);
+	time = [
+		[time.days, "D"],
+		[time.hours, "H"],
+		[time.minutes, "M"],
+		[time.seconds + (time.milliseconds / 1000), "S"],
+	];
+
+	time = time.filter((t) => t[0] != 0).map((t) => `${t[0]}${t[1]}`);
+	return `P${time.join("")}`
 }
 
 const dagFuncs = window.dashAgGridFunctions = window.dashAgGridFunctions || {};
@@ -554,7 +571,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			}
 		},
 
-		check_credentials: async function(_, data, interval){
+		check_credentials: async function(n_clicks, data, interval){
+			console.log("Check credentials was called.");
+			if(n_clicks === undefined || n_clicks === null) {
+				throw window.dash_clientside.PreventUpdate;
+			}
+
 			const response = await api_fetch(data.public_fastapi_url, "/user/remaining_access", {
 				credentials: "include"
 			});
@@ -563,15 +585,15 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			switch (response.status) {
 				case 200: // Access token is still usable
 					// Checks if the token expires 2 minutes before the next time this is called
-					const remaining = (json.remaining - 120) * 1000;
+					const remaining = json.remaining * 1000;
 					if(remaining <= interval){
 						this.renew_credentials(data);
 					}
-					return window.dash_clientside.no_update;
+					throw window.dash_clientside.PreventUpdate;
 				case 400: // Not logged in
 				case 406: // Token has expired, need to renew immediately
 					this.renew_credentials(data);
-					return window.dash_clientside.no_update;
+					throw window.dash_clientside.PreventUpdate;
 				case 401:
 				default:
 					return true;
@@ -648,7 +670,8 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 				}
 
 				const start_time = Date.parse(run.start_time);
-				table_data += `<td>${new Date(start_time).toLocaleString()}</td>`;
+				const start_time_obj = new Date(start_time);
+				table_data += `<td><time datetime="${start_time_obj.toISOString()}">${start_time_obj.toLocaleString()}</time></td>`;
 
 				let end_time, run_time;
 
@@ -656,17 +679,18 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 					end_time = new Date(Date.parse(run.end_time));
 					run_time = run.run_time;
 
-					table_data += `<td>${end_time.toLocaleString()}</td><td>${formatTimespan(run_time)}</td>`;
+					table_data += `<td><time datetime="${end_time.toISOString()}">${end_time.toLocaleString()}</time></td><td><time datetime="${formatDuration(run_time)}">${formatTimespan(run_time)}</time></td>`;
 				} else{
 					run_time = (Date.now() - start_time) / 1000;
-					table_data += `<td></td><td data-start="${start_time}">${formatTimespan(run_time)}</td>`;
+					table_data += `<td></td><td data-start="${start_time}"><time datetime="${formatDuration(run_time)}">${formatTimespan(run_time)}</time></td>`;
 				}
 			}
 
 			table.innerHTML = table_header + table_data;
 
 			setInterval(() => document.querySelectorAll("[data-start]").forEach((td) => {
-				td.innerText = formatTimespan((Date.now() - td.dataset.start) / 1000);
+				const run_time = (Date.now() - td.dataset.start) / 1000;
+				td.innerHTML = `<time datetime="${formatDuration(run_time)}">${formatTimespan(run_time)}</time>`;
 			}), 167);
 			return [table_header, false, "hide"];
 		},
@@ -689,8 +713,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 					}
 					delete cells[8].dataset.start;
 					cells[3].innerText = status.status;
-					cells[7].innerText = new Date(Date.parse(status.end_time)).toLocaleString(locale);
-					cells[8].innerText = formatTimespan(status.run_time);
+					const end_time = new Date(Date.parse(status.end_time));
+					cells[7].innerHTML = `<time datetime="${end_time.toISOString()}">${end_time.toLocaleString(locale)}</time>`;
+					cells[8].innerHTML = `<time datetime="${formatDuration(status.run_time)}">${formatTimespan(status.run_time)}</time>`;
 				});
 			}
 

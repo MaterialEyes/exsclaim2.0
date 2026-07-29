@@ -14,7 +14,7 @@ from typing import Optional
 name_regex = compile(r"^[\w_\-]+$")
 
 
-def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool]]:
+def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool], dict[str, bool]]:
 	try:
 		from ...caption import LLMMeta
 	except ImportError:
@@ -27,13 +27,15 @@ def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool]]:
 			continue
 		available_llms[cls.__name__] = [dict(
 			model_name=model_name,
+			show_api_key=show_api_key,
 			needs_api_key=needs_api_key,
 			display_name=label if label is not None else model_name.title()
-		) for model_name, needs_api_key, label in models]
+		) for model_name, show_api_key, needs_api_key, label in models]
 
-	show_api_key = {llm["model_name"]: llm["needs_api_key"] for models in available_llms.values() for llm in models}
+	show_api_key = {llm["model_name"]: llm["show_api_key"] for models in available_llms.values() for llm in models}
+	required_api_key = {llm["model_name"]: llm["needs_api_key"] for models in available_llms.values() for llm in models}
 
-	return available_llms, show_api_key
+	return available_llms, show_api_key, required_api_key
 
 
 def create_query_component(journal_families, available_llms, debounce=True):
@@ -459,6 +461,7 @@ def collapse_advanced_options(n_clicks, is_open):
 
 @callback(
 	[
+		Output("model-key", "placeholder"),
 		Output("model-key", "disabled"),
 		Output("model-key", "valid"),
 		Output("model-key", "invalid"),
@@ -474,19 +477,23 @@ def collapse_advanced_options(n_clicks, is_open):
 	]
 )
 def show_api_key(selected_model: str, key: Optional[str], data) -> tuple[bool, bool, bool, bool, dict[str, str]]:
-	needs_key = data["show_api_key"].get(selected_model, True)
+	show_key = data["show_api_key"].get(selected_model, True)
+	needs_key = data["required_api_key"].get(selected_model, False)
 
-	disabled = not needs_key
+	disabled = not show_key		# The input is disabled if the LLM says don't show it
+
 	required = needs_key
-	style = dict(display="block" if needs_key else "none")
+	placeholder = "API Key *" if required else "API Key"
+	style = dict(display="block" if show_key else "none")
 
-	if not needs_key:
-		return disabled, True, False, False, style
+	valid = True
+	invalid = False
 
-	if needs_key and key is not None and key.strip():
-		return True, True, False, True, style
+	if needs_key and (key is None or not key.strip()):
+		valid = False
+		invalid = True
 
-	return disabled, False, True, required, style
+	return placeholder, disabled, valid, invalid, required, style
 
 
 @callback(

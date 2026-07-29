@@ -13,7 +13,7 @@ if settings.DISPLAY_TQDM:
 
 from pathlib import Path
 from PIL import Image
-from typing import Any, Optional
+from typing import Any, Generator, Optional
 
 
 __all__ = ["FigureSeparator"]
@@ -193,7 +193,7 @@ class FigureSeparator(ExsclaimTool):
 		self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 		return exsclaim_dict
 
-	def read_scale_bar(self, cropped_image: Image.Image) -> tuple[float, str, float]:
+	def read_scale_bar(self, cropped_image: Image.Image) -> ctc.Results:
 		"""Outputs the text of an image cropped to a scale bar label bbox
 
 		Args:
@@ -207,8 +207,7 @@ class FigureSeparator(ExsclaimTool):
 		logps = self.scale_label_recognition_model(image.to(self.device))
 		probs = torch.exp(logps)
 		probs = probs.squeeze(0)
-		magnitude, unit, confidence = ctc.run_ctc(probs, classes, self.logger)
-		return magnitude, unit, float(confidence)
+		yield from ctc.run_ctc(probs, classes, self.logger)
 
 	@staticmethod
 	def assign_scale_objects_to_subfigures(master_image: dict, scale_objects: list[dict]) -> tuple[dict, list[dict]]:
@@ -334,10 +333,11 @@ class FigureSeparator(ExsclaimTool):
 					scale_bar_label_image = image.crop((int(x1), int(y1), int(x2), int(y2)))
 
 					# Read Scale Text
-					magnitude, unit, label_confidence = self.read_scale_bar(scale_bar_label_image)
+					for (magnitude, unit, label_confidence) in self.read_scale_bar(scale_bar_label_image):
+						# 0 is never correct and -1 is the error value
+						if magnitude <= 0:
+							continue
 
-					# 0 is never correct and -1 is the error value
-					if magnitude > 0:
 						length_in_nm = magnitude * convert_to_nm[unit.strip().lower()]
 						scale_labels.append(dict(
 							geometry=geometry,
