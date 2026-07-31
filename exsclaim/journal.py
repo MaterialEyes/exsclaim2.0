@@ -594,7 +594,7 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 
 		return article_paths
 
-	async def get_article_extensions(self) -> tuple:
+	async def get_article_extensions(self) -> tuple[str]:
 		"""Retrieves a list of article url paths from a search query"""
 		# This returns urls based on the combinations of desired search terms.
 		article_paths = set()
@@ -622,7 +622,6 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 		figure_json |= dict(
 			article_name=article_name,
 			image_url=image_url,
-			caption_delimiter="",
 			master_images=[],
 			unassigned=dict(
 				master_images=[],

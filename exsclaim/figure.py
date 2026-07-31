@@ -121,10 +121,10 @@ class FigureSeparator(ExsclaimTool):
 		)
 
 	async def unload(self):
-		torch.cuda.empty_cache()
-		for model in (self.subfigure_bbox, self.classification_model, self.scale_bar_detection_model, self.scale_label_recognition_model):
-			# Remove the model from the GPU
-			if self.cuda:
+		if self.cuda:
+			torch.cuda.empty_cache()
+			for model in (self.subfigure_bbox, self.classification_model, self.scale_bar_detection_model, self.scale_label_recognition_model):
+				# Remove the model from the GPU
 				model.to("cpu")
 			del model
 

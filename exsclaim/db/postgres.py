@@ -2,7 +2,6 @@
 from .models import *
 
 from contextlib import asynccontextmanager
-from logging import exception
 from pathlib import Path
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -101,7 +100,7 @@ class Database:
 		async with self.async_engine.connect() as _:
 			print(f"Connection successful.")
 
-	async def upload(self, csv_info: dict[str, list[Any]], run_id: UUID):
+	async def upload(self, csv_info: dict[str, list[Any]], run_id: UUID, logger: logging.Logger):
 		cls_mapping = dict(
 			article=Article,
 			figure=Figure,
@@ -124,21 +123,21 @@ class Database:
 					try:
 						session.add_all(objects)
 						await session.commit()
-					except (sql_exc.IntegrityError, AsyncAdapt_asyncpg_dbapi.sql_exc.IntegrityError) as e:
+					except (sql_exc.IntegrityError, AsyncAdapt_asyncpg_dbapi.IntegrityError) as e:
 						if "duplicate key value" in str(e):
-							exception("Attempted to add duplicate primary keys to the database.")
+							logger.exception("Attempted to add duplicate primary keys to the database.", exc_info=e)
 							await session.rollback()
 							continue
 						else:
-							exception(f"SQLAlchemy error found when uploading the results.")
+							logger.exception(f"SQLAlchemy error found when uploading the results.", exc_info=e)
 							await session.rollback()
 							break
-					except sql_exc.SQLAlchemyError:
-						exception(f"SQLAlchemy error found when uploading the results.")
+					except sql_exc.SQLAlchemyError as e:
+						logger.exception(f"SQLAlchemy error found when uploading the results.", exc_info=e)
 						await session.rollback()
 						break
 					except BaseException as e:
-						exception(f"Non-SQLAlchemy error found when uploading the results.", exc_info=e)
+						logger.exception(f"Non-SQLAlchemy error found when uploading the results.", exc_info=e)
 						await session.rollback()
 						break
 

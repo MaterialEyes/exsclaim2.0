@@ -143,6 +143,11 @@ class ORCIDSettings(BaseSettings):
 class UISettings(ExsclaimSettings):
 	"""Gets access to the environment variables necessary for running the UI (API and Dashboard)."""
 
+	ALLOW_RELOAD: bool = Field(
+		default=True,
+		description="Whether or not to allow reloading the UI even if it's debugging.",
+	)
+
 	DASHBOARD_URL: Optional[str] = Field(
 		default="http://localhost:3000",
 		description="The full URL that a user would use to access the UI.",
@@ -204,6 +209,11 @@ class UISettings(ExsclaimSettings):
 
 		return file
 
+	@field_validator("ALLOW_RELOAD", mode="before")
+	@classmethod
+	def validate_boolean(cls, value) -> bool:
+		return super().validate_boolean(value)
+
 
 settings = ExsclaimSettings()
 ui_settings = UISettings()
@@ -221,10 +231,11 @@ def get_variables(port_env: str, default_port: str, log_subfolder: str) -> dict:
 	for log in (accesslog, errorlog):
 		log.touch(exist_ok=True)
 
+	reload = settings.DEBUG and ui_settings.ALLOW_RELOAD
 	config = dict(
 		bind=f"0.0.0.0:{getenv(port_env, default_port)}",
 		workers=min(20, max(cpu_count() // 2, 1)), # Has at least 1 worker, at most 20 workers, or half of the cpus as workers if possible
-		reload=settings.DEBUG,
+		reload=reload,
 		settings=settings,
 		include_date_header=True,
 		accesslog=str(accesslog),

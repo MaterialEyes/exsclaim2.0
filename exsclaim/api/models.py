@@ -397,22 +397,23 @@ class Query(BaseModel):
 
 	pdf_path: Annotated[Optional[str], Path(title="The local path towards the directory holding the pdfs")] = None
 
-	model_key: Annotated[str, Path(title="The API key that might be needed depending on the specified llm.")] = ""
+	model_key: Annotated[Optional[str], Path(title="The API key that might be needed depending on the specified llm.")] = None
 
-	emails: Annotated[list[str], Path(title="The email address that will receive a notification when EXSCLAIM has finished running.",
+	emails: Annotated[Optional[list[str]], Path(title="The email address that will receive a notification when EXSCLAIM has finished running.",
 	default_factory=list)]
 
-	ntfy: Annotated[list[NTFY], Path(title="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
+	ntfy: Annotated[Optional[list[NTFY]], Path(title="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
 	default_factory=list)]
 
-	tools: Annotated[QueryTools, Path(description="A list of EXSCLAIM tools to run in the pipeline.")] = QueryTools()
+	tools: Annotated[QueryTools, Path(description="A list of EXSCLAIM tools to run in the pipeline.",
+	default_factory=QueryTools)]
 
 	@field_validator("llm", mode="before")
 	@classmethod
 	def validate_llm(cls, llm: str) -> str:
 		"""Checks if the given LLM is valid."""
 		llm_lower = llm.lower()
-		for name, (_, needs_api_key, label) in LLM:
+		for name, (_, show_api_key, needs_api_key, label) in LLM:
 			if llm_lower == name.lower() or (label is not None and label.lower() == llm_lower):
 				return name
 		raise ValueError(f"LLM \"{llm}\" is not a valid LLM model.")

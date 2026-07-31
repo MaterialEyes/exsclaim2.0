@@ -22,10 +22,11 @@
 - Moved the Postgres configuration information into a `pydantic.BaseSettings` class.
 
 ### Captions
-- The `LlamaCPP` class now handles its environment variable through pydantic's BaseSettings. 
+- The `LlamaCPP` class now handles its environment variable through Pydantic's BaseSettings. 
 - `LlamaCPP` can listen to the llama-server's Server Side Events (SSE) to see when the model is loaded.
 - `LlamaCPP` can now accept the path to a cert file if the Llama server's SSL certificate is signed with a local certificate authority (CA).
 - LLMs now have the option to accept optional API keys, in case the LLM server responds differently to anonymous users versus authorized users.
+- LLMs now record the input and output tokens for each caption split. These values can be found in the JSON for each subfigure.
 
 ### Figures
 - All scale lines are saved as results instead of just the first scale line.
@@ -35,6 +36,7 @@
 - Added webhooks as a notification type
 - Realized that the beta versions of 2.5.1* have been listed as 2.5.0b*, even though 2.5.0 was already created.
 - Changed the ExsclaimSettings to directly parse environment variables into `pathlib.Path`s when needed.
+- The module now has the option to not reload when the apps are debugging.
 
 # Version 2.5.0
 ## API

@@ -99,10 +99,6 @@ class Figure(ExsclaimSQLModel, table=True):
 		nullable=False,
 		description="The caption of the figure."
 	)
-	caption_delimiter: Optional[str] = Field(
-		max_length=12,
-		description="The delimiter used to separate captions."
-	)
 	url: str = Field(
 		max_length=200,
 		nullable=False,
@@ -160,6 +156,8 @@ class Subfigure(ExsclaimSQLModel, table=True):
 	x2: int
 	y2: int
 	caption: Optional[str]
+	caption_input_tokens: Optional[int]
+	caption_output_tokens: Optional[int]
 	keywords: Optional[list[str]] = Field(
 		default=None,
 		description="The keywords related to the subfigure.",

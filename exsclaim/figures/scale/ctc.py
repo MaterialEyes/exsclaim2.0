@@ -9,6 +9,7 @@ from typing import Optional, Generator
 
 import logging
 import torch
+import re
 
 
 __all__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "postprocess_ctc", "run_ctc", "Results"]
@@ -189,6 +190,9 @@ Results = Generator[tuple[float, str, float], None, None]
 
 # Added by MaterialEyes
 
+word_split = re.compile(r"([\d\s]+)\s*([a-z\s]+)", re.IGNORECASE)
+word_clean = re.compile(r"\s")
+
 
 def postprocess_ctc(results: torch.Tensor, logger: Optional[logging.Logger] = None) -> Results:
     classes = "0123456789mMcCuUnN .A"
@@ -197,21 +201,22 @@ def postprocess_ctc(results: torch.Tensor, logger: Optional[logging.Logger] = No
         confidence = confidence.detach().item()
 
         word = "".join(map(lambda step: idx_to_class[step], result)).strip().replace('-', '')
-        try:
-            number, unit = word.split()
-            number = float(number)
-            lower_unit = unit.lower()
-        except ValueError as e:
+
+        match = word_split.search(word)
+        if match is None:
             if logger is not None:
-                logger.exception(f"An error occurred while trying to split \"{word}\"", exc_info=e)
+                logger.warning(f"An error occurred while trying to split \"{word}\"")
             continue
+
+        number = float(word_clean.sub("", match.group(1)))
+        unit = word_clean.sub("", match.group(2))
+        lower_unit = unit.lower()
 
         if lower_unit in {"n", "c", "u", "a"}:
             unit = f"{lower_unit}m"
 
         if lower_unit in {"nm", "mm", "cm", "um", "am"}:
             yield number, unit, confidence
-    raise StopIteration
 
 
 def run_ctc(probs: torch.Tensor, classes: str, logger: Optional[logging.Logger] = None) -> Results:

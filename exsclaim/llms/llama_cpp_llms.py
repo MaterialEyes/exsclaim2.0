@@ -106,8 +106,12 @@ class LlamaCPP(OpenAI):
 
 		self._ctx = _get_context()
 		headers = dict()
+
 		if settings.SEND_RUN_ID_HEADER and (run_id := kwargs.get("run_id")) is not None:
 			headers["X-EXSCLAIM-RUN-ID"] = str(run_id)
+
+		if api_key is not None:
+			headers["Authorization"] = f"Bearer {api_key}"
 
 		self.event_hooks: dict[str, list[Coroutine[None, None, Callable[[httpx.Request | httpx.Response], None]]]] = \
 			kwargs.get("event_hooks", dict())
@@ -165,10 +169,10 @@ class LlamaCPP(OpenAI):
 			if self.model in set(model["aliases"]):
 				return model["id"]
 
-		raise ValueError(f"Could not find ID for alias {self.alias}.")
+		raise ValueError(f"Could not find ID for input {self.model}.")
 
 	async def listen_to_events(self, endpoint: Literal["load", "unload"], message_filter: Callable[[dict], bool], logger=None,
-							   timeout: int | float = 120) -> bool:
+							   timeout: int | float = 120, additional_headers: Optional[dict] = None) -> bool:
 		"""
 
 		:param logging.Logger | None logger:
@@ -178,12 +182,16 @@ class LlamaCPP(OpenAI):
 		:rtype:
 		"""
 		timeout = httpx.Timeout(5, read=timeout)
+		headers = {"Content-Type": "application/json"}
+		if additional_headers is not None:
+			headers.update(additional_headers)
+
 		try:
 			async with httpx.AsyncClient(base_url=self.http_client.base_url, verify=self._ctx, event_hooks=self.event_hooks,
 			                             headers=self.http_client.headers, timeout=timeout) as client:
 				async with client.stream("GET", "/models/sse") as response:
 					endpoint_response = await self.http_client.post(f"/models/{endpoint}", json={"model": self.model},
-																	headers={"Content-Type": "application/json"})
+																	headers=headers)
 					if endpoint_response.status_code == 400:
 						json = endpoint_response.json()
 						if json["error"]["message"] == "model is already running":
@@ -235,10 +243,12 @@ class LlamaCPP(OpenAI):
 				logger.info(f"Could not connect to server side events to see when the LLM was fully loaded.", exc_info=e)
 			return False
 
-	async def load(self, logger=None):
+	async def load(self, logger=None, num_captions: Optional[int] = None) -> bool:
 		def message_filter(data: dict) -> bool:
 			return data["data"]["status"] == "loaded" or (data["data"]["status"] == "loading" and data["data"]["progress"]["value"] == 1.0)
-		return await self.listen_to_events("load", message_filter, logger=logger)
+
+		additional_headers = {"X-EXSCLAIM-Num-Captions": str(num_captions)} if num_captions is not None else dict()
+		return await self.listen_to_events("load", message_filter, logger=logger, additional_headers=additional_headers)
 
 	async def unload(self, logger=None):
 		def message_filter(data: dict) -> bool:

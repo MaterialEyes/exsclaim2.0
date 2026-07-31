@@ -276,7 +276,7 @@ class Pipeline:
 				if SaveMethods.POSTGRES in save_methods:
 					db = Database()
 					try:
-						await db.upload(csv_info, run_id=self.query_dict["run_id"])
+						await db.upload(csv_info, self.query_dict["run_id"], self.logger)
 					except SQLAlchemyError as e:
 						self.logger.exception("An error occurred while uploading the results to the database, but the pipeline finished running.", exc_info=e)
 
@@ -345,10 +345,10 @@ class Pipeline:
 					continue
 
 				master_image |= {
-					"caption": caption_label["description"], # .replace("\n", " ").strip()
+					"caption": caption_label["description"],
 					"keywords": caption_label["keywords"],
-					# "context": caption_label["context"],
-					# "general": caption_label["general"],
+					"input_tokens": caption_label["input_tokens"],
+					"output_tokens": caption_label["output_tokens"],
 				}
 
 				masters.append(master_image)
@@ -696,7 +696,6 @@ class Pipeline:
 			csv_info["figure"].append([
 				figure_id,
 				figure_json["full_caption"],
-				figure_json["caption_delimiter"],
 				figure_json["image_url"],
 				figure_json["figure_path"],
 				figure_json["article_name"],
@@ -725,6 +724,8 @@ class Pipeline:
 					master_image.get("nm_width", None),
 					*subfigure_coords,
 					caption,
+					master_image.get("input_tokens"),
+					master_image.get("output_tokens"),
 					master_image.get("keywords", []),
 					figure_id,
 				])

@@ -1,4 +1,4 @@
-from ...config import ExsclaimSettings
+from ...config import settings
 from ..models import *
 from .users import ActiveUser, CurrentUser
 
@@ -25,7 +25,6 @@ from uuid import UUID
 
 
 router = APIRouter()
-settings = ExsclaimSettings()
 _EXAMPLE_UUID = get_guest_uuid()
 cache = dict()
 ARCHIVE_FORMATS = set(map(lambda _format: _format[0], get_archive_formats()))
@@ -578,7 +577,7 @@ async def download(request: Request, result_id: UUID, user: CurrentUser, compres
 				f"The database has an unknown status for id \"{result_id}\" and cannot send the results at this time.",
 				status_code=status.HTTP_501_NOT_IMPLEMENTED, media_type="text/plain")
 
-	results_file = (Path("/exsclaim") / "results" / str(result_id)).with_suffix(".tar.gz")
+	results_file = (settings.RESULTS_PATH / str(result_id)).with_suffix(".tar.gz")
 	if not results_file.exists():
 		return Response(
 			"The result id was found in our database, but the corresponding results file could not be found. Please try again later.",

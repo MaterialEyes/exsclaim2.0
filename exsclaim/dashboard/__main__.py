@@ -117,7 +117,7 @@ def favicon():
 
 @server.route("/logout")
 def logout():
-	return redirect(f"{public_fastapi_url}/user/logout")
+	return redirect(f"{ui_settings.PUBLIC_API_URL}/user/logout")
 
 
 def main():

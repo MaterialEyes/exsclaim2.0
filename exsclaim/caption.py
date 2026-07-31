@@ -5,6 +5,7 @@ import numpy as np
 from abc import ABC, abstractmethod, ABCMeta
 from asyncio import Semaphore
 from base64 import b64encode
+from dataclasses import dataclass
 from io import BytesIO
 from json import dumps
 from logging import Logger
@@ -16,7 +17,7 @@ from textwrap import dedent
 from typing import Literal, Iterable, Type, Optional, Any, TypeVar, Self, Collection, NamedTuple
 
 
-__all__ = ["ChatMessage", "LLMOptions", "LLMMeta","LLM", "CaptionEntry", "Captions", "Keywords", "ResponseBase", "OptionalSemaphore"]
+__all__ = ["ChatMessage", "LLMOptions", "LLMMeta", "LLMUsage", "LLM", "CaptionEntry", "Captions", "Keywords", "ResponseBase", "OptionalSemaphore"]
 
 
 ResponseBase = TypeVar("ResponseBase", bound=str | BaseModel)
@@ -137,6 +138,12 @@ class LLMMeta(ABCMeta):
 		LLM._models = LLMMeta.models
 
 
+@dataclass
+class LLMUsage:
+	input_tokens: Optional[int]
+	output_tokens: Optional[int]
+
+
 class OptionalSemaphore(Semaphore):
 	def __init__(self, value: Optional[int] = None):
 		self._is_valid_value = value is not None and value > 0
@@ -192,7 +199,7 @@ class LLM(ABC, metaclass=LLMMeta):
 	async def __aexit__(self, *args, **kwargs):
 		await self.unload()
 
-	async def load(self, logger: Optional[Logger] = None) -> bool:
+	async def load(self, logger: Optional[Logger] = None, num_captions: Optional[int] = None) -> bool:
 		"""Does any needed preparation to load the model."""
 		return True
 
@@ -201,11 +208,11 @@ class LLM(ABC, metaclass=LLMMeta):
 		...
 
 	@abstractmethod
-	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str) -> ResponseBase:
+	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str) -> tuple[ResponseBase, LLMUsage]:
 		if response_format != str and not issubclass(response_format, BaseModel):
-			raise TypeError("response_format should be None or a subclass of BaseModel.")
+			raise TypeError("response_format should be str or a subclass of BaseModel.")
 
-	async def parse_captions(self, caption: str) -> tuple[dict[str, str], list[str]]:
+	async def parse_captions(self, caption: str) -> tuple[dict[str, str], list[str], LLMUsage]:
 		messages = [
 			ChatMessage(role="system", content=(
 				"You are an experienced material scientist. " 
@@ -223,18 +230,13 @@ class LLM(ABC, metaclass=LLMMeta):
 
 		while True:
 			try:
-				info = await self.get_response(messages, response_format=CaptionInfo)
+				info, usage = await self.get_response(messages, response_format=CaptionInfo)
 				break
 			except ValidationError as error:
 				messages.append(ChatMessage(role="user", content=f"Your previous response could not be parsed: {dumps(error.errors())}"))
-				# for e in error.errors(include_url=False):
-				# 	messages.append(ChatMessage(role="user", content=f"Your previous response could not be parsed. "
-				# 								f"Validation error:\n```{e['msg']}```. "
-				# 								f"Previous output:\n```{e['input']}```. "
-				# 								"Please regenerate the JSON object."))
 
 		captions = {entry.label: entry.caption for entry in info.captions}
-		return captions, info.keywords[:5] # TODO: Make sure the keywords are unique
+		return captions, info.keywords[:5], usage # TODO: Make sure the keywords are unique
 
 	# TODO: Add deprecations to these methods
 	async def separate_captions(self, caption: str) -> dict[str, str]:

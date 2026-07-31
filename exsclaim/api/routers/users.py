@@ -100,7 +100,7 @@ def create_refresh_token(user: User, jti: UUID):
 	return encoded_jwt
 
 
-async def _extract_token(token: Optional[str]) -> User | HTTPException:
+async def _extract_access_token(token: Optional[str]) -> User | HTTPException:
 	if token is None:
 		return None
 
@@ -144,7 +144,7 @@ async def get_current_user_from_authorization_header(request: Request) -> User:
 	if match is None:
 		return await get_guest_user()
 
-	user = await _extract_token(match.group(1))
+	user = await _extract_access_token(match.group(1))
 	if isinstance(user, User):
 		return user
 
@@ -157,7 +157,7 @@ async def get_current_user_from_cookie(request: Request) -> User:
 	if cookie is None:
 		return await get_guest_user()
 
-	user = await _extract_token(cookie)
+	user = await _extract_access_token(cookie)
 	if isinstance(user, User):
 		return user
 
@@ -169,19 +169,19 @@ AccessTokenCookie = Annotated[str, Depends(APIKeyCookie(name="access_token", aut
 
 
 async def get_active_user_from_authorization_header(token: AccessTokenHeader) -> User:
-	user = await _extract_token(token)
+	user = await _extract_access_token(token)
 	if isinstance(user, HTTPException):
 		raise user
 
 	elif user is None:
-		raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials",
+		raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Credentials were not given.",
 		                    headers={"WWW-Authenticate": "Bearer"},)
 
 	return user
 
 
 async def get_active_user_from_cookie(request: Request, cookie: AccessTokenCookie) -> User:
-	user = await _extract_token(cookie)
+	user = await _extract_access_token(cookie)
 	if isinstance(user, HTTPException):
 		raise user
 
@@ -226,12 +226,8 @@ async def create_tokens_for_authorization_header(user: User) -> dict[str, str]:
 	return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 
-async def create_tokens_for_cookie(user: User, response: Response) -> Response:
-	new_jti = uuid4()
-	await add_user_jti(user, new_jti)
-
+async def create_access_token_for_cookie(user: User, response: Response) -> Response:
 	access_token = create_access_token(user)
-	refresh_token = create_refresh_token(user, new_jti)
 
 	response.set_cookie(
 		key="access_token",
@@ -244,6 +240,15 @@ async def create_tokens_for_cookie(user: User, response: Response) -> Response:
 		path="/"
 	)
 
+	response.headers["X-EXSCLAIM-Access-Minutes"] = str(ACCESS_TOKEN_EXPIRE_MINUTES)
+	return response
+
+
+async def create_refresh_token_for_cookie(user: User, response: Response, include_refresh: bool = True) -> Response:
+	new_jti = uuid4()
+	await add_user_jti(user, new_jti)
+	refresh_token = create_refresh_token(user, new_jti)
+
 	response.set_cookie(
 		key="refresh_token",
 		value=refresh_token,
@@ -255,9 +260,7 @@ async def create_tokens_for_cookie(user: User, response: Response) -> Response:
 		path=router.prefix + "/refresh"
 	)
 
-	response.headers["X-EXSCLAIM-Access-Minutes"] = str(ACCESS_TOKEN_EXPIRE_MINUTES)
 	response.headers["X-EXSCLAIM-Refresh-Days"] = str(REFRESH_TOKEN_EXPIRE_DAYS)
-
 	return response
 
 
@@ -291,7 +294,8 @@ async def create_user(request: Request, info: LoginInfo):
 	await session.commit()
 
 	response = JSONResponse({"detail": f"Account created for {email}."}, status_code=status.HTTP_201_CREATED)
-	response = await create_tokens_for_cookie(user, response)
+	response = await create_access_token_for_cookie(user, response)
+	response = await create_refresh_token_for_cookie(user, response)
 	return response
 
 
@@ -324,7 +328,8 @@ async def login_user(request: Request, info: LoginInfo) -> Response:
 	if referer is not None:
 		response.headers["Location"] = referer
 
-	response = await create_tokens_for_cookie(actual_user, response)
+	response = await create_access_token_for_cookie(actual_user, response)
+	response = await create_refresh_token_for_cookie(actual_user, response)
 	return response
 
 
@@ -359,12 +364,13 @@ async def login_with_orcid(request: Request, code: str): # TODO: Create a way fo
 		await session.commit()
 
 	response = RedirectResponse(ui_settings.DASHBOARD_URL)
-	response = await create_tokens_for_cookie(actual_user, response)
+	response = await create_access_token_for_cookie(actual_user, response)
+	response = await create_refresh_token_for_cookie(actual_user, response)
 	return response
 
 
 @router.post("/refresh", tags=[TAG])
-async def refresh(request: Request, user: ActiveUser, refresh_token: str = Cookie()):
+async def refresh(request: Request, refresh_token: str = Cookie()):
 	try:
 		payload = jwt.decode(refresh_token, PUBLIC_KEY, algorithms=[ALGORITHM])
 	except jwt.ExpiredSignatureError:
@@ -375,13 +381,27 @@ async def refresh(request: Request, user: ActiveUser, refresh_token: str = Cooki
 	if payload.get("type") != "refresh":
 		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not a refresh token.")
 
+	user_id = payload.get("sub")
+	if user_id is None:
+		return HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail="Cannot refresh credentials when no credentials are given.",
+			headers={"WWW-Authenticate": "Bearer"},
+		)
+
+	user_id = UUID(user_id)
+	async with get_db_session() as session:
+		user = await session.execute(select(User).where(User.id == user_id))
+		user = user.scalar()
+
+	if user is None:
+		raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User not found.")
+
 	if not await user_has_jti(user, payload["jti"]):
 		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JTI does not match: {payload['jti']}.")
 
-	await remove_user_jti(user, payload["jti"])
-
 	response = JSONResponse({"status": "New access token provided."}, status_code=status.HTTP_202_ACCEPTED)
-	response = await create_tokens_for_cookie(user, response)
+	response = await create_access_token_for_cookie(user, response)
 	return response
 
 

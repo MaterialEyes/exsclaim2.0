@@ -15,7 +15,7 @@ router = APIRouter(prefix="/results/v1")
 TAG = "Results from Queries"
 
 
-async def check_run_owner(user: User, session: AsyncSession, results_id: UUID):
+async def check_run_owner(user: User, session: AsyncSession, results_id: UUID, cls: Type[ExsclaimSQLModel]):
 	query = await session.execute(select(Results).where(Results.id == results_id))
 	results: Optional[Results] = query.scalar_one_or_none()
 
@@ -30,7 +30,7 @@ async def check_run_owner(user: User, session: AsyncSession, results_id: UUID):
 
 
 async def get_item(cls, results_id: UUID, _id: str, user: User, session: AsyncSession, error_msg: Callable[[str], str]):
-	await check_run_owner(user, session, results_id)
+	await check_run_owner(user, session, results_id, cls)
 	
 	statement = select(cls).where(cls.id == _id).where(cls.run_id == results_id)
 	results = await session.execute(statement)
@@ -43,7 +43,7 @@ async def get_item(cls, results_id: UUID, _id: str, user: User, session: AsyncSe
 
 
 async def get_items(cls, results_id: UUID, user: User, session: AsyncSession, page: Optional[int] = None):
-	await check_run_owner(user, session, results_id)
+	await check_run_owner(user, session, results_id, cls)
 
 	statement = select(cls).where(cls.run_id == results_id)
 	if isinstance(page, int) and page != -1:

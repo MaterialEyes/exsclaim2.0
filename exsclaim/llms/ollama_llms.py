@@ -1,4 +1,4 @@
-from ..caption import LLM, LLMOptions, ChatMessage, ResponseBase
+from ..caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
 from ..config import settings
 
 from logging import warning, exception
@@ -44,7 +44,7 @@ class Ollama(LLM):
 		num_parallel_requests = int(getenv("OLLAMA_NUM_PARALLEL", '1'))
 		return different_models * num_parallel_requests
 
-	async def load(self, logger: Optional[logging.Logger] = None) -> Self:
+	async def load(self, logger: Optional[logging.Logger] = None, num_captions: Optional[int] = None) -> Self:
 		await self.client.generate(model=self.model)
 		if logger is not None:
 			logger.info(f"Loaded {self.model}.")
@@ -74,7 +74,7 @@ class Ollama(LLM):
 
 		return new_messages
 
-	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str) -> ResponseBase:
+	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str):
 		await super().get_response(prompt, response_format)
 
 		_format = response_format.model_json_schema() if response_format != str else None
@@ -83,12 +83,13 @@ class Ollama(LLM):
 		response: ChatResponse = await self.client.chat(model=self.model, messages=messages, format=_format)
 
 		output_string = response.message.content
+		usage = LLMUsage(None, None)
 
 		if response_format == str:
-			return output_string
+			return output_string, usage
 
 		try:
-			return response_format.model_validate_json(output_string)
+			return response_format.model_validate_json(output_string), usage
 		except ValidationError as e:
 			exception(f"Error validating to type: {response_format}.", exc_info=e)
 			raise e

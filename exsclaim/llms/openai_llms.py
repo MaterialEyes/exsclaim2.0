@@ -1,4 +1,4 @@
-from ..caption import LLM, ChatMessage, ResponseBase, LLMOptions
+from ..caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
 
 from logging import exception, error
 from os import getenv
@@ -69,7 +69,7 @@ class OpenAI(LLM):
 			parameters=parameters,
 		)
 
-	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str) -> ResponseBase:
+	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str) -> tuple[ResponseBase, LLMUsage]:
 		await super().get_response(prompt, response_format)
 
 		input_ = self.format_messages(prompt)
@@ -80,9 +80,11 @@ class OpenAI(LLM):
 			temperature = NOT_GIVEN
 
 		try:
-			completion = await self.client.responses.parse(model=self.model, input=input_, temperature=temperature,
+			response = await self.client.responses.parse(model=self.model, input=input_, temperature=temperature,
 															text_format=response_format if response_format != str else NOT_GIVEN)
-			response = completion.output[0]
+			output = response.output_parsed
+			usage = LLMUsage(response.usage.input_tokens, response.usage.output_tokens)
+			return output, usage
 		except BadRequestError as e:
 			from json import dumps
 			exception(f"Could not parse the response from the LLM when inputs where inputs are:\n{dumps(input_, indent='\t')}", exc_info=e)
@@ -90,20 +92,6 @@ class OpenAI(LLM):
 		except OpenAIError as e:
 			exception("An error occurred in OpenAI.", exc_info=e)
 			raise e
-
-		if response_format == str:
-			return response.content[0].text
-		elif isinstance(response, response_format):
-			return response
-		elif isinstance(response, ParsedResponseOutputMessage):
-			return response.content[0].parsed
-		elif isinstance(response, ResponseFunctionToolCall):
-			output = response.arguments
-		elif isinstance(response, ResponseOutputMessage):
-			output = response.text
-			error(f"Response type: ResponseOutputMessage. {output=}")
-		else:
-			raise TypeError(f"An unknown response type was received from OpenAI. Received type: {response.__class__.__name__}.")
 
 		try:
 			return response_format.model_validate_json(output)

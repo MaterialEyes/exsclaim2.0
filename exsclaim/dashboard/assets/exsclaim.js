@@ -753,7 +753,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 				save_format: save_formats,
 				open_access: getDefault(open_access, false),
 				llm: getDefault(model, "llama3.2"),
-				model_key: getDefault(model_key, ""),
+				model_key: getDefault(model_key, null),
 				ntfy: [],
 			};
 
