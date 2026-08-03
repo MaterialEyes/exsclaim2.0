@@ -246,7 +246,7 @@ class Webhook(Notifications):
 			}
 
 		data["username"] = "EXSCLAIM Pipeline"
-		data["avatar_url"] = "https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico"
+		data["avatar_url"] = "https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/54317f169b0436eadde45bcc391c9beaf0a1135e/exsclaim/dashboard/assets/favicon.ico"
 
 		async with httpx.AsyncClient() as client:
 			return await client.post(self.url, headers=headers, json=data)

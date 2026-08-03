@@ -368,7 +368,7 @@ class Query(BaseModel):
 
 	model_key: Annotated[Optional[str], Path(title="The API key that might be needed depending on the specified llm.")] = None
 
-	emails: Annotated[Optional[list[str]], Path(title="The email address that will receive a notification when EXSCLAIM has finished running.",
+	emails: Annotated[Email, Path(title="A list of email addresses that will receive a notification when EXSCLAIM has finished running.",
 	default_factory=list)]
 
 	ntfy: Annotated[list[NTFY], Path(title="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
