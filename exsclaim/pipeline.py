@@ -170,7 +170,7 @@ class Pipeline:
 		"""
 		self.logger.info(info)
 
-	async def run(self, tools:list[type[ExsclaimTool]] = None, journal_scraper=True, pdf_scraper=True,
+	async def run(self, tools: list[type[ExsclaimTool]] = None, journal_scraper=True, pdf_scraper=True,
 				  caption_distributor=True, figure_separator=True, run_id: Optional[UUID] = None) -> dict:
 		"""Run EXSCLAIM pipeline on Pipeline instance's query path
 
@@ -233,7 +233,7 @@ class Pipeline:
 		"""))
 		exsclaim_dict = self.exsclaim_dict
 		query_dict = self.query_dict
-		message = f"EXSCLAIM! query{f' `{run_id}`' if run_id is not None else ''} failed without a message."
+		notification = f"EXSCLAIM! query{f' `{run_id}`' if run_id is not None else ''} failed without a notification."
 
 		try:
 			# set default values
@@ -294,21 +294,36 @@ class Pipeline:
 				await gather(*[self.make_visualization(name, json, extractions) for name, json in self.exsclaim_dict.items()])
 
 			# Creates success messages to be sent to the notifiers
-			message = f"EXSCLAIM! query{f' `{run_id}`' if run_id is not None else ''} finished at: {dt.now():%Y-%m-%dT%H:%M%z}."
-		except CancelledError as e:
-			self.logger.exception(e)
-			message = f"The pipeline was stopped at {dt.now():%Y-%m-%dT%H:%M%z} for{' the' if run_id is None else ''} EXSCLAIM! query{f' `{run_id}`' if run_id is not None else ''}."
+			notification = Notification(
+				message="Pipeline finished successfully.",
+				run_id=run_id,
+				name=self.query_dict["name"],
+			)
+		except (CancelledError, KeyboardInterrupt) as e:
+			self.logger.exception(f"User stopped the pipeline via the {type(e).__name__} exception.", exc_info=e)
+			notification = Notification(
+				message="Pipeline's task was cancelled.",
+				run_id=run_id,
+				name=self.query_dict["name"],
+				exception=e
+			)
 			raise e
 		except BaseException as e:
-			self.logger.exception(e)
-			message = f"An error occurred at {dt.now():%Y-%m-%dT%H:%M%z} running{' the' if run_id is None else ''} EXSCLAIM! query{f' `{run_id}`' if run_id is not None else ''}."
+			self.logger.exception("An error occurred that prevented the EXSCLAIM pipeline from finishing.", exc_info=e)
+			notification = Notification(
+				message="Pipeline failed due to an error.",
+				run_id=run_id,
+				name=self.query_dict["name"],
+				exception=e
+			)
 			raise PipelineInterruptionException from e
 		finally:
 			for notifier in self.notifications:
 				try:
-					await notifier.notify(message, name=self.query_dict["name"], id=run_id)
-				except CouldNotNotifyException:
-					self.logger.exception(f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".")
+					await notifier.notify(notification)
+				except CouldNotNotifyException as e:
+					self.logger.exception(f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".",
+										  exc_info=e)
 
 		return self.exsclaim_dict
 

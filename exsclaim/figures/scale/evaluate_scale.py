@@ -23,7 +23,7 @@ __all__ = ["create_scale_bar_objects", "detect_scale_objects", "determine_scale"
 		   "read_scale_bar_label", "split_label", "test_label_reading"]
 
 
-def create_scale_bar_objects(scale_bar_lines:list[dict], scale_bar_labels:list[dict]) -> tuple[list[dict], list[dict]]:
+def create_scale_bar_objects(scale_bar_lines: list[dict], scale_bar_labels: list[dict]) -> tuple[list[dict], list[dict]]:
 	"""Match scale bar lines with labels to create scale bar jsons
 
 	Args:

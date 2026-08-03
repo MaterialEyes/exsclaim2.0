@@ -185,8 +185,9 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 			"logging": ["exsclaim.log"],
 			"results_dir": str(results_dir),
 			"notifications": {
-				"ntfy": list(map(lambda ntfy: ntfy.to_json(), search_query.ntfy)),
+				"ntfy": list(map(lambda ntfy: ntfy.model_dump(), search_query.ntfy)),
 				"emails": search_query.emails,
+				"webhooks": list(map(lambda webhook: webhook.model_dump(), search_query.webhooks)),
 			},
 			**search_query.tools.tools,
 		}

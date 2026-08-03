@@ -3,26 +3,28 @@ from __future__ import annotations
 from ..journal import JournalFamily
 from ..caption import LLM
 from ..config import ExsclaimSettings
+from ..notifications import NTFY, Email, Webhook
 from ..db.models import ExsclaimSQLModel, Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes
 from .json_models import *
 
 from datetime import datetime as dt, timezone as tz
 from enum import StrEnum
-from fastapi import Path
+from fastapi import Path, status
 from fastapi.responses import JSONResponse
-from httpx import Client, InvalidURL, Response
 from orjson import dumps
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from sqlalchemy import Enum as SAEnum, Column, ForeignKeyConstraint, CheckConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlmodel import text, SQLModel, Field, DateTime
 from typing import Annotated, Literal, Optional, Any
 from uuid import UUID
 
+import httpx
 
 __all__ = ["BaseModel", "NTFY", "Query", "ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
 		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Results", "User", "get_guest_uuid",
-		   "gen_uuid7", "PasswordReset", "generate_salt", "cryptographic_hash", "ExsclaimJSONResponse", "Output", "Banner"]
+		   "gen_uuid7", "PasswordReset", "generate_salt", "cryptographic_hash", "ExsclaimJSONResponse", "Output", "Banner",
+		   "Webhook"]
 
 
 def gen_uuid7() -> UUID:
@@ -33,12 +35,6 @@ def gen_uuid7() -> UUID:
 
 	from uuid_utils import uuid7
 	return UUID(str(uuid7()))
-
-
-def create_link(link: str) -> str:
-	# return f"<a href={link}>{link}</a>"
-	# return f"[{link}]({link})"
-	return link
 
 
 def get_guest_uuid() -> UUID:
@@ -322,33 +318,6 @@ class Banner(SQLModel, table=True):
 	)
 
 
-class NTFY(BaseModel):
-	"""A base model representing the necessary info to send an NTFY notification."""
-	url: Annotated[str, Path(title=f"The url to the NTFY server, with the topic included (e.g. {create_link('https://ntfy.sh/exsclaim')})")]
-	access_token: Annotated[str, Path(title=f"The access token that may be needed to send the NTFY notification as stated in {create_link('https://docs.ntfy.sh/publish/#access-tokens')}")] = None
-	priority: Annotated[int, Path(title=f"The priority of the message as stated in {create_link('https://docs.ntfy.sh/publish/#message-priority')}.", ge=1, le=5)] = 3
-
-	@field_validator("url", mode="before")
-	@classmethod
-	def validate_url(cls, url: str) -> str:
-		"""Checks if the given NTFY server is valid."""
-		try:
-			with Client() as client:
-				response: Response = client.get(url)
-				if response.is_success or response.is_redirect:
-					return url
-				raise ValueError(response.text)
-		except InvalidURL as e:
-			raise ValueError(str(e)) from e
-
-	def to_json(self):
-		return {
-			"url": self.url,
-			"access_token": self.access_token,
-			"priority": str(self.priority),
-		}
-
-
 class QueryTools(BaseModel):
 	journal_scraper: Annotated[bool, Path(title="If the JournalScraper should be run.")] = True
 	caption_distributor: Annotated[bool, Path(title="If the CaptionDistributor should be run.")] = True
@@ -402,7 +371,10 @@ class Query(BaseModel):
 	emails: Annotated[Optional[list[str]], Path(title="The email address that will receive a notification when EXSCLAIM has finished running.",
 	default_factory=list)]
 
-	ntfy: Annotated[Optional[list[NTFY]], Path(title="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
+	ntfy: Annotated[list[NTFY], Path(title="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
+	default_factory=list)]
+
+	webhooks: Annotated[list[Webhook], Path(title="A list of webhooks that the system will POST to when EXSCLAIM has finished running.",
 	default_factory=list)]
 
 	tools: Annotated[QueryTools, Path(description="A list of EXSCLAIM tools to run in the pipeline.",

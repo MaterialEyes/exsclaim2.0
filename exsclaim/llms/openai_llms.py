@@ -94,7 +94,7 @@ class OpenAI(LLM):
 			raise e
 
 		try:
-			return response_format.model_validate_json(output)
+			return response_format.model_validate_json(response.output)
 		except ValidationError as e:
 			exception(f"Error validating to type: {response_format}.")
 			raise ValidationError(f"Could not parse the response from the LLM: `{output}`") from e

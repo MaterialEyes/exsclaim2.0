@@ -38,6 +38,7 @@ geometry = {
 	"y1": datasets.Value("int16")
 }
 
+
 image_features = datasets.Features({
 	"Journal": datasets.Value("string"),
 	"ID": datasets.Value("string"), # article's ID + _fig{number},
