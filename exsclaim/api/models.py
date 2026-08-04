@@ -3,7 +3,7 @@ from __future__ import annotations
 from ..journal import JournalFamily
 from ..caption import LLM
 from ..config import ExsclaimSettings
-from ..notifications import NTFY, Email, Webhook
+from ..notifications import NTFY, Email, Webhook, QueryNotifications
 from ..db.models import ExsclaimSQLModel, Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes
 from .json_models import *
 
@@ -24,7 +24,7 @@ import httpx
 __all__ = ["BaseModel", "NTFY", "Query", "ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
 		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Results", "User", "get_guest_uuid",
 		   "gen_uuid7", "PasswordReset", "generate_salt", "cryptographic_hash", "ExsclaimJSONResponse", "Output", "Banner",
-		   "Webhook"]
+		   "QueryTools"]
 
 
 def gen_uuid7() -> UUID:
@@ -368,14 +368,7 @@ class Query(BaseModel):
 
 	model_key: Annotated[Optional[str], Path(title="The API key that might be needed depending on the specified llm.")] = None
 
-	emails: Annotated[Email, Path(title="A list of email addresses that will receive a notification when EXSCLAIM has finished running.",
-	default_factory=list)]
-
-	ntfy: Annotated[list[NTFY], Path(title="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
-	default_factory=list)]
-
-	webhooks: Annotated[list[Webhook], Path(title="A list of webhooks that the system will POST to when EXSCLAIM has finished running.",
-	default_factory=list)]
+	notifications: Annotated[QueryNotifications, Path(title="A list of notification objects that are used when the pipeline finishes.")]
 
 	tools: Annotated[QueryTools, Path(description="A list of EXSCLAIM tools to run in the pipeline.",
 	default_factory=QueryTools)]

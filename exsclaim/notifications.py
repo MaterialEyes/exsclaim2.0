@@ -2,9 +2,10 @@ from .config import ui_settings
 
 from abc import ABC, abstractmethod
 from datetime import datetime as dt, timezone as tz
-from enum import Enum
-from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict
-from typing import Annotated, Collection, Optional, Type, Self
+from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, model_serializer, \
+	GetCoreSchemaHandler
+from pydantic_core import CoreSchema
+from typing import Annotated, Collection, Generator, Optional, Type, Self
 from uuid import UUID
 
 import fastapi
@@ -12,7 +13,7 @@ import httpx
 import logging
 import re
 
-__all__ = ["Notification", "Notifications", "NTFY", "Email", "Webhook", "CouldNotNotifyException"]
+__all__ = ["Notification", "Notifications", "NTFY", "Email", "Webhook", "CouldNotNotifyException", "QueryNotifications"]
 
 
 def create_link(link: str) -> str:
@@ -41,7 +42,7 @@ class Notifications(BaseModel, ABC):
 		return cls.__name__.lower()
 
 	@abstractmethod
-	async def notify(self, notification: Notification):
+	async def notify(self, notification: Notification, logger: logging.Logger):
 		...
 
 	@staticmethod
@@ -54,11 +55,6 @@ class Notifications(BaseModel, ABC):
 			return subclasses
 
 		return {notifier.json_name(): notifier for notifier in get_subclasses(Notifications)}
-
-	@abstractmethod
-	@model_validator(mode="after")
-	async def is_valid_notifier(self) -> Self:
-		...
 
 	def _get_results_link(self, results_id: Optional[UUID]) -> Optional[str]:
 		if ui_settings.DASHBOARD_URL is None or results_id is None:
@@ -77,12 +73,22 @@ class NTFY(Notifications):
 	"""A base model representing the necessary info to send an NTFY notification."""
 	url: Annotated[str, fastapi.Path(
 		title=f"The url to the NTFY server, with the topic included (e.g. {create_link('https://ntfy.sh/exsclaim')})")]
-	access_token: Annotated[str, Path(
+
+	access_token: Annotated[Optional[str], Path(
 		title=f"The access token fastapi.that may be needed to send the NTFY notification as stated in {create_link('https://docs.ntfy.sh/publish/#access-tokens')}")] = None
+
+	@field_validator("url", "access_token", mode="after")
+	@classmethod
+	def strip_whitespace(cls, value: Optional[str]) -> Optional[str]:
+		if value is None:
+			return value
+		return value.strip()
+
 	priority: Annotated[int, fastapi.Path(
 		title=f"The priority of the message as stated in {create_link('https://docs.ntfy.sh/publish/#message-priority')}.",
 		ge=1, le=5)] = 3
 
+	@model_validator(mode="after")
 	def is_valid_notifier(self) -> Self:
 		"""Checks if the given NTFY server is valid."""
 		try:
@@ -94,13 +100,13 @@ class NTFY(Notifications):
 		except httpx.InvalidURL as e:
 			raise ValueError(str(e)) from e
 
-	async def notify(self, notification: Notification):
+	async def notify(self, notification: Notification, logger: logging.Logger):
 		from json import dumps
 
 		headers = {
 			"Markdown": "yes",
 			"Title": f"EXSCLAIM: `{notification.name}` Notification",
-			"Priority": self._priority,
+			"Priority": self.priority,
 		}
 
 		if (ui_link := self._get_results_link(notification.run_id)) is not None:
@@ -116,20 +122,10 @@ class NTFY(Notifications):
 				raise CouldNotNotifyException from e
 
 
-class Email(Notifications):
-	recipients: list[EmailStr]
-
-	async def notify(self, notification: Notification):
-		self.logger.warning("Email notifications have not been setup.")
-
-	async def is_valid_notifier(self) -> Self:
-		return self # Only checking that the emails' syntax is correct, which they are because of the EmailStr
-
-
-class WebhookType(Enum):
-	Slack = "Slack"
-	Discord = "Discord"
-	Default = "Default"
+class Email(Notifications, RootModel[list[EmailStr]]):
+	async def notify(self, notification: Notification, logger: logging.Logger):
+		emails = self.root
+		logger.warning("Email notifications have not been setup.")
 
 
 class Webhook(Notifications):
@@ -141,11 +137,30 @@ class Webhook(Notifications):
 	The pipeline must respond with a 200 or 300 level status code that is **not** 202, or else the pipeline will think that the message didn't go through.
 	"""
 	url: Annotated[str, fastapi.Path(title="The url that should be posted to.")]
-	authorization: Annotated[Optional[str], fastapi.Path(title=f"The bearer token that should be sent with the webhook. This takes priority over a the Authorization header you may pass, so leave it empty if you're handling headers through the headers value.")] = None
-	headers: Annotated[dict[str, str], fastapi.Path(default_factory=dict, title=f"The headers that should be sent with the webhook.")]
-	type: Annotated[WebhookType, fastapi.Path(title="The application type of the webhook.")] = WebhookType.Default
 
-	async def _send_post(self, notification: Notification) -> httpx.Response:
+	authorization: Annotated[Optional[str], fastapi.Path(
+		title=f"The bearer token that should be sent with the webhook. This takes priority over a the Authorization header you may pass, so leave it empty if you're handling headers through the headers value.")] = None
+
+	headers: Annotated[dict[str, str], fastapi.Path(default_factory=dict, title=f"The headers that should be sent with the webhook.")]
+
+	@staticmethod
+	def get_url_pattern() -> re.Pattern[str]:
+		return re.compile("^.*$")
+
+	@model_validator(mode="wrap")
+	@classmethod
+	def _resolve_adaptive_object(cls, data: dict, handler: GetCoreSchemaHandler, /) -> Webhook:
+		if Notifications not in cls.__bases__:
+			return handler(data)
+
+		url = data["url"]
+		for subclass in cls.__subclasses__():
+			if subclass.get_url_pattern().match(url):
+				return subclass.model_validate(data)
+
+		return cls.model_validate(data)
+
+	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx.Response:
 		headers = self.headers.copy()
 		if self.authorization is not None:
 			headers["Authorization"] = self.authorization
@@ -154,11 +169,25 @@ class Webhook(Notifications):
 
 		async with httpx.AsyncClient() as client:
 			try:
-				return await client.post(self.url, data=notification.model_dump(), headers=headers)
+				response = await client.post(self.url, data=notification.model_dump(), headers=headers)
+				response.raise_for_status()
 			except httpx.HTTPError as e:
 				raise CouldNotNotifyException from e
 
-	async def _send_slack_webhook(self, notification: Notification) -> httpx.Response:
+
+class Slack(Webhook):
+	"""
+	When setting up a webhook, there are two types of events that will be sent.
+	The first is the `test` event sent before the pipeline runs.
+	The webhook needs to respond with status 202 Accepted for the pipeline to accept that the webhook is properly configured.
+	The second event is the `message` event, which is the pipeline sending if the pipeline finished successfully or crashed.
+	The pipeline must respond with a 200 or 300 level status code that is **not** 202, or else the pipeline will think that the message didn't go through.
+	"""
+	@staticmethod
+	def get_url_pattern() -> re.Pattern[str]:
+		return re.compile(r"https://hooks.slack.com/services/T(\w{8,})/B(\w{8,})/(\w{24})")
+
+	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx.Response:
 		headers = {"Content-Type": "application/json"}
 		timestamp = f"<!date^{int(notification.time.timestamp())}^ {{date_short_pretty}} at {{time_secs}}|{notification.time.isoformat()}>"
 
@@ -200,7 +229,19 @@ class Webhook(Notifications):
 				data = {"text": f"Results for *{notification.name}* finished compiling {timestamp}."}
 
 		async with httpx.AsyncClient() as client:
-			return await client.post(self.url, headers=headers, json=data)
+			try:
+				response = await client.post(self.url, headers=headers, json=data)
+				response.raise_for_status()
+			except httpx.HTTPError as e:
+				raise CouldNotNotifyException(f"[{response.status_code}] The status code that the webhook responded with "
+			                              f"did not match what was expected: {response.text}.") from e
+		return response
+
+
+class Discord(Webhook):
+	@staticmethod
+	def get_url_pattern() -> re.Pattern[str]:
+		return re.compile(r"https://discord.com/api/webhooks/(\d{17,19})/(\w+)")
 
 	async def _send_discord_webhook(self, notification: Notification) -> httpx.Response:
 		headers = {"Content-Type": "application/json"}
@@ -249,31 +290,21 @@ class Webhook(Notifications):
 		data["avatar_url"] = "https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/54317f169b0436eadde45bcc391c9beaf0a1135e/exsclaim/dashboard/assets/favicon.ico"
 
 		async with httpx.AsyncClient() as client:
-			return await client.post(self.url, headers=headers, json=data)
+			try:
+				response = await client.post(self.url, headers=headers, json=data)
+				response.raise_for_status()
+			except httpx.HTTPError as e:
+				raise CouldNotNotifyException(
+					f"[{response.status_code}] The status code that the webhook responded with "
+					f"did not match what was expected: {response.text}.") from e
 
-	async def send_post(self, notification: Notification) -> httpx.Response:
-		match self.type:
-			case WebhookType.Slack:
-				return await self._send_slack_webhook(notification)
-			case WebhookType.Discord:
-				return await self._send_discord_webhook(notification)
-			case _:
-				return await self._send_post(notification)
-
-	async def notify(self, notification: Notification):
-		response = await self.send_post(notification)
-		try:
-			response.raise_for_status()
-		except httpx.HTTPError as e:
-			raise CouldNotNotifyException(f"[{response.status_code}] The status code that the webhook responded with "
-										  f"did not match what was expected: {response.text}.") from e
-		return response
-
-	def _test_discord_webhook(self):
+	@model_validator(mode="after")
+	def is_valid_notifier(self) -> Self:
 		headers = {
 			"Accept": "*/*",
 			"Content-Type": "application/json",
 		}
+
 		with httpx.Client() as client:
 			try:
 				response = client.get(self.url, headers=headers)
@@ -281,18 +312,21 @@ class Webhook(Notifications):
 			except httpx.HTTPError as e:
 				raise ValueError("Test ping for Discord did not work") from e
 
-	def is_valid_notifier(self) -> Self:
-		url = self.url
-
-		if re.match(r"https://hooks.slack.com/services/T(\w{8,})/B(\w{8,})/(\w{24})", url):
-			self.type = WebhookType.Slack
-		elif url.startswith(r"https://discord.com/api/webhooks/"):
-			self.type = WebhookType.Discord
-
-		match self.type:
-			case WebhookType.Discord:
-				self._test_discord_webhook()
-			case _:
-				...
-
 		return self
+
+
+class QueryNotifications(BaseModel):
+	ntfy: Annotated[list[NTFY], Path(title="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
+	                                 default_factory=list)]
+
+	emails: Annotated[Email, Path(title="A list of email addresses that will receive a notification when EXSCLAIM has finished running.")]
+
+	webhooks: Annotated[list[Webhook], Path(title="A list of webhooks that the system will POST to when EXSCLAIM has finished running.",
+	                                        default_factory=list)]
+
+	def __iter__(self) -> Generator[Notification, None, None]:
+		for notifiers in (self.ntfy, self.webhooks):
+			for notifier in notifiers:
+				yield notifier
+
+		yield self.emails

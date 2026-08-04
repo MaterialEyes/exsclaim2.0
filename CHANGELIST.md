@@ -34,6 +34,7 @@
 ## Other
 - Moved the tests outside of the module
 - Added webhooks as a notification type
+- Updated how notifications are passed in queries.
 - Realized that the beta versions of 2.5.1* have been listed as 2.5.0b*, even though 2.5.0 was already created.
 - Changed the ExsclaimSettings to directly parse environment variables into `pathlib.Path`s when needed.
 - The module now has the option to not reload when the apps are debugging.

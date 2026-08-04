@@ -163,7 +163,7 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 		uuid = gen_uuid7()
 		str_uuid = str(uuid)
 
-		results_dir = Path("/exsclaim") / "results" / str_uuid
+		results_dir = settings.RESULTS_PATH / str_uuid
 		results_dir.mkdir(exist_ok=True, parents=True)
 
 		exsclaim_input = {
@@ -184,11 +184,7 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 			"save_format": search_query.save_format,
 			"logging": ["exsclaim.log"],
 			"results_dir": str(results_dir),
-			"notifications": {
-				"ntfy": list(map(lambda ntfy: ntfy.model_dump(), search_query.ntfy)),
-				"emails": search_query.emails,
-				"webhooks": list(map(lambda webhook: webhook.model_dump(), search_query.webhooks)),
-			},
+			"notifications": search_query.notifications.model_dump(),
 			**search_query.tools.tools,
 		}
 

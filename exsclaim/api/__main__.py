@@ -81,11 +81,6 @@ def flush_logger(app: FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-	# Runs before the application starts
-	for _dir in ("results", "logs"):
-		path = Path("/exsclaim") / _dir
-		path.mkdir(exist_ok=True, parents=True)
-
 	app.sitemap = None
 
 	yield # Runs the application

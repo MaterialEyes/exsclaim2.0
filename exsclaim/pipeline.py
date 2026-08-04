@@ -153,14 +153,7 @@ class Pipeline:
 			self.exsclaim_dict = dict()
 		# endregion
 
-		# region Set up notifications
-		exsclaim_notifications = self.query_dict.get("notifications", dict())
-		notifications = (_class.from_json(json)
-						 for key, _class in Notifications.notifiers().items()
-						 for json in exsclaim_notifications.get(key, []))
-		self.notifications: tuple[Notifications, ...] = tuple(notifications)
-
-	# endregion
+		self.notifications = QueryNotifications.model_validate(self.query_dict.get("notifications", dict()))
 
 	def display_info(self, info):
 		"""Display information to the user as the specified in the query
@@ -320,7 +313,7 @@ class Pipeline:
 		finally:
 			for notifier in self.notifications:
 				try:
-					await notifier.notify(notification)
+					await notifier.notify(notification, self.logger)
 				except CouldNotNotifyException as e:
 					self.logger.exception(f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".",
 										  exc_info=e)

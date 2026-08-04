@@ -754,11 +754,13 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 				open_access: getDefault(open_access, false),
 				llm: getDefault(model, "llama3.2"),
 				model_key: getDefault(model_key, null),
-				ntfy: [],
+				notifications: {
+					ntfy: []
+				},
 			};
 
 			if(ntfy_link !== null && ntfy_link !== undefined){
-				input_data.ntfy.push({
+				input_data.notifications.ntfy.push({
 					url: ntfy_link,
 					priority: ntfy_priority !== null && ntfy_priority >= 1 && ntfy_priority <= 5 ? ntfy_priority : 3
 				});
