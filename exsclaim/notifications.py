@@ -106,18 +106,27 @@ class NTFY(Notifications):
 		headers = {
 			"Markdown": "yes",
 			"Title": f"EXSCLAIM: `{notification.name}` Notification",
-			"Priority": self.priority,
+			"Priority": str(self.priority),
 		}
 
 		if (ui_link := self._get_results_link(notification.run_id)) is not None:
 			headers["Actions"] = f"view, Open Results, {ui_link}"
 
-		if self._access_token is not None:
-			headers["Authorization"] = f"Bearer {self._access_token}"
+		if self.access_token is not None:
+			headers["Authorization"] = f"Bearer {self.access_token}"
+
+		if notification.exception is None:
+			data = f"EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''} finished at: {notification.time:%Y-%m-%dT%H:%M%z}."
+		elif isinstance(notification.exception, (asyncio.CancelledError, KeyboardInterrupt)):
+			data = f"The pipeline was stopped at {notification.time:%Y-%m-%dT%H:%M%z} for{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}."
+		else:
+			from traceback import format_exception
+			data = f"An error occurred at {notification.time:%Y-%m-%dT%H:%M%z} running{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}."
+			data += ' '.join(format_exception(exception))
 
 		async with httpx.AsyncClient() as client:
 			try:
-				await client.post(self._ntfy_url, data=notification.model_dump(), headers=headers)
+				await client.post(self.url, data=data, headers=headers)
 			except httpx.ConnectError as e:
 				raise CouldNotNotifyException from e
 
@@ -194,7 +203,7 @@ class Slack(Webhook):
 		if notification.exception is not None:
 			logs_link = self._get_logs_link(notification.run_id)
 			if logs_link is None:
-				data = {"text": f"Results for {notification.name} failed to compile due to {type(notification.exception).__name__} at {timestamp}."}
+				data = {"text": f"Results for {notification.name} failed to compile due to {type(notification.exception).__name__} at{timestamp}."}
 			else:
 				data = {
 					"text": f"Results for *{notification.name}* failed.",
@@ -203,7 +212,7 @@ class Slack(Webhook):
 							"type": "section",
 							"text": {
 								"type": "mrkdwn",
-								"text": f"Results for <{logs_link}|{notification.name}> failed at {timestamp}. "
+								"text": f"Results for <{logs_link}|{notification.name}> failed at{timestamp}. "
 										f"Logs are available at <{logs_link}|{logs_link}>."
 							}
 						},
@@ -219,14 +228,14 @@ class Slack(Webhook):
 							"type": "section",
 							"text": {
 								"type": "mrkdwn",
-								"text": f"Results for <{ui_link}|{notification.name}> finished {timestamp} and can be"
+								"text": f"Results for <{ui_link}|{notification.name}> finished{timestamp} and can be"
 										f" viewed at <{ui_link}|{ui_link}>."
 							}
 						},
 					]
 				}
 			else:
-				data = {"text": f"Results for *{notification.name}* finished compiling {timestamp}."}
+				data = {"text": f"Results for *{notification.name}* finished compiling{timestamp}."}
 
 		async with httpx.AsyncClient() as client:
 			try:
@@ -243,7 +252,7 @@ class Discord(Webhook):
 	def get_url_pattern() -> re.Pattern[str]:
 		return re.compile(r"https://discord.com/api/webhooks/(\d{17,19})/(\w+)")
 
-	async def _send_discord_webhook(self, notification: Notification) -> httpx.Response:
+	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx.Response:
 		headers = {"Content-Type": "application/json"}
 		iso_timestamp = f"{notification.time:%Y-%m-%d %H:%M}"
 		timestamp = int(notification.time.timestamp())
@@ -287,7 +296,7 @@ class Discord(Webhook):
 			}
 
 		data["username"] = "EXSCLAIM Pipeline"
-		data["avatar_url"] = "https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/54317f169b0436eadde45bcc391c9beaf0a1135e/exsclaim/dashboard/assets/favicon.ico"
+		data["avatar_url"] = "https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/54317f169b0436eadde45bcc391c9beaf0a1135e/exsclaim/dashboard/assets/favicon.png"
 
 		async with httpx.AsyncClient() as client:
 			try:

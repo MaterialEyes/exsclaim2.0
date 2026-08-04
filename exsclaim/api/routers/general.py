@@ -109,14 +109,29 @@ async def redoc(request: Request) -> Response:
 @router.api_route("/favicon.ico", methods=["GET", "HEAD"], include_in_schema=False)
 async def favicon(request: Request) -> Response:
 	if hasattr(request.app, "favicon"):
-		return Response(request.app.favicon, media_type="image/x-icon", status_code=status.HTTP_200_OK)
+		favicon, etag = request.app.favicon
+		return Response(favicon, media_type="image/x-icon", headers={"ETag": etag}, status_code=status.HTTP_200_OK)
 
 	content, etag = await get("https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico")
 	if isinstance(content, Response):
 		return content
 
-	request.app.favicon = content
+	request.app.favicon = (content, etag)
 	return Response(content, media_type="image/x-icon", headers={"ETag": etag}, status_code=status.HTTP_200_OK)
+
+
+@router.api_route("/favicon.png", methods=["GET", "HEAD"], include_in_schema=False)
+async def favicon(request: Request) -> Response:
+	if hasattr(request.app, "favicon_png"):
+		favicon, etag = request.app.favicon_png
+		return Response(favicon, media_type="image/png", headers={"ETag": etag}, status_code=status.HTTP_200_OK)
+
+	content, etag = await get("https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/b22ed4009c63ddd58d8415c5882ab58febde691c/dashboard/public/favicon.ico")
+	if isinstance(content, Response):
+		return content
+
+	request.app.favicon_png = (content, etag)
+	return Response(content, media_type="image/png", headers={"ETag": etag}, status_code=status.HTTP_200_OK)
 
 
 @router.api_route("/swagger-dark-ui.css", methods=["GET", "HEAD"], include_in_schema=False)
