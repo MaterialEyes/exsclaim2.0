@@ -26,8 +26,9 @@ __all__ = ["RequestLoggerMiddleware", "PreflightCacheMiddleware", "SQLAlchemyMid
 
 request_id_ctx = ContextVar("request_id")
 BLOCKED_PATHS = [
-	re.compile("^/?.env", re.IGNORECASE),
-	re.compile("^/?.git.*", re.IGNORECASE),
+	re.compile(r"\.env$", re.IGNORECASE),
+	re.compile(r"^/?.git.*", re.IGNORECASE),
+	re.compile(r"\.php$", re.IGNORECASE),
 ]
 
 

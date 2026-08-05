@@ -5,12 +5,11 @@ import httpx
 import logging
 
 from asyncpg import UndefinedTableError
-from datetime import datetime as dt
+from datetime import datetime as dt, timezone as tz
 from fastapi import APIRouter, status
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.responses import JSONResponse
 from hashlib import sha256
-from pytz import utc
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
@@ -225,7 +224,7 @@ async def healthcheck(request: Request) -> Response:
 @router.api_route("/sitemap.xml", methods=["GET", "HEAD"])
 def sitemap(request: Request) -> Response:
 	if (sitemap := request.app.sitemap) is None:
-		last_mod = dt.now(utc).strftime("%Y-%m-%dT%H:%M:%S.%f%z")
+		last_mod = dt.now(tz.utc).strftime("%Y-%m-%dT%H:%M:%S.%f%z")
 		host = get_host_from_request(request)
 
 		def format_xml(route: BaseRoute) -> Optional[str]:

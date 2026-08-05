@@ -1,10 +1,10 @@
 from ...config import ui_settings, orcid_settings
 from ...db import get_db_session
-from ..models import User, PasswordReset, Results, cryptographic_hash, generate_salt, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
+from ..models import User, PasswordReset, Results, cryptographic_hash, generate_salt, get_guest_uuid, \
+	ExsclaimJSONResponse as JSONResponse
 
 from datetime import datetime as dt, timezone as tz, timedelta as td
 from fastapi import APIRouter, Form, status, Depends, HTTPException, Body, Cookie
-from fastapi.encoders import jsonable_encoder
 from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
 from httpx import AsyncClient
 from starlette.requests import Request
@@ -518,37 +518,6 @@ async def update_username(request: Request, user: ActiveUser, username: str = Bo
 		"old_username": old_username,
 		"new_username": username,
 	}, status_code=status.HTTP_200_OK)
-
-
-@router.api_route("/previous_runs", methods=["GET", "HEAD"], tags=[TAG]) # TODO: Add filters
-async def previous_runs(request: Request, user: CurrentUser) -> JSONResponse:
-	session: AsyncSession = request.state.session
-
-	results = await session.execute(text("""\
-		WITH
-			s AS (SELECT run_id, COUNT(run_id) AS num_figures FROM results.subfigure GROUP BY run_id),
-			a AS (SELECT run_id, COUNT(run_id) AS num_articles FROM results.article GROUP BY run_id)
-		SELECT
-			r.id, r.status, r.search_query->>'name' AS name, r.search_query->'query'->'search_field_1'->'term' AS term,
-			r.start_time, r.end_time, COALESCE(r.end_time, NOW()) - r.start_time AS run_time, r.search_query->>'maximum_scraped' AS max_articles,
-			a.num_articles, s.num_figures
-		FROM results.results r
-			LEFT JOIN s ON r.id = s.run_id
-			LEFT JOIN a ON r.id = a.run_id
-		WHERE r.user_id = :user_id
-		ORDER BY r.start_time DESC
-	"""), params=dict(user_id=user.id))
-	runs = results.fetchall()
-
-	output = [None] * len(runs)
-	keys = ["id", "status", "name", "term", "start_time", "end_time", "run_time", "max_articles", "num_articles", "num_figures"]
-	for i, run in enumerate(runs):
-		run = dict(zip(keys, run))
-		run["id"] = str(run["id"])
-		run["run_time"] = run["run_time"].total_seconds()
-		output[i] = run
-
-	return JSONResponse(jsonable_encoder(output), status_code=status.HTTP_200_OK)
 
 
 @router.api_route("/remaining_access", methods=["GET", "HEAD"], include_in_schema=False)

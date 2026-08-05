@@ -8,6 +8,7 @@
 - Users can merge an account they created with their email with an account they created with their ORCID.
 - Users can update their usernames.
 - `/user/login` and `/user/signup` now use a BaseModel as the way to retrieve information, which changes how users post to them.
+- Previous runs can now accept filters, endpoint changed from `/user/previous_runs` to `/previous_runs`.
 
 ## Dashboard
 - Fixed a bug that wouldn't allow users to log in with their email and password

@@ -3,7 +3,7 @@ from .config import ui_settings
 from abc import ABC, abstractmethod
 from datetime import datetime as dt, timezone as tz, timedelta as td, tzinfo
 from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, GetCoreSchemaHandler, \
-	field_serializer
+	field_serializer, WithJsonSchema
 from pydantic_core import CoreSchema
 from typing import Annotated, Collection, Generator, Optional, Type, Self
 from uuid import UUID
@@ -36,6 +36,17 @@ class Notification(BaseModel):
 	time: Annotated[dt, fastapi.Path(default_factory=lambda: dt.now(tz=tz.utc),
 									 title=f"The headers that should be sent with the webhook.")]
 	exception: Optional[str | BaseException] = None
+
+
+TZInfo = Annotated[
+	tzinfo,
+	WithJsonSchema({
+		"oneOf": [
+			{"type": "string", "examples": ["UTC", "America/Chicago"]},
+			{"type": "number", "examples": [0, -5, 5]}
+		]
+	})
+]
 
 
 class Notifications(BaseModel, ABC):
@@ -86,13 +97,13 @@ class NTFY(Notifications):
 		title="The priority of the message as stated in {create_link('https://docs.ntfy.sh/publish/#message-priority')}.",
 		ge=1, le=5)] = 3
 
-	timezone: Annotated[tzinfo, fastapi.Path(
+	timezone: Annotated[TZInfo, fastapi.Path(
 		title="A timezone used to send the relative time to NTFY since NTFY's client cannot parse it directly.",
 	)] = zoneinfo.ZoneInfo("localtime")
 
 	@field_validator("timezone", mode="before")
 	@classmethod
-	def get_timezone(cls, value: Optional[str]) -> Optional[tzinfo]:
+	def get_timezone(cls, value: Optional[str]) -> TZInfo:
 		if value is None:
 			return tz.utc
 
@@ -124,10 +135,7 @@ class NTFY(Notifications):
 			raise ValueError(str(e)) from e
 
 	@field_serializer("timezone")
-	def serialize_timezone(self, value: Optional[tzinfo]) -> Optional[str | int | float]:
-		if value is None:
-			return None
-
+	def serialize_timezone(self, value: TZInfo) -> Optional[str | int | float]:
 		if isinstance(value, zoneinfo.ZoneInfo):
 			return value.key
 

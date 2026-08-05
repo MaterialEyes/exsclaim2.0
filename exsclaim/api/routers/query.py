@@ -1,14 +1,16 @@
 from ...config import settings
+from ...db import get_db_session
 from ..models import *
 from .users import ActiveUser, CurrentUser
 
+import fastapi
 import logging
 import tarfile
 
 from asyncio import all_tasks, create_task, CancelledError, Task
 from datetime import datetime as dt
 from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, status
+from fastapi import Body, Depends, status
 from hashlib import sha256
 from json import dump
 from os import listdir
@@ -18,13 +20,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shutil import make_archive, get_archive_formats
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse, JSONResponse
+from sqlalchemy import text
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
-from typing import Literal, Optional
+from textwrap import dedent
+from typing import Annotated, Literal, Optional
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 
-router = APIRouter()
+router = fastapi.APIRouter()
 _EXAMPLE_UUID = get_guest_uuid()
 cache = dict()
 ARCHIVE_FORMATS = set(map(lambda _format: _format[0], get_archive_formats()))
@@ -153,7 +158,7 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, session: AsyncSes
 		}
 	}
 }, tags=["Using EXSCLAIM"])
-async def query(request: Request, search_query: Query, background_tasks: BackgroundTasks, user: CurrentUser) -> Response:
+async def query(request: Request, search_query: Query, background_tasks: fastapi.BackgroundTasks, user: CurrentUser) -> Response:
 	session = request.state.session
 	logger: logging.Logger = request.state.logger
 
@@ -619,6 +624,9 @@ async def delete_results(request: Request, result_id: UUID, user: CurrentUser) -
 	return JSONResponse(dict(detail="Run deleted", result_id=str(result_id)), status_code=status.HTTP_200_OK)
 
 
+LOGS_BACKUP = dt(2026, 7, 8, 9, 30, tzinfo=ZoneInfo("America/Chicago"))
+
+
 @router.api_route("/results/{result_id}/logs", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
 async def download_logs(request: Request, result_id: UUID, user: CurrentUser):
 	session = request.state.session
@@ -632,8 +640,12 @@ async def download_logs(request: Request, result_id: UUID, user: CurrentUser):
 		                status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
 	name = result.search_query["name"]
-	missing_logs = Response(f"Could not find the saved results in our server, even though they should have been saved.",
-							status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
+	if result.start_time < LOGS_BACKUP:
+		missing_logs = Response(f"Results for runs started before July 8, 2026 weren't ensured to be saved.",
+								status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
+	else:
+		missing_logs = Response(f"Could not find the saved results in our server, even though they should have been saved.",
+								status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
 	if result.status == Status.RUNNING:
 		logs_path = settings.RESULTS_PATH / str(result_id) / name / "exsclaim.log"
@@ -811,35 +823,43 @@ async def download_checkpoint(checkpoint: str) -> Response:
 
 	return FileResponse(checkpoint_path, media_type="application/octet-stream", status_code=status.HTTP_200_OK,
 						stat_result=checkpoint_path.stat())
-	# with open(checkpoint_path, "rb") as f:
-	# 	buffer = BytesIO(f.read())
-	# return streaming_response_with_hash(buffer, checkpoint, checkpoint_path.stat().st_mtime)
 
 
-# def streaming_response_with_hash(buffer: BytesIO, filename: str, last_modified: Optional[str | float] = None) -> StreamingResponse:
-# 	from email.utils import formatdate
-# 	from hashlib import sha256
-#
-# 	hash_obj = sha256()
-# 	for part in buffer:
-# 		hash_obj.update(part)
-# 	digest = hash_obj.hexdigest()
-# 	buffer.seek(0)
-#
-# 	def streamer():
-# 		while True:
-# 			yield from buffer
-#
-# 	headers = {
-# 		"Accept-Ranges": "bytes",
-# 		"Content-Disposition": f"inline ; filename = \"{filename}\"",
-# 		"Content-Length": str(len(buffer.getvalue())),
-# 		"Etag": digest
-# 	}
-#
-# 	if last_modified is not None:
-# 		if isinstance(last_modified, float):
-# 			last_modified = formatdate(last_modified, usegmt=True)
-# 		headers["Last-Modified"] = last_modified
-#
-# 	return StreamingResponse(streamer(), media_type="application/octet-stream", status_code=status.HTTP_200_OK, headers=headers)
+@router.api_route("/previous_runs", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
+async def previous_runs(request: Request, user: CurrentUser, conditions: Annotated[PreviousRunFilters, fastapi.Query()]) -> JSONResponse:
+	query = dedent("""
+		SELECT * FROM (
+			SELECT
+				r.id, r.status, r.search_query->>'name' AS name, r.search_query->'query'->'search_field_1'->'term' AS term,
+				r.start_time, r.end_time, COALESCE(r.end_time, NOW()) - r.start_time AS run_time,
+				(r.search_query->>'maximum_scraped')::INT AS max_articles,
+				(SELECT COUNT(*) AS num_articles FROM results.article a WHERE a.run_id = r.id) AS num_articles,
+				(SELECT COUNT(*) AS num_figures FROM results.subfigure s WHERE s.run_id = r.id) AS num_figures
+			FROM results.results r
+			WHERE r.user_id = :user_id
+		) r
+	""")
+
+	params = dict(user_id=user.id)
+	filter_clause = ""
+
+	if conditions is not None:
+		filters, params = conditions.add_conditions_to_sql(params)
+		if len(filters) > 0:
+			filter_clause = f"WHERE {' AND '.join(filters)} "
+
+	async with get_db_session() as session:
+		query = f"{query} {filter_clause} ORDER BY r.start_time DESC;"
+		# print(f"{query=}\n{params=}", flush=True)
+		results = await session.execute(text(query), params=params)
+		runs = results.fetchall()
+
+	output = [None] * len(runs)
+	keys = ["id", "status", "name", "term", "start_time", "end_time", "run_time", "max_articles", "num_articles", "num_figures"]
+	for i, run in enumerate(runs):
+		run = dict(zip(keys, run))
+		run["id"] = str(run["id"])
+		run["run_time"] = run["run_time"].total_seconds()
+		output[i] = run
+
+	return JSONResponse(fastapi.encoders.jsonable_encoder(output), status_code=status.HTTP_200_OK)

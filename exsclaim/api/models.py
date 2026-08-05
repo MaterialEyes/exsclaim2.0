@@ -13,10 +13,10 @@ from fastapi import Path, status
 from fastapi.responses import JSONResponse
 from orjson import dumps
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
-from sqlalchemy import Enum as SAEnum, Column, ForeignKeyConstraint, CheckConstraint
+from sqlalchemy import Enum as SAEnum, Column, ForeignKeyConstraint, CheckConstraint, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlmodel import text, SQLModel, Field, DateTime
-from typing import Annotated, Literal, Optional, Any
+from typing import Annotated, Literal, Optional, Any, Self
 from uuid import UUID
 
 import httpx
@@ -24,7 +24,7 @@ import httpx
 __all__ = ["BaseModel", "NTFY", "Query", "ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
 		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Results", "User", "get_guest_uuid",
 		   "gen_uuid7", "PasswordReset", "generate_salt", "cryptographic_hash", "ExsclaimJSONResponse", "Output", "Banner",
-		   "QueryTools"]
+		   "QueryTools", "PreviousRunFilters"]
 
 
 def gen_uuid7() -> UUID:
@@ -215,6 +215,8 @@ class Results(SQLModel, table=True):
 	__table_args__ = (
 		ForeignKeyConstraint(["user_id"], ["users.users.id"],
 							 ondelete="CASCADE", onupdate="CASCADE"),
+		# Index("ix_results_results_user_id", "user_id"),
+		Index("ix_results_results_user_id_start_time", "user_id", "start_time"),
 		dict(schema="results")
 	)
 
@@ -412,3 +414,80 @@ class ExsclaimJSONResponse(JSONResponse):
 	def render(self, content: Any) -> bytes:
 		# orjson
 		return dumps(content)
+
+
+class PreviousRunFilters(BaseModel):
+	status: Annotated[list[Status], Path(description="Look for runs with this status type.", default_factory=list)]
+
+	name: Annotated[Optional[str], Path(description="Look for runs named this.")] = None
+
+	term: Annotated[Optional[str], Path(description="Look for runs searching for this term.")] = None
+
+	min_articles: Annotated[Optional[int], Path(description="Look for runs with at least this many articles found.", ge=0)] = None
+
+	max_articles: Annotated[Optional[int], Path(description="Look for runs with at most this many articles found.", ge=0)] = None
+
+	min_figures: Annotated[Optional[int], Path(description="Look for runs with at least this many figures.", ge=0)] = None
+
+	max_figures: Annotated[Optional[int], Path(description="Look for runs with at most this many figures.", ge=0)] = None
+
+	min_scraped: Annotated[Optional[int], Path(description="Look for runs that scraped at least this many articles.", ge=0)] = None
+
+	max_scraped: Annotated[Optional[int], Path(description="Look for runs that scraped at most this many articles.", ge=0)] = None
+
+	@model_validator(mode="after")
+	def check_filters(self) -> Self:
+		pairs = (
+			(self.min_articles, self.min_articles, "number of articles"),
+			(self.min_figures, self.min_figures, "number of figures"),
+			(self.min_scraped, self.min_scraped, "number of scraped articles"),
+		)
+
+		for lower, upper, units in pairs:
+			if lower is None or upper is None:
+				continue
+
+			if lower > upper:
+				raise ValueError(f"The minimum {units} {lower:,} must be less than or equal to the maximum {units} {upper:,}.")
+
+		return self
+
+	def add_conditions_to_sql(self, params: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
+		filters = [None] * (8 + len(Status))
+		i = 0
+
+		def set_filter(f: str, name: str, value):
+			nonlocal i
+			filters[i] = f
+			params[name] = value
+			i += 1
+
+		for num, status in enumerate(set(self.status)):
+			set_filter(f"r.status = :status{num}", f"status{num}", status)
+
+		if self.name is not None:
+			set_filter("r.name = :name", "name", self.name)
+
+		if self.term is not None:
+			set_filter("r.term = :term", "term", self.term)
+
+		if self.min_articles is not None:
+			set_filter("r.num_articles >= :min_articles", "min_articles", self.min_articles)
+
+		if self.max_articles is not None:
+			set_filter("r.num_articles <= :max_articles", "max_articles", self.max_articles)
+
+		if self.min_figures is not None:
+			set_filter("r.num_figures >= :min_figures", "min_figures", self.min_figures)
+
+		if self.max_figures is not None:
+			set_filter("r.num_figures <= :max_figures", "max_figures", self.max_figures)
+
+		if self.min_scraped is not None:
+			set_filter("r.max_articles >= :min_scraped", "min_scraped", self.min_scraped)
+
+		if self.max_scraped is not None:
+			set_filter("r.max_articles <= :max_scraped", "max_scraped", self.max_scraped)
+
+		filters = [f for f in filters if f is not None]
+		return filters, params

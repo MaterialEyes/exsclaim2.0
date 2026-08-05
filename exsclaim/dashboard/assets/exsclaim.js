@@ -576,10 +576,6 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 		check_credentials: async function(n_clicks, data, interval){
 			console.log("Check credentials was called.");
-			if(n_clicks === undefined || n_clicks === null) {
-				throw window.dash_clientside.PreventUpdate;
-			}
-
 			const response = await api_fetch(data.public_fastapi_url, "/user/remaining_access", {
 				credentials: "include"
 			});
@@ -603,7 +599,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			}
 		},
 
-		renew_credentials: async function(data){
+		renew_credentials: async function(data, go_to_login_on_error = false){
 			let response = await api_fetch(data.public_fastapi_url, "/user/refresh", {
 				method: "POST",
 				credentials: "include"
@@ -611,8 +607,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 			if(!response.ok){
 				console.error(`Could not automatically refresh cookies. Please log out and then log back in. ${await response.text()}`);
-				window.location.href = "/login";
-				return data;
+				if(go_to_login_on_error) {
+					window.location.href = "/login";
+				}
 			}
 
 			return data;
@@ -645,7 +642,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 
 			const api_url = data.public_fastapi_url;
-			const response = await api_fetch(api_url, "/user/previous_runs", {
+			const response = await api_fetch(api_url, "/previous_runs", {
 				method: "GET",
 				headers: {
 					"Access-Control-Allow-Origin": "*",
@@ -822,7 +819,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 
 			const api_url = data.public_fastapi_url;
-			const response = await api_fetch(api_url, "/user/previous_runs", {
+			const response = await api_fetch(api_url, "/previous_runs", {
 				method: "GET",
 				headers: {
 					"Access-Control-Allow-Origin": "*",
