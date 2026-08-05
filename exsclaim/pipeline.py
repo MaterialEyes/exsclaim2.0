@@ -4,24 +4,25 @@ from .pdf import PDFScraper
 from .exceptions import *
 from .notifications import *
 from .tool import ExsclaimTool, CaptionDistributor, JournalScraper
-from .utilities import paths, PrinterFormatter, ExsclaimFormatter, convert_geometry_to_coords
+from .figures.geometry_boxes import convert_geometry_to_coords
+from .utilities import paths, PrinterFormatter, ExsclaimFormatter
 from .utilities.uuid import gen_uuid7
 from .db import Database
 
+import asyncio
 import cv2
 import logging
 import numpy as np
+import re
 
-from asyncio import gather, CancelledError
 from csv import writer
-from datetime import datetime as dt
+from datetime import datetime as dt, timezone as tz
 from enum import Flag, auto
 from functools import reduce
 from json import load, dump
 from os.path import isfile, splitext
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from re import sub, match
 from shutil import rmtree
 from sqlalchemy.exc import SQLAlchemyError
 from textwrap import wrap, dedent
@@ -109,7 +110,7 @@ class Pipeline:
 				self.query_dict = load(f)
 
 		# Set up file structure
-		base_results_dir = paths.initialize_results_dir(self.query_dict.get("results_dir", None))
+		base_results_dir = paths.initialize_results_dir(self.query_dict.get("results_dir"))
 		self.query_dict.setdefault("run_id", str(gen_uuid7()))
 		run_id = self.query_dict["run_id"]
 
@@ -284,7 +285,8 @@ class Pipeline:
 				extractions = self.results_directory / "extractions"
 				extractions.mkdir(exist_ok=True)
 
-				await gather(*[self.make_visualization(name, json, extractions) for name, json in self.exsclaim_dict.items()])
+				async with asyncio.TaskGroup() as tg:
+					tasks = [tg.create_task(self.make_visualization(name, json, extractions)) for name, json in self.exsclaim_dict.items()]
 
 			# Creates success messages to be sent to the notifiers
 			notification = Notification(
@@ -292,7 +294,7 @@ class Pipeline:
 				run_id=run_id,
 				name=self.query_dict["name"],
 			)
-		except (CancelledError, KeyboardInterrupt) as e:
+		except (asyncio.CancelledError, KeyboardInterrupt) as e:
 			self.logger.exception(f"User stopped the pipeline via the {type(e).__name__} exception.", exc_info=e)
 			notification = Notification(
 				message="Pipeline's task was cancelled.",
@@ -341,12 +343,12 @@ class Pipeline:
 			subfigure_label = label_json.get("text", index)
 
 			# remove periods or commas from around subfigure label
-			processed_label = sub(r"[().,]", "", subfigure_label).lower()
+			processed_label = re.sub(r"[().,]", "", subfigure_label).lower()
 			paired = False
 
 			for caption_label in captions:
 				# remove periods or commas from around caption label
-				processed_caption_label = sub(r"[().,]", "", caption_label["label"]).lower()
+				processed_caption_label = re.sub(r"[().,]", "", caption_label["label"]).lower()
 
 				# check if caption label and subfigure label match and caption label has not already been matched
 				if processed_caption_label != processed_label or processed_caption_label not in [a.lower() for a in not_assigned]:
@@ -369,7 +371,7 @@ class Pipeline:
 			if paired:
 				continue
 			# no pairing found, create empty fields
-			master_image.setdefault("caption", [])
+			master_image.setdefault("caption", "")
 			master_image.setdefault("keywords", [])
 			masters.append(master_image)
 
@@ -519,7 +521,7 @@ class Pipeline:
 		labeled_image = Image.new(mode="RGB", size=(image_width, image_height))
 		draw = ImageDraw.Draw(labeled_image)
 		try:
-			font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+			font = ImageFont.truetype("DejaVuSans.ttf")
 		except OSError:
 			font = ImageFont.load_default()
 
@@ -536,9 +538,9 @@ class Pipeline:
 		for subfigure_json in master_images:
 			x1, y1, x2, y2 = tuple(map(int, convert_geometry_to_coords(subfigure_json["geometry"])))
 			classification = subfigure_json["classification"]
-			caption: str = subfigure_json.get("caption", "")
+			caption: str = subfigure_json.get("caption")
 			if isinstance(caption, list):
-				print(f"Caption is somehow a list: {caption} for {subfigure_json.get("id", str(subfigure_json))}.")
+				self.logger.warning(f"Caption is somehow a list: {caption} for {subfigure_json.get("id", str(subfigure_json))}.")
 				if caption:
 					return
 				caption = ""
@@ -698,7 +700,7 @@ class Pipeline:
 				articles.add(article_id)
 
 			base_name = ".".join(figure_name.split(".")[:-1])
-			figure_id = sub("_fig", "-fig", base_name)
+			figure_id = re.sub("_fig", "-fig", base_name)
 
 			# create row for figure.csv
 			csv_info["figure"].append([
@@ -776,7 +778,7 @@ class Pipeline:
 
 		# Save lists of rows to csvs
 		for _type, rows in csv_info.items():
-			with open(csv_dir / f"{sub('_', '', _type)}.csv", "w", encoding="utf-8", newline="") as file:
+			with open(csv_dir / f"{re.sub('_', '', _type)}.csv", "w", encoding="utf-8", newline="") as file:
 				csv_writer = writer(file)
 				csv_writer.writerows(rows)
 

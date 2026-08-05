@@ -18,7 +18,7 @@ class JournalScrapeError(ExsclaimToolException):
 		return self._status
 
 	@status.setter
-	def status(self, status:int | None):
+	def status(self, status: int | None):
 		if status is None:
 			self._status = None
 			return

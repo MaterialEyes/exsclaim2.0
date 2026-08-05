@@ -1,9 +1,9 @@
 from ..models import *
 
 import exsclaim
+import httpx
 import logging
 
-from aiohttp import ClientSession
 from asyncpg import UndefinedTableError
 from datetime import datetime as dt
 from fastapi import APIRouter, status
@@ -31,11 +31,11 @@ async def get(url: str) -> tuple[Response | bytes, str]:
 	if url in cache:
 		return cache[url]
 
-	async with ClientSession() as session:
-		response = await session.get(url)
-		if not response.ok:
+	async with httpx.AsyncClient() as client:
+		response = await client.get(url)
+		if not response.is_success:
 			return Response(status_code=status.HTTP_301_MOVED_PERMANENTLY, headers={"Location": url})
-		content = await response.content.read()
+		content = response.content
 
 	etag = sha256(content).hexdigest()
 	cache[url] = (content, etag)

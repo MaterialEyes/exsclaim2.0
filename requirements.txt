@@ -7,7 +7,6 @@ Pillow==12.3.0
 ultralytics==8.4.63
 
 # HTTP requests
-aiohttp==3.14.1
 httpx==0.28.1
 brotli==1.2.0
 playwright==1.61.0

@@ -6,6 +6,7 @@ ARG UID=1000
 ARG GID=1000
 ARG UNAME=exsclaim
 ARG GNAME=exsclaim
+ARG DEBIAN_FRONTEND=noninteractive
 
 # This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
 ARG UV_DEFAULT_INDEX="https://pypi.org/simple"

@@ -43,14 +43,13 @@ def get_pipeline_task_name(result_id: UUID) -> str:
 	return f"pipeline_{result_id}"
 
 
-async def run_exsclaim(_id: UUID, search_query_location: Path, session: AsyncSession, logger: logging.Logger):
+async def run_exsclaim(_id: UUID, search_query_location: Path, session: AsyncSession, logger: logging.Logger, tools: QueryTools):
 	db_result: Status = Status.ERROR
-	pipeline_task = create_task(exsclaim_pipeline(query=search_query_location, journal_scraper=True,
-												  caption_distributor=True, figure_separator=True,
-												  compress="gztar",
-												  compress_location=str(settings.RESULTS_PATH / str(_id)),
-												  verbose=settings.DEBUG, run_id=_id),
-								name=get_pipeline_task_name(_id))
+	pipeline_task = create_task(
+		name=get_pipeline_task_name(_id),
+		coro=exsclaim_pipeline(query=search_query_location, compress="gztar", verbose=settings.DEBUG, run_id=_id,
+		                       compress_location=str(settings.RESULTS_PATH / str(_id)), **tools.model_dump())
+	)
 
 	try:
 		result_code = await pipeline_task
@@ -185,14 +184,13 @@ async def query(request: Request, search_query: Query, background_tasks: Backgro
 			"logging": ["exsclaim.log"],
 			"results_dir": str(results_dir),
 			"notifications": search_query.notifications.model_dump(),
-			**search_query.tools.tools,
 		}
 
 		logger = request.app.logger
 		with open(results_dir / "search_query.json", "w") as f:
 			dump(exsclaim_input, f, indent='\t')
 
-		background_tasks.add_task(run_exsclaim, uuid, results_dir / "search_query.json", session, logger)
+		background_tasks.add_task(run_exsclaim, uuid, results_dir / "search_query.json", session, logger, search_query.tools)
 
 		db_json = exsclaim_input.copy()
 		db_json["model_key"] = "model_key" in db_json.keys()

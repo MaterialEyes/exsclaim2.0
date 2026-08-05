@@ -430,7 +430,7 @@ async def update_images(data, max_width, max_height):
 		image_items.append(
 			dbc.Col(id=dict(type="subfigure", index=index, id=subfigure["id"]), children=[
 			    dbc.Card(className="mb-3", children=[
-					html.Div([
+					html.Div(className="crop-container", children=[
 						dbc.CardImg(src=url, alt="Sample Image", className="crop-image",
 									style={
 										"--x1": f"{x1:.2f}",
@@ -439,7 +439,7 @@ async def update_images(data, max_width, max_height):
 										"--width": f"{width:.4f}",
 										"--height": f"{height:.4f}",
 									}),
-					], className="crop-container"),
+					]),
 					dbc.CardBody([
 						html.H6(subfigure.get("id", "Unknown"), className="card-title"),
 						Purify(

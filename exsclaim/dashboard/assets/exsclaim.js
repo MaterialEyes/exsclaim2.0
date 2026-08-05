@@ -760,9 +760,13 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			};
 
 			if(ntfy_link !== null && ntfy_link !== undefined){
+				const ntfy_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+				// const ntfy_timezone = new Date().getTimezoneOffset() / -60;
+
 				input_data.notifications.ntfy.push({
 					url: ntfy_link,
-					priority: ntfy_priority !== null && ntfy_priority >= 1 && ntfy_priority <= 5 ? ntfy_priority : 3
+					priority: ntfy_priority !== null && ntfy_priority >= 1 && ntfy_priority <= 5 ? ntfy_priority : 3,
+					timezone: ntfy_timezone
 				});
 			}
 

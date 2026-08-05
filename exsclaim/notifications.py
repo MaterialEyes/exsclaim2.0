@@ -1,17 +1,19 @@
 from .config import ui_settings
 
 from abc import ABC, abstractmethod
-from datetime import datetime as dt, timezone as tz
-from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, model_serializer, \
-	GetCoreSchemaHandler
+from datetime import datetime as dt, timezone as tz, timedelta as td, tzinfo
+from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, GetCoreSchemaHandler, \
+	field_serializer
 from pydantic_core import CoreSchema
 from typing import Annotated, Collection, Generator, Optional, Type, Self
 from uuid import UUID
 
+import asyncio
 import fastapi
 import httpx
 import logging
 import re
+import zoneinfo
 
 __all__ = ["Notification", "Notifications", "NTFY", "Email", "Webhook", "CouldNotNotifyException", "QueryNotifications"]
 
@@ -31,7 +33,8 @@ class Notification(BaseModel):
 	message: str | dict[str, str]
 	run_id: Optional[UUID] = None
 	name: str
-	time: dt = dt.now(tz.utc)
+	time: Annotated[dt, fastapi.Path(default_factory=lambda: dt.now(tz=tz.utc),
+									 title=f"The headers that should be sent with the webhook.")]
 	exception: Optional[str | BaseException] = None
 
 
@@ -71,11 +74,35 @@ class Notifications(BaseModel, ABC):
 
 class NTFY(Notifications):
 	"""A base model representing the necessary info to send an NTFY notification."""
+	model_config = ConfigDict(arbitrary_types_allowed=True)
+
 	url: Annotated[str, fastapi.Path(
-		title=f"The url to the NTFY server, with the topic included (e.g. {create_link('https://ntfy.sh/exsclaim')})")]
+		title="The url to the NTFY server, with the topic included (e.g. {create_link('https://ntfy.sh/exsclaim')})")]
 
 	access_token: Annotated[Optional[str], Path(
-		title=f"The access token fastapi.that may be needed to send the NTFY notification as stated in {create_link('https://docs.ntfy.sh/publish/#access-tokens')}")] = None
+		title="The access token fastapi.that may be needed to send the NTFY notification as stated in {create_link('https://docs.ntfy.sh/publish/#access-tokens')}")] = None
+
+	priority: Annotated[int, fastapi.Path(
+		title="The priority of the message as stated in {create_link('https://docs.ntfy.sh/publish/#message-priority')}.",
+		ge=1, le=5)] = 3
+
+	timezone: Annotated[tzinfo, fastapi.Path(
+		title="A timezone used to send the relative time to NTFY since NTFY's client cannot parse it directly.",
+	)] = zoneinfo.ZoneInfo("localtime")
+
+	@field_validator("timezone", mode="before")
+	@classmethod
+	def get_timezone(cls, value: Optional[str]) -> Optional[tzinfo]:
+		if value is None:
+			return tz.utc
+
+		elif isinstance(value, float | int):
+			return tz(td(hours=value))
+
+		elif value not in zoneinfo.available_timezones():
+			raise ValueError(f"No time zone found with key {value}.")
+
+		return zoneinfo.ZoneInfo(value)
 
 	@field_validator("url", "access_token", mode="after")
 	@classmethod
@@ -83,10 +110,6 @@ class NTFY(Notifications):
 		if value is None:
 			return value
 		return value.strip()
-
-	priority: Annotated[int, fastapi.Path(
-		title=f"The priority of the message as stated in {create_link('https://docs.ntfy.sh/publish/#message-priority')}.",
-		ge=1, le=5)] = 3
 
 	@model_validator(mode="after")
 	def is_valid_notifier(self) -> Self:
@@ -99,6 +122,16 @@ class NTFY(Notifications):
 				raise ValueError(response.text)
 		except httpx.InvalidURL as e:
 			raise ValueError(str(e)) from e
+
+	@field_serializer("timezone")
+	def serialize_timezone(self, value: Optional[tzinfo]) -> Optional[str | int | float]:
+		if value is None:
+			return None
+
+		if isinstance(value, zoneinfo.ZoneInfo):
+			return value.key
+
+		return dt.now(value).utcoffset().total_seconds() / 3600
 
 	async def notify(self, notification: Notification, logger: logging.Logger):
 		from json import dumps
@@ -115,14 +148,16 @@ class NTFY(Notifications):
 		if self.access_token is not None:
 			headers["Authorization"] = f"Bearer {self.access_token}"
 
+		finished_at = notification.time.astimezone(self.timezone).strftime("%Y-%m-%dT%H:%M%z")
+
 		if notification.exception is None:
-			data = f"EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''} finished at: {notification.time:%Y-%m-%dT%H:%M%z}."
+			data = f"EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''} finished at: {finished_at}."
 		elif isinstance(notification.exception, (asyncio.CancelledError, KeyboardInterrupt)):
-			data = f"The pipeline was stopped at {notification.time:%Y-%m-%dT%H:%M%z} for{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}."
+			data = f"The pipeline was stopped at {finished_at} for{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}."
 		else:
 			from traceback import format_exception
-			data = f"An error occurred at {notification.time:%Y-%m-%dT%H:%M%z} running{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}."
-			data += ' '.join(format_exception(exception))
+			data = f"An error occurred at {finished_at} running{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}.\n"
+			data += ' '.join(format_exception(notification.exception))
 
 		async with httpx.AsyncClient() as client:
 			try:
@@ -325,12 +360,13 @@ class Discord(Webhook):
 
 
 class QueryNotifications(BaseModel):
-	ntfy: Annotated[list[NTFY], Path(title="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
+	ntfy: Annotated[Optional[list[NTFY]], Path(title="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
 	                                 default_factory=list)]
 
-	emails: Annotated[Email, Path(title="A list of email addresses that will receive a notification when EXSCLAIM has finished running.")]
+	emails: Annotated[Optional[Email], Path(title="A list of email addresses that will receive a notification when EXSCLAIM has finished running.",
+								  default_factory=lambda: Email.model_validate([]))]
 
-	webhooks: Annotated[list[Webhook], Path(title="A list of webhooks that the system will POST to when EXSCLAIM has finished running.",
+	webhooks: Annotated[Optional[list[Webhook]], Path(title="A list of webhooks that the system will POST to when EXSCLAIM has finished running.",
 	                                        default_factory=list)]
 
 	def __iter__(self) -> Generator[Notification, None, None]:

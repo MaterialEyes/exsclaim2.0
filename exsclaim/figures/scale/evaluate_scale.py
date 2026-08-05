@@ -16,7 +16,7 @@ from .ctc import ctcBeamSearch, postprocess_ctc
 from .lm import LanguageModel
 from .process import non_max_suppression_malisiewicz
 from ..transformations import resize_transform
-from ...utilities import boxes
+from ...figures import geometry_boxes as boxes
 
 
 __all__ = ["create_scale_bar_objects", "detect_scale_objects", "determine_scale", "match_scale_bars", "super_resolution",
@@ -43,7 +43,7 @@ def create_scale_bar_objects(scale_bar_lines: list[dict], scale_bar_labels: list
 	paired_labels = set()
 	for line in scale_bar_lines:
 		x_line, y_line = boxes.find_box_center(line["geometry"])
-		best_distance = 1_000_000
+		best_distance = float("inf")
 		best_label = None
 		best_index = -1
 
@@ -56,7 +56,7 @@ def create_scale_bar_objects(scale_bar_lines: list[dict], scale_bar_labels: list
 				best_label = label
 
 		# If the best match is not very good, keep this line unassigned
-		if best_distance > 5000:
+		if best_distance > 5_000:
 			best_index = -1
 			best_label = None
 			best_distance = -1
@@ -73,7 +73,8 @@ def create_scale_bar_objects(scale_bar_lines: list[dict], scale_bar_labels: list
 		})
 
 	# Check which labels were left unassigned
-	unassigned_labels = [label for i, label in enumerate(scale_bar_labels) if i not in paired_labels]
+	unassigned_labels = list(map(lambda label: label[1], filter(lambda label: label[0] not in paired_labels, enumerate(scale_bar_labels))))
+	unassigned_labels2 = [label for i, label in enumerate(scale_bar_labels) if i not in paired_labels]
 	return scale_bar_jsons, unassigned_labels
 
 
@@ -157,7 +158,7 @@ def determine_scale(
 	scale_labels = []
 	for scale_object in scale_bar_info:
 		x1, y1, x2, y2, confidence, classification = scale_object
-		geometry = boxes.convert_coords_to_labelbox(int(x1), int(y1), int(x2), int(y2))
+		geometry = boxes.convert_coords_to_geometry(int(x1), int(y1), int(x2), int(y2))
 		if label_names[int(classification)] == "scale bar":
 			scale_bar_json = {
 				"geometry": geometry,
@@ -403,7 +404,7 @@ def test_label_reading(model_name:PathLike[str], epoch=None):
 				{"geometry": geometry, "nm": nm, "number": magnitude, "unit": unit}
 			)
 
-			subfigure = figure.crop((boxes.convert_labelbox_to_coords(geometry)))
+			subfigure = figure.crop((boxes.convert_geometry_to_coords(geometry)))
 			predicted_label = read_scale_bar_label(scale_bar_model, subfigure)
 			if predicted_label is None:
 				continue

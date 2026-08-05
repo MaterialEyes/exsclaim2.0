@@ -1,7 +1,9 @@
 from .exceptions import JournalScrapeError
 from .utilities import paths
 
-from aiohttp import ClientSession, ClientResponseError
+import httpx
+import re
+
 from abc import ABC, abstractmethod, ABCMeta
 from bs4 import BeautifulSoup, Tag
 from datetime import datetime
@@ -10,8 +12,7 @@ from json import loads
 from pathlib import Path
 from playwright.async_api import Playwright, Locator, async_playwright, Response
 from playwright._impl._errors import TargetClosedError, TimeoutError as PlaywrightTimeoutError
-from re import compile, search, sub, match
-from typing import Literal, Type, Optional, Self, Iterable, Callable, Any
+from typing import Literal, Type, Optional, Self, Iterable, Callable, Any, AsyncGenerator
 
 
 __all__ = ["JournalFamily", "JournalFamilyStatic", "JournalFamilyDynamic", "ACS", "Nature", "RSC", "Wiley", "COMPATIBLE_JOURNALS"]
@@ -469,7 +470,7 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 		return tuple(figures)
 
 	@staticmethod
-	async def _get_image(url:str, session:ClientSession, *args, **kwargs) -> bytes:
+	async def _get_image(url: str, client: httpx.AsyncClient, *args, **kwargs) -> bytes:
 		headers = kwargs.get("headers", {
 			"Accept": 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
 			"Accept-encoding": 'gzip, deflate, br, zstd',
@@ -487,15 +488,20 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 			"User-Agent": 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
 		})
 
-		async with session.get(url, headers=headers) as response:
-			try:
-				response.raise_for_status()
-			except ClientResponseError as e:
-				raise JournalScrapeError(e.message, e.status, e.headers, url=url) from e
+		response = await client.get(url, headers=headers)
+		if response.status_code >= 400:
+			response.raise_for_status()
 
-			return await response.content.read()
+		return await response.aread()
 
-	async def save_figure(self, figure_name: str, image_url: str) -> Path:
+	async def _get_image_stream(self, client: httpx.AsyncClient, image_url: str, save_file: Path, chunk_size: int = 1_024) -> AsyncGenerator[bytes, None]:
+		async with client.stream("GET", image_url) as response:
+			response.raise_for_status()
+			with open(save_file, "wb") as f:
+				async for chunk in response.aiter_bytes(chunk_size=chunk_size):
+					f.write(chunk)
+
+	async def save_figure(self, figure_name: str, image_url: str, chunk_size: int = 1_024) -> Path:
 		"""
 		Saves figure at img_url to local machine
 		Args:
@@ -503,10 +509,22 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 			image_url: url to image
 		"""
 		out_file = self.results_directory / "figures" / figure_name
-		response = await self.get_image_source(image_url)
-		# urlretrieve(image_url, out_file)
+
+		try:
+			if hasattr(self, "client"):
+				await self._get_image_stream(self.client, image_url, out_file, chunk_size=chunk_size)
+				return out_file
+		except httpx.HTTPStatusError as e:
+			self.logger.warning(f"Could not save figure by streaming from {image_url}. Attempting to load the full image.", exc_info=e)
+
+		try:
+			image_source = await self.get_image_source(image_url)
+		except httpx.HTTPStatusError as e:
+			self.logger.error(f"Could not save figure {figure_name} from {image_url}.", exc_info=e)
+
 		with open(out_file, 'wb') as f:
-			f.write(response)
+			f.write(image_source)
+
 		return out_file
 
 	async def get_search_query_urls(self) -> tuple[str]:
@@ -610,10 +628,10 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 	def _get_figure_name(article_name:str, figure_idx:int, extension:str = "jpg") -> str:
 		return f"{article_name}_fig{figure_idx}.{extension}"
 
-	async def get_figures(self, figure_idx:int, figure, figure_json:dict, url:str) -> tuple[dict, str]:
+	async def get_figures(self, figure_idx: int, figure, figure_json: dict, url: str) -> tuple[dict, str]:
 		image_url = await self.get_figure_url(figure)
 
-		if not match("https?://.+", image_url):
+		if not re.match("https?://.+", image_url):
 			image_url = "https://" + image_url
 
 		article_name = url.split("/")[-1].split("?")[0]
@@ -738,10 +756,10 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 class JournalFamilyStatic(JournalFamily, ABC):
 	def __init__(self, search_query:dict, **kwargs):
 		super().__init__(search_query, **kwargs)
-		self.session = ClientSession()
+		self.client = httpx.AsyncClient()
 
 	async def close(self):
-		await self.session.close()
+		await self.client.aclose()
 
 	async def get(self, url: str, *args, **kwargs) -> StaticHtml:
 		await super().get(url)
@@ -762,16 +780,18 @@ class JournalFamilyStatic(JournalFamily, ABC):
 			"User-Agent": 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
 		})
 
-		async with self.session.get(url, headers=headers) as response:
-			try:
-				response.raise_for_status()
-			except ClientResponseError as e:
-				raise JournalScrapeError(e.message, e.status, e.headers, url=url) from e
+		response = await self.client.get(url, headers=headers, follow_redirects=True)
 
-			return StaticHtml(BeautifulSoup(await response.text(), "html.parser"))
+		while response.is_redirect:
+			response = self.client.send(response.next_request)
+
+		if response.status_code >= 400:
+			response.raise_for_status()
+
+		return StaticHtml(BeautifulSoup(response.text, "html.parser"))
 
 	async def get_image_source(self, url: str, *args, **kwargs) -> bytes:
-		return await self._get_image(url, self.session, *args, **kwargs)
+		return await self._get_image(url, self.client, *args, **kwargs)
 
 
 class JournalFamilyDynamic(JournalFamily, ABC):
@@ -857,9 +877,9 @@ class JournalFamilyDynamic(JournalFamily, ABC):
 		page = await self._browser.new_page()
 		response = await page.goto(url)
 		if response.status >= 400:
-			raise JournalScrapeError(await response.text(), response.status, response.headers, url=url)
+			raise JournalScrapeError(response.text, response.status, response.headers, url=url)
 
-		return await response.body()
+		return await response
 
 
 # ############# JOURNAL FAMILY SPECIFIC INFORMATION ################
@@ -1089,10 +1109,10 @@ class Nature(JournalFamilyStatic):
 			if image_url is None:
 				raise ValueError("No image url found.")
 		image_url = image_url.lstrip(r"/")
-		return sub(r"(.+.com/)lw\d+(/.+)", r"\1full\2", image_url)
+		return re.sub(r"(.+.com/)lw\d+(/.+)", r"\1full\2", image_url)
 
 	async def get_page_info(self, html: StaticHtml):
-		page_re = compile(r"\s*page\s*(\d+)\s*")
+		page_re = re.compile(r"\s*page\s*(\d+)\s*")
 
 		async def page_regex(locator: StaticHtml) -> int:
 			if not locator:
@@ -1111,7 +1131,7 @@ class Nature(JournalFamilyStatic):
 
 			raise ValueError("No articles were found, try to modify the search criteria")
 
-		results_match = search(r"Showing\s*(\d+)–(\d+)\s*of\s*(\d+) results", await total_results.get_text())
+		results_match = re.search(r"Showing\s*(\d+)–(\d+)\s*of\s*(\d+) results", await total_results.get_text())
 		if results_match is None:
 			raise ValueError(f"Cannot extract the number of results from the Nature article: `{await html.select_one("title").get_text()}`.")
 
@@ -1206,7 +1226,7 @@ class RSC(JournalFamilyDynamic):
 			"recent": "Latest to oldest",
 		}
 		self._articles_path = "/doi/"
-		self._image_session = ClientSession()
+		self._image_client = httpx.AsyncClient()
 
 	@staticmethod
 	def name():
@@ -1254,14 +1274,14 @@ class RSC(JournalFamilyDynamic):
 		except PlaywrightTimeoutError as e:
 			# There may be 0 results to this search
 			no_record_found = await html.select_one("div#tabArticles").get_text()
-			if match("No Record Found", no_record_found):
+			if re.match("No Record Found", no_record_found):
 				return 0, 0, 0
 			raise JournalScrapeError("Could not find page info for RSC.", html=await html.prettify()) from e
 
-		match_ = search(r"(\d+) results - Showing page (\d+) of (\d+)", html_block)
+		match_ = re.search(r"(\d+) results - Showing page (\d+) of (\d+)", html_block)
 		if match_ is not None:
 			return int(match_.group(2)), int(match_.group(3)), int(match_.group(1))
-		match_ = search(r"(\d+) results?", html_block)
+		match_ = re.search(r"(\d+) results?", html_block)
 		if match_ is not None:
 			return 1, 1, int(match_.group(1))
 		raise JournalScrapeError("Could not get page info for RSC.", html=await info.prettify())
@@ -1364,7 +1384,7 @@ class RSC(JournalFamilyDynamic):
 		return self.prepend + url
 
 	async def get_image_source(self, url: str, *args, **kwargs) -> bytes:
-		return await self._get_image(url, self._image_session, *args, **kwargs)
+		return await self._get_image(url, self._image_client, *args, **kwargs)
 
 
 class Wiley(JournalFamilyStatic):

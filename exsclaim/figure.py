@@ -1,8 +1,9 @@
-from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform
+from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform, \
+	geometry_boxes as boxes
 from .config import settings
 from .exceptions import ExsclaimToolException
 from .tool import ExsclaimTool
-from .utilities import boxes, load_model_from_checkpoint, download_model_checkpoint
+from .utilities import load_model_from_checkpoint, download_model_checkpoint
 
 import cv2
 import numpy as np
@@ -221,7 +222,7 @@ class FigureSeparator(ExsclaimTool):
 			scale_objects: updated with assigned objects removed
 		"""
 		geometry = master_image["geometry"]
-		x1, y1, x2, y2 = boxes.convert_labelbox_to_coords(geometry)
+		x1, y1, x2, y2 = boxes.convert_geometry_to_coords(geometry)
 		unassigned_scale_objects = []
 		assigned_scale_objects = []
 
@@ -236,7 +237,7 @@ class FigureSeparator(ExsclaimTool):
 		nm_to_pixel = 0
 		label = ""
 		scale_labels = set()
-		for scale_object in master_image["scale_bars"]:
+		for scale_object in assigned_scale_objects:
 			if scale_object["label"]:
 				scale_labels.add(scale_object["label"]["nm"])
 				nm_to_pixel = scale_object["label"]["nm"] / float(scale_object["length"])
@@ -320,7 +321,7 @@ class FigureSeparator(ExsclaimTool):
 
 		for scale_object in scale_bar_info:
 			x1, y1, x2, y2, confidence, classification = scale_object
-			geometry = boxes.convert_coords_to_labelbox(int(x1), int(y1), int(x2), int(y2))
+			geometry = boxes.convert_coords_to_geometry(int(x1), int(y1), int(x2), int(y2))
 			
 			match label_names[int(classification)]:
 				case "scale bar":
@@ -349,8 +350,9 @@ class FigureSeparator(ExsclaimTool):
 
 		# Match scale bars to labels and to subfigures (master images)
 		scale_bar_jsons, unassigned_labels = create_scale_bar_objects(scale_bars, scale_labels)
-		for master_image in master_images:
-			master_image, scale_bar_jsons = self.assign_scale_objects_to_subfigures(master_image, scale_bar_jsons)
+		if len(scale_bar_jsons) > 0:
+			for master_image in master_images:
+				master_image, scale_bar_jsons = self.assign_scale_objects_to_subfigures(master_image, scale_bar_jsons)
 
 		# Save info to JSON
 		unassigned["scale_bar_labels"] = unassigned_scale_labels
@@ -395,8 +397,6 @@ class FigureSeparator(ExsclaimTool):
 			figure_json (dict): A dictionary with classified image_objects
 				extracted from figure
 		"""
-		from contextlib import suppress
-
 		# Get full path to figure
 		figure_path = self.results_directory / "figures" / figure_path
 
@@ -508,8 +508,9 @@ class FigureSeparator(ExsclaimTool):
 			cv2.imwrite(str(subfigure_directory / f"{figure_base_name}_{label}.png"), cropped_img)
 			figure_json["master_images"].append(master_image_info)
 
-		# Sometimes the system will have a problem with PIL and Enums
-		with suppress(TypeError):
+		try:
 			figure_json = self.determine_scale(figure_path, figure_json)
+		except TypeError as e:
+			self.logger.warning(f"Might have found an issue with finding the scales for {figure_path}.", exc_info=True)
 
 		return figure_json

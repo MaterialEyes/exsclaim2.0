@@ -417,6 +417,20 @@ async def logout_user(request: Request, user: ActiveUser) -> Response:
 	return response
 
 
+@router.post("/logout_all", tags=[TAG])
+async def logout_all_instances(request: Request, user: ActiveUser) -> Response:
+	async with get_db_session() as session:
+		await session.execute(text("DELETE FROM users.jtis WHERE id = :user_id"), dict(user_id=user.id))
+		await session.commit()
+
+	del user.id
+	response = JSONResponse(dict(detail=
+							 f"All logged in versions of this user can no longer create new access tokens, so they will be logged out within the next {ACCESS_TOKEN_EXPIRE_MINUTES} minutes."),
+						status_code=status.HTTP_200_OK)
+	response.delete_cookie(key="refresh_token", domain=get_api_cookie_domain())
+	return response
+
+
 async def send_reset_request_email(request: Request, session: AsyncSession, email: EmailStr) -> Response:
 	token = ... # TODO: Generate the token for resetting passwords
 	reset_obj = PasswordReset(email=email, token=token)
@@ -468,7 +482,7 @@ async def reset_password(request: Request, token: str = None, email: EmailStr = 
 	return HTMLResponse(f"", status_code=status.HTTP_202_ACCEPTED) # TODO: Create the password reset form, and have a hidden field with some token for security when the form is posted.
 
 
-@router.get("/username", include_in_schema=False)
+@router.get("/name", include_in_schema=False)
 async def get_username(request: Request, user: CurrentUser) -> JSONResponse:
 	session: AsyncSession = request.state.session
 
@@ -479,7 +493,7 @@ async def get_username(request: Request, user: CurrentUser) -> JSONResponse:
 	return JSONResponse({"username": user.name}, status_code=status.HTTP_200_OK)
 
 
-@router.patch("/username", tags=[TAG])
+@router.patch("/name", tags=[TAG])
 async def update_username(request: Request, user: ActiveUser, username: str = Body(...)) -> JSONResponse:
 	if not is_valid_username(username):
 		return JSONResponse({"detail": "Username not valid.", "requested_username": username}, status_code=status.HTTP_400_BAD_REQUEST)

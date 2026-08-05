@@ -1,20 +1,20 @@
 from json import load
-import os
 from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+from torchvision import transforms
 from random import randint, sample, choice
 
 import cv2 as cv
+import os
 import numpy as np
 import torch
-from PIL import Image, ImageDraw, ImageFont
-from torchvision import transforms
 
-from ...utilities import convert_labelbox_to_coords
+from ..geometry_boxes import convert_geometry_to_coords
 
 __all__ = ["ScaleLabelDataset", "ScaleBarDataset", "draw_text_on_image", "get_unit", "get_number", "no_pattern", "find_color"]
 
 
-def draw_text_on_image(image: Image.Image, text:str) -> Image.Image:
+def draw_text_on_image(image: Image.Image, text: str) -> Image.Image:
     """generates an image with text and a txt file with text's coordinates"""
     width, height = image.size
 
@@ -117,7 +117,7 @@ def no_pattern(length):
     return text, label
 
 
-def find_color(image:np.ndarray, box):
+def find_color(image: np.ndarray, box):
     """finds color for text to contrast background
 
     Args:
@@ -239,39 +239,39 @@ class ScaleLabelDataset:
 class ScaleBarDataset:
     """Dataset used to train Faster-RCNN to detect scale labels and lines"""
 
-    def __init__(self, root, transforms, test=True, size=None):
+    def __init__(self, root: Path, transforms, test=True, size=None):
         # initiates a dataset from a json
         self.root = root
         self.transforms = transforms
         if test:
-            scale_bar_dataset = os.path.join(root, "scale_bars_dataset_test.json")
+            scale_bar_dataset = root / "scale_bars_dataset_test.json"
         else:
-            scale_bar_dataset = os.path.join(root, "scale_bars_dataset_train.json")
+            scale_bar_dataset = root / "scale_bars_dataset_train.json"
 
         self.test = test
         with open(scale_bar_dataset, "r") as f:
             self.data = load(f)
-        all_figures = os.path.join(root, "images", "labeled_data")
+        all_figures = root / "images" / "labeled_data"
         self.images = [
             figure
             for figure in self.data
-            if os.path.isfile(os.path.join(all_figures, figure))
+            if (all_figures / figure).is_file()
         ]
         if size is not None:
             self.images = sample(self.images, size)
 
     def __getitem__(self, idx):
-        image_path = os.path.join(self.root, "images", "labeled_data", self.images[idx])
+        image_path = self.root / "images" / "labeled_data" / self.images[idx]
         with Image.open(image_path).convert("RGB") as image:
             image_name = self.images[idx]
 
             boxes = []
             labels = []
             for scale_bar in self.data[image_name].setdefault("scale_bars", []):
-                boxes.append(convert_labelbox_to_coords(scale_bar["geometry"]))
+                boxes.append(convert_geometry_to_coords(scale_bar["geometry"]))
                 labels.append(1)
             for scale_label in self.data[image_name].setdefault("scale_labels", []):
-                boxes.append(convert_labelbox_to_coords(scale_label["geometry"]))
+                boxes.append(convert_geometry_to_coords(scale_label["geometry"]))
                 labels.append(2)
 
             num_objs = len(boxes)

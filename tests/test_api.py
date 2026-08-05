@@ -136,7 +136,7 @@ def test_user_methods(client: TestClient, name: str = None, email: str = None, p
 	assert response.status_code == 401, f"Logout when not logged in did not work as expected: {response.text}"
 
 	# Get guest name
-	response = client.get("/user/username")
+	response = client.get("/user/name")
 	assert response.status_code == 202, f"Could not get \"not logged in\" message: {response.text}"
 	assert check_username(response, "Not Logged In."), f"Username {name} is not correct."
 
@@ -148,15 +148,15 @@ def test_user_methods(client: TestClient, name: str = None, email: str = None, p
 	assert has_cookie(client, response, "refresh_token"), f"Logging in did not provide the refresh token: {response.text}"
 
 	# Get username
-	response = client.get("/user/username")
+	response = client.get("/user/name")
 	assert response.status_code == 200, f"Could not get username: {response.text}"
 	assert check_username(response, name), f"Username {name} is not correct."
 
 	# Change username
-	response = client.patch("/user/username", content=new_username)
+	response = client.patch("/user/name", content=new_username)
 	assert response.status_code == 200, f"Could not get username: {response.json()}"
 
-	response = client.get("/user/username")
+	response = client.get("/user/name")
 	assert response.status_code == 200, f"Could not get username: {response.text}"
 	assert check_username(response, new_username), f"Updating the username didn't work"
 
