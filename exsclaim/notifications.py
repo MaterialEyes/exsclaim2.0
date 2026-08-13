@@ -2,9 +2,11 @@ from .config import ui_settings
 
 from abc import ABC, abstractmethod
 from datetime import datetime as dt, timezone as tz, timedelta as td, tzinfo
+from email.message import EmailMessage
 from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, GetCoreSchemaHandler, \
-	field_serializer, WithJsonSchema
+	field_serializer, WithJsonSchema, Field
 from pydantic_core import CoreSchema
+from smtplib import SMTP, SMTP_SSL
 from typing import Annotated, Collection, Generator, Optional, Type, Self
 from uuid import UUID
 
@@ -13,9 +15,11 @@ import fastapi
 import httpx
 import logging
 import re
+import ssl
 import zoneinfo
 
-__all__ = ["Notification", "Notifications", "NTFY", "Email", "Webhook", "CouldNotNotifyException", "QueryNotifications"]
+__all__ = ["Notification", "SuccessNotification", "InterruptionNotification", "ErrorNotification", "Notifications",
+		   "NTFY", "Email", "Webhook", "CouldNotNotifyException", "QueryNotifications"]
 
 
 def create_link(link: str) -> str:
@@ -33,9 +37,20 @@ class Notification(BaseModel):
 	message: str | dict[str, str]
 	run_id: Optional[UUID] = None
 	name: str
-	time: Annotated[dt, fastapi.Path(default_factory=lambda: dt.now(tz=tz.utc),
-									 title=f"The headers that should be sent with the webhook.")]
-	exception: Optional[str | BaseException] = None
+	time: dt = Field(default_factory=lambda: dt.now(tz=tz.utc),
+					 description=f"The headers that should be sent with the webhook.")
+
+
+class SuccessNotification(Notification):
+	...
+
+
+class InterruptionNotification(Notification):
+	exception: str | asyncio.CancelledError | KeyboardInterrupt
+
+
+class ErrorNotification(Notification):
+	exception: str | BaseException
 
 
 TZInfo = Annotated[
@@ -158,11 +173,11 @@ class NTFY(Notifications):
 
 		finished_at = notification.time.astimezone(self.timezone).strftime("%Y-%m-%dT%H:%M%z")
 
-		if notification.exception is None:
+		if isinstance(notification, SuccessNotification):
 			data = f"EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''} finished at: {finished_at}."
-		elif isinstance(notification.exception, (asyncio.CancelledError, KeyboardInterrupt)):
+		elif isinstance(notification, InterruptionNotification):
 			data = f"The pipeline was stopped at {finished_at} for{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}."
-		else:
+		elif isinstance(notification, ErrorNotification):
 			from traceback import format_exception
 			data = f"An error occurred at {finished_at} running{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}.\n"
 			data += ' '.join(format_exception(notification.exception))
@@ -175,9 +190,58 @@ class NTFY(Notifications):
 
 
 class Email(Notifications, RootModel[list[EmailStr]]):
+	@model_validator(mode="after")
+	def is_valid_notifier(self) -> Self:
+		if ui_settings.EMAIL is None and not ui_settings.ALLOW_EMAILS_WITHOUT_ACCOUNT:
+			raise ValueError("Emails cannot be sent because this pipeline does not have the ability to send emails. Remove the emails before re-submitting your query.")
+
+		return self
+
 	async def notify(self, notification: Notification, logger: logging.Logger):
 		emails = self.root
-		logger.warning("Email notifications have not been setup.")
+		if len(emails) == 0:
+			return
+
+		email_settings = ui_settings.EMAIL
+		if email_settings is None:
+			logger.warning("Email credentials were not provided by the pipeline's maintainer, so emails cannot be sent.")
+			return
+
+		messages: list[EmailMessage] = [EmailMessage() for email in emails]
+		for i, (email, msg) in enumerate(zip(emails, messages)):
+			msg["Subject"] = f"EXSCLAIM Run {notification.name} ({notification.run_id})"
+			msg["From"] = email_settings.ACCOUNT
+			msg["To"] = email
+
+			if isinstance(notification, SuccessNotification):
+				link = self._get_results_link(notification.run_id)
+				text = f"EXSCLAIM run {notification.name} completed at {notification.time}."
+
+				if link is not None:
+					html = f"EXSCLAIM run <a href={notification.name}>{link}</a> completed at {notification.time} and the results can be viewed at <a href={link}>{link}</a>."
+				else:
+					html = text
+			elif isinstance(notification, InterruptionNotification):
+				text = html = f"EXSCLAIM run stopped by user request."
+			elif isinstance(notification, ErrorNotification):
+				logs_link = self._get_logs_link(notification.run_id)
+				text = f"EXSCLAIM run stopped due to an error at {notification.time}."
+				html = f"EXSCLAIM run stopped due to an error at {notification.time} and the logs can be viewed at <a href={logs_link}>{logs_link}</a>."
+
+			msg.set_content(text)
+			msg.add_alternative(html, subtype="html")
+			messages[i] = msg
+
+		if email_settings.SERVER == "localhost":
+			server = SMTP(email_settings.SERVER, email_settings.PORT)
+		else:
+			context = ssl.create_default_context()
+			server = SMTP_SSL(email_settings.SERVER, email_settings.PORT, context=context)
+
+		with server:
+			server.login(email_settings.ACCOUNT, email_settings.PASSWORD)
+			for msg in messages:
+				server.send_message(msg)
 
 
 class Webhook(Notifications):
@@ -188,12 +252,12 @@ class Webhook(Notifications):
 	The second event is the `message` event, which is the pipeline sending if the pipeline finished successfully or crashed.
 	The pipeline must respond with a 200 or 300 level status code that is **not** 202, or else the pipeline will think that the message didn't go through.
 	"""
-	url: Annotated[str, fastapi.Path(title="The url that should be posted to.")]
+	url: str = Field(description="The url that should be posted to.")
 
-	authorization: Annotated[Optional[str], fastapi.Path(
-		title=f"The bearer token that should be sent with the webhook. This takes priority over a the Authorization header you may pass, so leave it empty if you're handling headers through the headers value.")] = None
+	authorization: Optional[str] = Field(default=None,
+										 description=f"The bearer token that should be sent with the webhook. This takes priority over a the Authorization header you may pass, so leave it empty if you're handling headers through the headers value.")
 
-	headers: Annotated[dict[str, str], fastapi.Path(default_factory=dict, title=f"The headers that should be sent with the webhook.")]
+	headers: dict[str, str] = Field(default_factory=dict, description=f"The headers that should be sent with the webhook.")
 
 	@staticmethod
 	def get_url_pattern() -> re.Pattern[str]:
@@ -243,7 +307,9 @@ class Slack(Webhook):
 		headers = {"Content-Type": "application/json"}
 		timestamp = f"<!date^{int(notification.time.timestamp())}^ {{date_short_pretty}} at {{time_secs}}|{notification.time.isoformat()}>"
 
-		if notification.exception is not None:
+		if isinstance(notification, InterruptionNotification):
+			data = {"text": f"Results for {notification.name} were stopped by the user at{timestamp}."}
+		elif isinstance(notification, ErrorNotification):
 			logs_link = self._get_logs_link(notification.run_id)
 			if logs_link is None:
 				data = {"text": f"Results for {notification.name} failed to compile due to {type(notification.exception).__name__} at{timestamp}."}
@@ -261,7 +327,7 @@ class Slack(Webhook):
 						},
 					]
 				}
-		else:
+		elif isinstance(notification, SuccessNotification):
 			ui_link = self._get_results_link(notification.run_id)
 			if ui_link is not None:
 				data = {
@@ -301,7 +367,9 @@ class Discord(Webhook):
 		timestamp = int(notification.time.timestamp())
 		timestamp = f"<t:{timestamp}:f>"
 
-		if notification.exception is not None:
+		if isinstance(notification, InterruptionNotification):
+			description = f"Results for **{notification.name}** were stopped by the user at {timestamp}.",
+		elif isinstance(notification, ErrorNotification):
 			logs_link = self._get_logs_link(notification.run_id)
 			if logs_link is None:
 				description = f"Results for **{notification.name}** failed to compile due to {type(notification.exception).__name__} at {timestamp}.",
@@ -319,7 +387,7 @@ class Discord(Webhook):
 				}],
 				"attachments": []
 			}
-		else:
+		elif isinstance(notification, SuccessNotification):
 			ui_link = self._get_results_link(notification.run_id)
 			if ui_link is None:
 				description = f"Results for **{notification.name}** finished compiling {timestamp}."
@@ -368,14 +436,14 @@ class Discord(Webhook):
 
 
 class QueryNotifications(BaseModel):
-	ntfy: Annotated[Optional[list[NTFY]], Path(title="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
-	                                 default_factory=list)]
+	ntfy: list[NTFY] = Field(description="A list of NTFY links that will receive a notification when EXSCLAIM has finished running.",
+							 default_factory=list)
 
-	emails: Annotated[Optional[Email], Path(title="A list of email addresses that will receive a notification when EXSCLAIM has finished running.",
-								  default_factory=lambda: Email.model_validate([]))]
+	emails: Email = Field(description="A list of email addresses that will receive a notification when EXSCLAIM has finished running.",
+						  default_factory=lambda: Email.model_validate([]))
 
-	webhooks: Annotated[Optional[list[Webhook]], Path(title="A list of webhooks that the system will POST to when EXSCLAIM has finished running.",
-	                                        default_factory=list)]
+	webhooks: list[Webhook] = Field(description="A list of webhooks that the system will POST to when EXSCLAIM has finished running.",
+									default_factory=list)
 
 	def __iter__(self) -> Generator[Notification, None, None]:
 		for notifiers in (self.ntfy, self.webhooks):

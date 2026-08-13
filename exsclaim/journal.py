@@ -1,6 +1,7 @@
 from .exceptions import JournalScrapeError
 from .utilities import paths
 
+import asyncio
 import httpx
 import re
 
@@ -494,12 +495,28 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 
 		return await response.aread()
 
-	async def _get_image_stream(self, client: httpx.AsyncClient, image_url: str, save_file: Path, chunk_size: int = 1_024) -> AsyncGenerator[bytes, None]:
-		async with client.stream("GET", image_url) as response:
-			response.raise_for_status()
-			with open(save_file, "wb") as f:
-				async for chunk in response.aiter_bytes(chunk_size=chunk_size):
-					f.write(chunk)
+	async def _get_image_stream(self, client: httpx.AsyncClient, image_url: str, save_file: Path, chunk_size: int = 1_024,
+								sleep_time: float = 30, retries: int = 5):
+		for retry in range(retries):
+			async with client.stream("GET", image_url) as response:
+				response.raise_for_status()
+
+				content_type = response.headers["Content-Type"]
+				if not content_type.startswith("image/"):
+					retry += 1
+					if retry == retries:
+						html = await response.aread()
+						raise JournalScrapeError(f"The image url did not return image information, instead the content is of type {content_type}.", response.status_code,
+												 headers=response.headers, url=image_url, html=html)
+
+					self.logger.info(f"Attempt {retry}/{retries} {image_url} responded with content type: {content_type}. Waiting for {sleep_time} seconds before retrying.")
+					await asyncio.sleep(sleep_time)
+					continue
+
+				with open(save_file, "wb") as f:
+					async for chunk in response.aiter_bytes(chunk_size=chunk_size):
+						f.write(chunk)
+				return
 
 	async def save_figure(self, figure_name: str, image_url: str, chunk_size: int = 1_024) -> Path:
 		"""
@@ -654,7 +671,7 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 		# add all results
 		return figure_json, image_url
 
-	async def get_article_figures(self, url: str, html_directory: Path, save_html:bool = True) -> dict:
+	async def get_article_figures(self, url: str, html_directory: Path, save_html: bool = True) -> dict:
 		"""Get all figures from an article.
 		:param str url: The url to the journal article.
 		:param pathlib.Path html_directory: The path where any html files should be written.
@@ -721,13 +738,14 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 				figure_path=str(figure_path),
 			)
 
-			article_json[figure_name] = figure_json
-
 			# save figure as image
 			try:
 				await self.save_figure(figure_name, image_url)
 			except JournalScrapeError as e:
 				self.logger.error(f"Could not download figure \"{figure_name}\" from {image_url} (HTTP Status Code: {e.status}). Reason: {e.message}")
+				continue
+
+			article_json[figure_name] = figure_json
 
 		await html.close()
 		return article_json

@@ -547,7 +547,7 @@ async def check_access_token_remaining_time(request: Request, token: AccessToken
 	return JSONResponse(response, status_code=status.HTTP_200_OK)
 
 
-@router.delete("/remove-user", tags=[TAG])
+@router.delete("/remove_user", tags=[TAG])
 async def delete_user(request: Request, user: ActiveUser) -> JSONResponse:
 	async with get_db_session() as session:
 		try:

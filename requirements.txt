@@ -4,7 +4,8 @@ loguru==0.7.3
 numpy==2.4.4
 opencv-contrib-python-headless==4.13.0.92
 Pillow==12.3.0
-ultralytics==8.4.63
+ultralytics==8.4.117
+pi_heif==1.4.0
 
 # HTTP requests
 httpx==0.28.1

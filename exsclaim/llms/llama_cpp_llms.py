@@ -215,7 +215,7 @@ class LlamaCPP(OpenAI):
 						data = loads(match.group(1))
 
 						if data["event"] == "error":
-							if data["message"].startswith("No job has been posted for run"):
+							if data.get("message", "").startswith("No job has been posted for run"):
 								continue
 
 						if "error" in data:

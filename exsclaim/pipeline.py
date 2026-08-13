@@ -289,14 +289,14 @@ class Pipeline:
 					tasks = [tg.create_task(self.make_visualization(name, json, extractions)) for name, json in self.exsclaim_dict.items()]
 
 			# Creates success messages to be sent to the notifiers
-			notification = Notification(
+			notification = SuccessNotification(
 				message="Pipeline finished successfully.",
 				run_id=run_id,
 				name=self.query_dict["name"],
 			)
 		except (asyncio.CancelledError, KeyboardInterrupt) as e:
 			self.logger.exception(f"User stopped the pipeline via the {type(e).__name__} exception.", exc_info=e)
-			notification = Notification(
+			notification = InterruptionNotification(
 				message="Pipeline's task was cancelled.",
 				run_id=run_id,
 				name=self.query_dict["name"],
@@ -305,7 +305,7 @@ class Pipeline:
 			raise e
 		except BaseException as e:
 			self.logger.exception("An error occurred that prevented the EXSCLAIM pipeline from finishing.", exc_info=e)
-			notification = Notification(
+			notification = ErrorNotification(
 				message="Pipeline failed due to an error.",
 				run_id=run_id,
 				name=self.query_dict["name"],

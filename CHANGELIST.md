@@ -22,12 +22,16 @@
 - Added a foreign key constraint that requires articles in `results.article` to attach to runs in `results.results`.
 - Moved the Postgres configuration information into a `pydantic.BaseSettings` class.
 
+### Journal
+- If a figure can't be downloaded properly, it won't be saved to the exsclaim_json to be passed to future tools.
+
 ### Captions
 - The `LlamaCPP` class now handles its environment variable through Pydantic's BaseSettings. 
 - `LlamaCPP` can listen to the llama-server's Server Side Events (SSE) to see when the model is loaded.
 - `LlamaCPP` can now accept the path to a cert file if the Llama server's SSL certificate is signed with a local certificate authority (CA).
 - LLMs now have the option to accept optional API keys, in case the LLM server responds differently to anonymous users versus authorized users.
 - LLMs now record the input and output tokens for each caption split. These values can be found in the JSON for each subfigure.
+- Restricted the allowed OpenAI models to those that can use BaseModels to set their text format.
 
 ### Figures
 - All scale lines are saved as results instead of just the first scale line.
@@ -36,6 +40,7 @@
 - Moved the tests outside of the module
 - Added webhooks as a notification type
 - Updated how notifications are passed in queries.
+- Implemented email notifications.
 - Realized that the beta versions of 2.5.1* have been listed as 2.5.0b*, even though 2.5.0 was already created.
 - Changed the ExsclaimSettings to directly parse environment variables into `pathlib.Path`s when needed.
 - The module now has the option to not reload when the apps are debugging.

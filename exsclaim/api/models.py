@@ -12,7 +12,7 @@ from enum import StrEnum
 from fastapi import Path, status
 from fastapi.responses import JSONResponse
 from orjson import dumps
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, field_validator, model_validator, Field
 from sqlalchemy import Enum as SAEnum, Column, ForeignKeyConstraint, CheckConstraint, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlmodel import text, SQLModel, Field, DateTime
@@ -370,7 +370,7 @@ class Query(BaseModel):
 
 	model_key: Annotated[Optional[str], Path(title="The API key that might be needed depending on the specified llm.")] = None
 
-	notifications: Annotated[QueryNotifications, Path(title="A list of notification objects that are used when the pipeline finishes.")]
+	notifications: QueryNotifications = Field(description="A list of notification objects that are used when the pipeline finishes.")
 
 	tools: Annotated[QueryTools, Path(description="A list of EXSCLAIM tools to run in the pipeline.",
 	default_factory=QueryTools)]

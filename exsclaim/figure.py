@@ -35,7 +35,7 @@ class FigureSeparator(ExsclaimTool):
 	None
 	"""
 
-	def __init__(self, search_query:dict, **kwargs):
+	def __init__(self, search_query: dict, **kwargs):
 		kwargs.setdefault("logger_name", __name__ + ".FigureSeparator")
 		super().__init__(search_query, **kwargs)
 		self.exsclaim_json = dict()
@@ -178,6 +178,8 @@ class FigureSeparator(ExsclaimTool):
 
 			try:
 				figure_json = self.extract_image_objects(_path.name)
+				if figure_json is None:
+					continue
 				new_separated.add(_path.name)
 				exsclaim_dict = self._update_exsclaim(exsclaim_dict, figure_json)
 			except Exception as e:
@@ -401,6 +403,10 @@ class FigureSeparator(ExsclaimTool):
 		figure_path = self.results_directory / "figures" / figure_path
 
 		img: np.ndarray = cv2.imread(figure_path, cv2.IMREAD_COLOR)
+		if img is None:
+			self.logger.warning(f"Could not read the image from {figure_path.resolve()}.")
+			return None
+
 		height, width, _ = img.shape
 		binary_img = np.zeros((height, width, 1))
 
@@ -511,6 +517,6 @@ class FigureSeparator(ExsclaimTool):
 		try:
 			figure_json = self.determine_scale(figure_path, figure_json)
 		except TypeError as e:
-			self.logger.warning(f"Might have found an issue with finding the scales for {figure_path}.", exc_info=True)
+			self.logger.warning(f"An error occurred when finding the scales for {figure_path}.", exc_info=True)
 
 		return figure_json

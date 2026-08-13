@@ -9,7 +9,7 @@ interchangeable.
 """
 from .caption import LLM, LLMUsage, OptionalSemaphore
 from .config import settings
-from .exceptions import JournalScrapeError
+from .exceptions import PipelineInterruptionException, JournalScrapeError
 from .journal import JournalFamily
 from .utilities import initialize_results_dir, PrinterFormatter
 
@@ -88,8 +88,8 @@ class ExsclaimTool(ABC):
 					# Load query file to dict
 					search_query = load(f)
 			except Exception as e:
-				self.logger.debug(f"Search Query must be a pathlib.Path or dictionary, not {search_query.__class__.__name__}.")
-				self.logger.exception(e)
+				self.logger.exception(f"Search Query must be a pathlib.Path or dictionary, not {search_query.__class__.__name__}.", exc_info=e)
+				raise PipelineInterruptionException("Could not validate the search query passed.") from e
 
 		self._search_query = search_query
 

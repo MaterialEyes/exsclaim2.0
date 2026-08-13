@@ -4,11 +4,24 @@ from logging import exception, error
 from os import getenv
 from openai import AsyncOpenAI, OpenAIError, NOT_GIVEN, BadRequestError
 from openai.types.responses import ResponseOutputMessage, ResponseFunctionToolCall, ParsedResponseOutputMessage
-from openai.types.shared.chat_model import ChatModel as OPEN_AI_LLMs
+from openai.types.shared.chat_model import ChatModel
 from pydantic import BaseModel, ValidationError
-from typing import get_args, Any, Type, Optional, Collection
+from typing import get_args, Any, Collection, Literal, Type, Optional
 
 __all__ = ["OpenAI", "OPEN_AI_LLMs"]
+
+
+def get_valid_openai_llms():
+	models = get_args(ChatModel)
+	mask = ["4o" in model for model in models]
+	last_model = mask[::-1].index(True)
+	valid_models = models[:-last_model]
+	llm_literal = Literal[None]
+	llm_literal.__args__ = tuple(valid_models)
+	return valid_models, llm_literal
+
+
+valid_models, OPEN_AI_LLMs = get_valid_openai_llms()
 
 
 class OpenAI(LLM):
@@ -20,7 +33,7 @@ class OpenAI(LLM):
 	@staticmethod
 	def available_models():
 		return tuple(
-			LLMOptions(model, True, True, model.replace("gpt", "GPT")) for model in get_args(OPEN_AI_LLMs)
+			LLMOptions(model, True, True, model.replace("gpt", "GPT")) for model in valid_models
 		)
 
 	@staticmethod
@@ -44,30 +57,6 @@ class OpenAI(LLM):
 			new_messages[i] = formatted_message
 
 		return new_messages
-
-	@staticmethod
-	def create_tool_from_model(response_format: Type[BaseModel]) -> dict:
-		def clean(schema):
-			if isinstance(schema, dict):
-				return {
-					k: clean(v)
-					for k, v, in schema.items()
-					if k in {"type", "properties", "items", "required", "enum", "format", "additionalProperties"}
-				}
-			elif isinstance(schema, list):
-				return list(map(clean, schema))
-			return schema
-
-		parameters = response_format.model_json_schema()
-		parameters["additionalProperties"] = False
-
-		return dict(
-			# type="function",
-			name=response_format.__name__[:64],
-			description=f"Get the {response_format.__name__}.",
-			strict=True,
-			parameters=parameters,
-		)
 
 	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str) -> tuple[ResponseBase, LLMUsage]:
 		await super().get_response(prompt, response_format)

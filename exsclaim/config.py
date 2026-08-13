@@ -2,10 +2,10 @@ from datetime import datetime as dt
 from multiprocessing import cpu_count
 from os import getenv
 from pathlib import Path
-from pydantic import Field, computed_field, field_validator
+from pydantic import Field, computed_field, field_validator, EmailStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from re import compile
-from typing import Optional
+from typing import Optional, Self
 
 __all__ = ["ExsclaimSettings", "settings", "UISettings", "ui_settings", "get_variables", "orcid_settings", "ORCIDSettings"]
 
@@ -13,9 +13,34 @@ __all__ = ["ExsclaimSettings", "settings", "UISettings", "ui_settings", "get_var
 BOOL_REGEX = compile("^0?$")
 
 
+class EmailSettings(BaseSettings):
+	SERVER: str = Field(description="The server that is hosting the email account.")
+	PORT: int = Field(default=465)
+	ACCOUNT: EmailStr = Field(description="The email that is used to send notifications.")
+	PASSWORD: Optional[str] = Field(default=None, description="The password for the email account.")
+	PASSWORD_FILE: Optional[Path] = Field(default=None,
+										  description="The file containing the password for the email account.")
+
+	@model_validator(mode="after")
+	def get_password(self) -> Self:
+		if self.PASSWORD is None and self.PASSWORD_FILE is None:
+			raise ValueError("A password must be given for the email.")
+
+		if self.PASSWORD_FILE is not None:
+			with open(self.PASSWORD_FILE, "r") as f:
+				self.PASSWORD = self.PASSWORD_FILE.read()
+
+		self.PASSWORD = self.PASSWORD.strip()
+		return self
+
+
 class ExsclaimSettings(BaseSettings):
 	"""Gets access to the environment variables used throughout the project."""
-	model_config = SettingsConfigDict(env_prefix="EXSCLAIM_", secrets_dir=("/run/secrets/", "/var/run"))
+	model_config = SettingsConfigDict(
+		env_prefix="EXSCLAIM_",
+		env_nested_delimiter="__",
+		secrets_dir=("/run/secrets/", "/var/run")
+	)
 
 	ALLOW_PDF_PATHS: bool = Field(
 		default=False,
@@ -39,6 +64,13 @@ class ExsclaimSettings(BaseSettings):
 		default=False,
 		description="If tqdm progress bars should be displayed during the pipeline.",
 		examples=["0", "1", ""],
+	)
+
+	EMAIL: Optional[EmailSettings] = Field(default=None)
+
+	ALLOW_EMAILS_WITHOUT_ACCOUNT: bool = Field(
+		default=True,
+		description="If the Email's model validator should raise an error if emails are provided without the pipeline being able to send emails."
 	)
 
 	LOGS_PATH: Path = Field(
