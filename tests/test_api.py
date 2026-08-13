@@ -165,7 +165,7 @@ def test_user_methods(client: TestClient, name: str = None, email: str = None, p
 	assert response.status_code == 409, f"Creating an account that already exists did not respond as expected: {response.text}"
 
 	# Delete the account
-	response = client.delete("/user/remove-user")
+	response = client.delete("/user/remove_user")
 	assert response.status_code == 200, f"Could not properly delete account: {response.text}"
 
 

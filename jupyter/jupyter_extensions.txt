@@ -1,2 +1,0 @@
-jupyterlab_execute_time==3.1.2
-jupyterlabcodetoc==4.0.1
