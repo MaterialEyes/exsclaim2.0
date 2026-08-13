@@ -1,12 +1,12 @@
 from exsclaim.api import Status
 from httpx import AsyncClient
-from typing import Any
+from typing import Any, Optional
 
 
 __all__ = ["fetch_status", "fetch_articles", "fetch_figures", "fetch_subfigures"]
 
 
-async def fetch_status(client:AsyncClient, base_url: str, result_id: str) -> Status:
+async def fetch_status(client: AsyncClient, base_url: str, result_id: str) -> Status:
 	"""Fetch the status of a result from the API."""
 	try:
 		response = await client.get(f"{base_url}/status/{result_id}")
@@ -16,7 +16,7 @@ async def fetch_status(client:AsyncClient, base_url: str, result_id: str) -> Sta
 				case "Finished.":
 					return Status.FINISHED
 				case "Killed.":
-					return Status.KILLED
+					return Status.STOPPED
 			return Status.RUNNING
 
 		return Status.ERROR
@@ -25,7 +25,7 @@ async def fetch_status(client:AsyncClient, base_url: str, result_id: str) -> Sta
 		return Status.ERROR
 
 
-async def fetch_articles(client:AsyncClient, base_url: str, result_id: str) -> list[dict[str, Any]]:
+async def fetch_articles(client: AsyncClient, base_url: str, result_id: str) -> list[dict[str, Any]]:
 	"""Fetch articles from the API."""
 	try:
 		response = await client.get(f"{base_url}/results/v1/{result_id}/articles")
@@ -37,7 +37,7 @@ async def fetch_articles(client:AsyncClient, base_url: str, result_id: str) -> l
 		return []
 
 
-async def fetch_figures(client:AsyncClient, base_url: str, result_id: str, page: int = 1) -> list[dict[str, Any]]:
+async def fetch_figures(client: AsyncClient, base_url: str, result_id: str, page: int = 1) -> list[dict[str, Any]]:
 	"""Fetch figures from the API."""
 	try:
 		response = await client.get(f"{base_url}/results/v1/{result_id}/figures/?page={page}")
@@ -49,7 +49,7 @@ async def fetch_figures(client:AsyncClient, base_url: str, result_id: str, page:
 		return []
 
 
-async def fetch_subfigures(client:AsyncClient, base_url: str, result_id: str, page: int = 1) -> list[dict[str, Any]]:
+async def fetch_subfigures(client: AsyncClient, base_url: str, result_id: str, page: Optional[int] = None) -> list[dict[str, Any]]:
 	"""Fetch subfigures from the API."""
 	try:
 		response = await client.get(f"{base_url}/results/v1/{result_id}/subfigures/?page={page}")

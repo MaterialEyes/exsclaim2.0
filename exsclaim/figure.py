@@ -1,24 +1,29 @@
-from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform
+from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform, \
+	geometry_boxes as boxes
+from .config import settings
 from .exceptions import ExsclaimToolException
 from .tool import ExsclaimTool
-from .utilities import boxes, load_model_from_checkpoint, download_model_checkpoint
+from .utilities import load_model_from_checkpoint, download_model_checkpoint
 
 import cv2
 import numpy as np
 import torch
+if settings.DISPLAY_TQDM:
+	import tqdm
+	# from .utilities.tqdm import set_stream_handlers_to_tqdm, remove_tqdm_from_set_stream_handlers
 
-from contextlib import suppress
-from json import load
 from pathlib import Path
 from PIL import Image
-from torchvision import transforms
-from torchvision.models.detection import fasterrcnn_resnet50_fpn
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
-from typing import Any
-from ultralytics import YOLO
+from typing import Any, Generator, Optional
 
 
 __all__ = ["FigureSeparator"]
+
+
+def get_optional_path(path: Optional[str]) -> Optional[Path]:
+	if path is None:
+		return None
+	return Path(path).resolve()
 
 
 class FigureSeparator(ExsclaimTool):
@@ -30,15 +35,30 @@ class FigureSeparator(ExsclaimTool):
 	None
 	"""
 
-	def __init__(self, search_query:dict, **kwargs):
+	def __init__(self, search_query: dict, **kwargs):
 		kwargs.setdefault("logger_name", __name__ + ".FigureSeparator")
 		super().__init__(search_query, **kwargs)
-		self.exsclaim_json = {}
+		self.exsclaim_json = dict()
+		self._get_unrecognized_image_folders()
 
-	async def load(self):
+	def _get_unrecognized_image_folders(self):
+		self.undetected_path = settings.UNDETECTED_SUBFIGURES_PATH
+		self.unclassified_path = settings.UNCLASSIFIED_SUBFIGURES_PATH
+
+		for path in (self.undetected_path, self.unclassified_path):
+			if path is not None:
+				path.mkdir(parents=True, exist_ok=True)
+
+	async def load(self, yolov11_subfigure_bbox: Optional[Path] = None, yolov11_subfigure_label: Optional[Path] = None,
+				   yolov11_classifier: Optional[Path] = None):
 		"""Load relevant models for the object detection tasks"""
+		from ultralytics import YOLO
+		from torchvision.models.detection import fasterrcnn_resnet50_fpn
+		from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
+
 		# Set configuration variables
-		figures_path = Path(__file__).resolve().parent / "figures"
+		figures_path = Path(__file__).parent.resolve() / "figures"
+		checkpoint_path = settings.CHECKPOINTS_PATH
 		self.cuda = torch.cuda.is_available()
 
 		self.dtype = torch.cuda.FloatTensor if self.cuda else torch.FloatTensor
@@ -47,16 +67,28 @@ class FigureSeparator(ExsclaimTool):
 
 		self.device = torch.device("cuda" if self.cuda else "cpu")
 
-		yolov11_load = figures_path / "checkpoints" / "yolov11_finetuned_augmentation_best.pt"
+		yolov11_subfigure_bbox = yolov11_subfigure_bbox or checkpoint_path / "yolov11_finetuned_augmentation_best.pt"
+		yolov11_subfigure_label = yolov11_subfigure_label or checkpoint_path / "yolov11_label.pt"
+		yolov11_classifier = yolov11_classifier or checkpoint_path / "yolov11_classification.pt"
 
-		if not yolov11_load.is_file():
-			await download_model_checkpoint(yolov11_load)
+		for model_file in (yolov11_subfigure_bbox, yolov11_subfigure_label, yolov11_classifier):
+			if not model_file.is_file():
+				await download_model_checkpoint(model_file)
 
 		try:
-			self.yolo_model = YOLO(yolov11_load)
-			self.yolo_model.to(self.device)
+			self.subfigure_bbox = YOLO(yolov11_subfigure_bbox)
+			self.subfigure_bbox.to(self.device)
+			self.logger.info("Subfigure bounding box model has been loaded.")
+
+			self.subfigure_label = YOLO(yolov11_subfigure_label)
+			self.subfigure_label.to(self.device)
+			self.logger.info("Subfigure label bounding box model has been loaded.")
+
+			self.classification_model = YOLO(yolov11_classifier)
+			self.classification_model.to(self.device)
+			self.logger.info("Subfigure classification model has been loaded.")
 		except BaseException as e:
-			self.logger.exception("Error loading YOLO model.")
+			self.logger.exception("Error loading YOLO models.")
 			raise ExsclaimToolException from e
 
 		# Common YOLO settings if needed
@@ -73,40 +105,38 @@ class FigureSeparator(ExsclaimTool):
 		scale_bar_detection_model.roi_heads.box_predictor = FastRCNNPredictor(input_features, number_classes)
 
 		self.scale_bar_detection_model = await load_model_from_checkpoint(
-			scale_bar_detection_model, "scale_bar_detection_model.pt", self.cuda, self.device,
+			scale_bar_detection_model, "scale_bar_detection_model.pt", self.device,
 		)
 
 		# Load scale label recognition model
 		config_path = figures_path / "config" / "scale_label_reader.json"
 		with open(config_path, "r") as f:
-			configuration_file = load(f)
+			from orjson import loads
+			configuration_file = loads(f.read())
 
 		configuration = configuration_file["theta"]
 		scale_label_recognition_model = CRNN(configuration=configuration)
 
 		self.scale_label_recognition_model = await load_model_from_checkpoint(
-			scale_label_recognition_model, "scale_label_recognition_model.pt", self.cuda, self.device
+			scale_label_recognition_model, "scale_label_recognition_model.pt", self.device
 		)
 
 	async def unload(self):
-		torch.cuda.empty_cache()
-		for model in (self.yolo_model, self.scale_bar_detection_model, self.scale_label_recognition_model):
-			# Remove the model from the GPU
-			if self.cuda:
+		if self.cuda:
+			torch.cuda.empty_cache()
+			for model in (self.subfigure_bbox, self.classification_model, self.scale_bar_detection_model, self.scale_label_recognition_model):
+				# Remove the model from the GPU
 				model.to("cpu")
 			del model
 
-	def _update_exsclaim(self, exsclaim_dict:dict, figure:dict):
+	def _update_exsclaim(self, exsclaim_dict: dict, figure: dict):
 		figure_name = figure["figure_name"].split("/")[-1]
 
 		exsclaim_dict[figure_name]["master_images"].extend(figure["master_images"])
 
-		# for key, value in figure["unassigned"].items():
-		# 	exsclaim_dict[figure_name]["unassigned"][key].extend(value)
-
 		return exsclaim_dict
 
-	async def run(self, search_query:dict, exsclaim_dict: dict[str, Any]):
+	async def run(self, search_query: dict, exsclaim_dict: dict[str, Any]):
 		"""Run the models relevant to manipulating article figures"""
 		exsclaim_dict = exsclaim_dict or dict()
 		append_file = "_figures"
@@ -138,11 +168,18 @@ class FigureSeparator(ExsclaimTool):
 			if value["figure_name"] not in separated
 		)
 
-		for counter, _path in enumerate(figures, start=counter):
+		figures_enum = enumerate(figures, start=counter)
+		# if settings.DISPLAY_TQDM:
+		# 	figures_enum = tqdm.tqdm(figures_enum, total=len(figures), desc="Separating Figures", unit="fig")
+			# set_stream_handlers_to_tqdm(self.logger, figures_enum)
+
+		for counter, _path in figures_enum:
 			self.display_info(f">>> ({counter:,} of {+len(figures):,}) Extracting images from: {_path}")
 
 			try:
 				figure_json = self.extract_image_objects(_path.name)
+				if figure_json is None:
+					continue
 				new_separated.add(_path.name)
 				exsclaim_dict = self._update_exsclaim(exsclaim_dict, figure_json)
 			except Exception as e:
@@ -154,11 +191,12 @@ class FigureSeparator(ExsclaimTool):
 				self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 				new_separated = set()
 
+		# remove_tqdm_from_set_stream_handlers(self.logger)
 		self._end_timer(t0, f"{counter:,} figures")
 		self._appendJSON(exsclaim_dict, data=new_separated, filename=append_file)
 		return exsclaim_dict
 
-	def read_scale_bar(self, cropped_image:Image) -> tuple[float, str, float]:
+	def read_scale_bar(self, cropped_image: Image.Image) -> ctc.Results:
 		"""Outputs the text of an image cropped to a scale bar label bbox
 
 		Args:
@@ -172,11 +210,10 @@ class FigureSeparator(ExsclaimTool):
 		logps = self.scale_label_recognition_model(image.to(self.device))
 		probs = torch.exp(logps)
 		probs = probs.squeeze(0)
-		magnitude, unit, confidence = ctc.run_ctc(probs, classes)
-		return magnitude, unit, float(confidence)
+		yield from ctc.run_ctc(probs, classes, self.logger)
 
 	@staticmethod
-	def assign_scale_objects_to_subfigures(master_image:dict, scale_objects:list[dict]) -> tuple[dict, list[dict]]:
+	def assign_scale_objects_to_subfigures(master_image: dict, scale_objects: list[dict]) -> tuple[dict, list[dict]]:
 		"""Assign scale bar objects to master images
 
 		Args:
@@ -187,7 +224,7 @@ class FigureSeparator(ExsclaimTool):
 			scale_objects: updated with assigned objects removed
 		"""
 		geometry = master_image["geometry"]
-		x1, y1, x2, y2 = boxes.convert_labelbox_to_coords(geometry)
+		x1, y1, x2, y2 = boxes.convert_geometry_to_coords(geometry)
 		unassigned_scale_objects = []
 		assigned_scale_objects = []
 
@@ -202,7 +239,7 @@ class FigureSeparator(ExsclaimTool):
 		nm_to_pixel = 0
 		label = ""
 		scale_labels = set()
-		for scale_object in master_image["scale_bars"]:
+		for scale_object in assigned_scale_objects:
 			if scale_object["label"]:
 				scale_labels.add(scale_object["label"]["nm"])
 				nm_to_pixel = scale_object["label"]["nm"] / float(scale_object["length"])
@@ -216,11 +253,11 @@ class FigureSeparator(ExsclaimTool):
 			))
 		return master_image, unassigned_scale_objects
 
-	def detect_scale_objects(self, image:Image) -> list[ScalebarInfo]:
+	def detect_scale_objects(self, image: torch.Tensor) -> list[ScalebarInfo]:
 		"""Detects bounding boxes of scale bars and scale bar labels
 
 		Args:
-			image (PIL Image): A PIL image object
+			image (torch.Tensor): An image tensor
 		Returns:
 			scale_bar_info (list): A list of lists with the following
 				pattern: [[x1,y1,x2,y2, confidence, label],...] where
@@ -251,7 +288,7 @@ class FigureSeparator(ExsclaimTool):
 		)
 		return scale_bar_info
 
-	def determine_scale(self, figure_path:Path, figure_json:dict[str, Any]) -> dict[str, Any]:
+	def determine_scale(self, figure_path: Path, figure_json: dict[str, Any]) -> dict[str, Any]:
 		"""Adds scale information to figure by reading and measuring scale bars
 
 		Args:
@@ -262,6 +299,8 @@ class FigureSeparator(ExsclaimTool):
 			figure_json (dict): A dictionary with classified image_objects
 				extracted from figure
 		"""
+		from torchvision import transforms
+
 		convert_to_nm = {
 			"a":              0.1,
 			"nm":             1.0,
@@ -270,9 +309,9 @@ class FigureSeparator(ExsclaimTool):
 			"cm":    10_000_000.0,
 			"m":  1_000_000_000.0,
 		}
-		unassigned = figure_json.get("unassigned", {})
-		unassigned_scale_labels = unassigned.get("scale_bar_labels", [])
-		master_images = figure_json.get("master_images", [])
+		unassigned = figure_json.get("unassigned", dict())
+		unassigned_scale_labels = unassigned.get("scale_bar_labels", list())
+		master_images = figure_json.get("master_images", list())
 		image = Image.open(figure_path).convert("RGB")
 		tensor_image = transforms.ToTensor()(image)
 
@@ -284,7 +323,7 @@ class FigureSeparator(ExsclaimTool):
 
 		for scale_object in scale_bar_info:
 			x1, y1, x2, y2, confidence, classification = scale_object
-			geometry = boxes.convert_coords_to_labelbox(int(x1), int(y1), int(x2), int(y2))
+			geometry = boxes.convert_coords_to_geometry(int(x1), int(y1), int(x2), int(y2))
 			
 			match label_names[int(classification)]:
 				case "scale bar":
@@ -297,10 +336,11 @@ class FigureSeparator(ExsclaimTool):
 					scale_bar_label_image = image.crop((int(x1), int(y1), int(x2), int(y2)))
 
 					# Read Scale Text
-					magnitude, unit, label_confidence = self.read_scale_bar(scale_bar_label_image)
+					for (magnitude, unit, label_confidence) in self.read_scale_bar(scale_bar_label_image):
+						# 0 is never correct and -1 is the error value
+						if magnitude <= 0:
+							continue
 
-					# 0 is never correct and -1 is the error value
-					if magnitude > 0:
 						length_in_nm = magnitude * convert_to_nm[unit.strip().lower()]
 						scale_labels.append(dict(
 							geometry=geometry,
@@ -312,8 +352,9 @@ class FigureSeparator(ExsclaimTool):
 
 		# Match scale bars to labels and to subfigures (master images)
 		scale_bar_jsons, unassigned_labels = create_scale_bar_objects(scale_bars, scale_labels)
-		for master_image in master_images:
-			master_image, scale_bar_jsons = self.assign_scale_objects_to_subfigures(master_image, scale_bar_jsons)
+		if len(scale_bar_jsons) > 0:
+			for master_image in master_images:
+				master_image, scale_bar_jsons = self.assign_scale_objects_to_subfigures(master_image, scale_bar_jsons)
 
 		# Save info to JSON
 		unassigned["scale_bar_labels"] = unassigned_scale_labels
@@ -323,7 +364,32 @@ class FigureSeparator(ExsclaimTool):
 
 		return figure_json
 
-	def extract_image_objects(self, figure_path:str) -> dict:
+	def get_bounding_boxes(self, figure_path: Path, model):
+		# Run YOLO detection with higher confidence threshold
+		results = model.predict(
+			source=figure_path,
+			imgsz=self.image_size,
+			conf=0.6,
+			iou=0.45,
+			max_det=100,
+			agnostic_nms=False,
+			stream=False,
+			verbose=settings.DEBUG
+		)
+		result = results[0]
+
+		# Process detections
+		detections_per_class = dict()
+
+		for box in result.boxes:
+			cls_id = int(box.cls[0])
+			conf = box.conf[0]
+			if cls_id not in detections_per_class or conf > detections_per_class[cls_id].conf[0]:
+				detections_per_class[cls_id] = box
+		# print(f"{detections_per_class=}")
+		return detections_per_class
+
+	def extract_image_objects(self, figure_path: str) -> dict:
 		"""Separate and classify subfigures in an article figure
 
 		Args:
@@ -336,47 +402,41 @@ class FigureSeparator(ExsclaimTool):
 		# Get full path to figure
 		figure_path = self.results_directory / "figures" / figure_path
 
-		img = cv2.imread(str(figure_path), cv2.IMREAD_COLOR)
+		img: np.ndarray = cv2.imread(figure_path, cv2.IMREAD_COLOR)
+		if img is None:
+			self.logger.warning(f"Could not read the image from {figure_path.resolve()}.")
+			return None
+
 		height, width, _ = img.shape
 		binary_img = np.zeros((height, width, 1))
 
 		# Get figure name without extension for directory naming
 		figure_base_name = figure_path.stem
 
-		# Run YOLO detection with higher confidence threshold
-		results = self.yolo_model.predict(
-			source=figure_path,
-			imgsz=self.image_size,
-			conf=0.6,
-			iou=0.45,
-			max_det=100,
-			agnostic_nms=False
-		)
+		detections_per_class = self.get_bounding_boxes(figure_path, self.subfigure_bbox)
+		subfigures_per_class = self.get_bounding_boxes(figure_path, self.subfigure_label)
 
 		# Initialize variables
 		figure_name = figure_path.name
-		figure_json = self.exsclaim_json.get(figure_name, {})
+		figure_json = self.exsclaim_json.get(figure_name, dict())
 		figure_json.update(dict(
 			figure_name=figure_name,
 			master_images=[]
 		))
 
-		# Process detections
-		detections_per_class = {}
-
-		if results[0].boxes.shape[0] == 0:
+		if len(detections_per_class) == 0:
 			self.logger.info(f"{figure_path} could not detect any subfigures.")
-
-		for result in results:
-			for box in result.boxes:
-				cls_id = int(box.cls[0])
-				conf = box.conf[0]
-				if cls_id not in detections_per_class or conf > detections_per_class[cls_id].conf[0]:
-					detections_per_class[cls_id] = box
+			if self.undetected_path is not None:
+				cv2.imwrite(self.undetected_path / figure_path.name, img)
 
 		# Process each final detection
 		for cls_id, box in detections_per_class.items():
 			x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+			label_box = subfigures_per_class.get(cls_id, None)
+			if label_box is not None:
+				lx1, ly1, lx2, ly2 = label_box.xyxy[0].cpu().numpy()
+			else:
+				lx1, ly1, lx2, ly2 = None, None, None, None
 			conf = float(box.conf[0])
 
 			# Ensure coordinates are within bounds and boxes aren't too small
@@ -392,34 +452,56 @@ class FigureSeparator(ExsclaimTool):
 				continue
 
 			# Get the label
-			label = self.yolo_model.names[cls_id]		# This will be 'a', 'b', 'c', etc.
+			label = self.subfigure_bbox.names[cls_id]		# This will be 'a', 'b', 'c', etc.
 
 			# Add to binary mask for visualization if small enough
 			if dx < 64 and dy < 64:
 				binary_img[y1:y2, x1:x2] = 255
 
-			# TODO: Reimplement classify_subfigures with this update method
+			# Get the subfigure classification
+			classification_results = self.classification_model.predict(
+				source=img[y1:y2, x1:x2],
+				imgsz=self.image_size,
+				conf=0.6,
+				iou=0.45,
+				max_det=100,
+				agnostic_nms=False,
+				stream=False,
+				verbose=settings.DEBUG
+			)
+
+			result = classification_results[0]
+			if result.probs is not None:
+				classification = result.names[result.probs.top1]
+				class_conf = float(result.probs.top1conf)
+			else:
+				self.logger.exception(f"Could not classify subfigure {figure_path} (label {label}) -- result.probs is None.")
+				classification = "unclear"
+				class_conf = 0
+				if self.unclassified_path is not None:
+					cv2.imwrite(self.unclassified_path / f"{figure_path.stem}-{label}{figure_path.suffix}", img)
 
 			# Create master_image_info
 			master_image_info = {
-				"classification": "subfigure",
+				"classification": classification,
+				"classification_confidence": float(class_conf),
 				"confidence": float(conf),
 				"height": dy,
 				"width": dx,
-				"geometry": [
-					{"x": x1, "y": y1},
-					{"x": x2, "y": y1},
-					{"x": x1, "y": y2},
-					{"x": x2, "y": y2}
-				],
+				"geometry": dict(
+					x0=x1,
+					y0=y1,
+					x1=x2,
+					y1=y2
+				),
 				"subfigure_label": {
 					"text": label,
-					"geometry": [
-						{"x": x1, "y": y1},
-						{"x": x2, "y": y1},
-						{"x": x1, "y": y2},
-						{"x": x2, "y": y2}
-					]
+					"geometry": dict(
+						x0=int(lx1),
+						y0=int(ly1),
+						x1=int(lx2),
+						y1=int(ly2)
+					)
 				}
 			}
 
@@ -432,8 +514,9 @@ class FigureSeparator(ExsclaimTool):
 			cv2.imwrite(str(subfigure_directory / f"{figure_base_name}_{label}.png"), cropped_img)
 			figure_json["master_images"].append(master_image_info)
 
-		# Sometimes the system will have a problem with PIL and Enums
-		with suppress(TypeError):
+		try:
 			figure_json = self.determine_scale(figure_path, figure_json)
+		except TypeError as e:
+			self.logger.warning(f"An error occurred when finding the scales for {figure_path}.", exc_info=True)
 
 		return figure_json

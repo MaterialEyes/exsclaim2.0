@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 from sqlalchemy import Column, String, ARRAY, ForeignKeyConstraint
-from sqlmodel import Field, SQLModel, select
-from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlmodel import Field, SQLModel
 from typing import Optional
 from uuid import UUID
 
@@ -16,39 +17,33 @@ class ExsclaimSQLModel(SQLModel):
 		description="The unique run ID that this article is attached to.",
 	)
 
-	@classmethod
-	async def get_items(cls, results_id:UUID, session: AsyncSession) -> list["ExsclaimSQLModel"]:
-		statement = select(cls).where(cls.run_id == results_id)
-		results = await session.exec(statement)
-		return results.all()
-
-	@classmethod
-	async def get_item(cls, results_id:UUID, _id:str, session: AsyncSession):
-		statement = select(cls).where(cls.id == _id).where(cls.run_id == results_id)
-		results = await session.exec(statement)
-		return results.scalar_one_or_none()
-
 
 class ClassificationCodes(SQLModel, table=True):
 	__tablename__ = "classification_codes"
 
-	code:str = Field(
+	code: str = Field(
 		primary_key=True,
 		min_length=2,
 		max_length=2,
 		nullable=False,
-		description="The name of the classification code.",
+		description="The abbreviation of the classification code.",
 	)
-	name:str = Field(
+	name: str = Field(
 		nullable=False,
 		max_length=12,
-		description="The name of the classification code."
+		description="The name of the classification code.",
 	)
+
+	def __hash__(self) -> int:
+		return hash(f"{self.code}:{self.name}")
 
 
 class Article(ExsclaimSQLModel, table=True):
 	__tablename__ = "article"
-	__table_args__ = dict(schema="results")
+	__table_args__ = (
+		ForeignKeyConstraint(["run_id"], ["results.results.id"], ondelete="CASCADE", onupdate="CASCADE"),
+		dict(schema="results")
+	)
 
 	id: str = Field(
 		primary_key=True,
@@ -56,11 +51,11 @@ class Article(ExsclaimSQLModel, table=True):
 		nullable=False,
 		description="The id of the article. Typically, its the url path without the domain name."
 	)
-	title:str = Field(
+	title: str = Field(
 		nullable=False,
 		description="The description of the article."
 	)
-	url:str = Field(
+	url: str = Field(
 		max_length=200,
 		nullable=False,
 		description="The url to reach the article."
@@ -89,7 +84,8 @@ class Article(ExsclaimSQLModel, table=True):
 class Figure(ExsclaimSQLModel, table=True):
 	__tablename__ = "figure"
 	__table_args__ = (
-		ForeignKeyConstraint(["run_id", "article_id"], ["results.article.run_id", "results.article.id"], ondelete="CASCADE"),
+		ForeignKeyConstraint(["run_id", "article_id"], ["results.article.run_id", "results.article.id"],
+							 ondelete="CASCADE", onupdate="CASCADE"),
 		dict(schema="results")
 	)
 
@@ -102,10 +98,6 @@ class Figure(ExsclaimSQLModel, table=True):
 	caption: str = Field(
 		nullable=False,
 		description="The caption of the figure."
-	)
-	caption_delimiter: Optional[str] = Field(
-		max_length=12,
-		description="The delimiter used to separate captions."
 	)
 	url: str = Field(
 		max_length=200,
@@ -126,7 +118,8 @@ class Figure(ExsclaimSQLModel, table=True):
 class Subfigure(ExsclaimSQLModel, table=True):
 	__tablename__ = "subfigure"
 	__table_args__ = (
-		ForeignKeyConstraint(["run_id", "figure_id"], ["results.figure.run_id", "results.figure.id"], ondelete="CASCADE"),
+		ForeignKeyConstraint(["run_id", "figure_id"], ["results.figure.run_id", "results.figure.id"],
+							 ondelete="CASCADE", onupdate="CASCADE"),
 		dict(schema="results")
 	)
 
@@ -142,6 +135,18 @@ class Subfigure(ExsclaimSQLModel, table=True):
 		description="The classification code.",
 		nullable=False
 	)
+	classification_confidence: Optional[float] = Field(
+		ge=0,
+		le=1,
+		description="The confidence of the subfigure's classification.",
+		nullable=True
+	)
+	confidence: Optional[float] = Field(
+		ge=0,
+		le=1,
+		description="The confidence of the subfigure's bounding box.",
+		nullable=True
+	)
 	height: Optional[float]
 	width: Optional[float]
 	nm_height: Optional[float]
@@ -151,6 +156,8 @@ class Subfigure(ExsclaimSQLModel, table=True):
 	x2: int
 	y2: int
 	caption: Optional[str]
+	caption_input_tokens: Optional[int]
+	caption_output_tokens: Optional[int]
 	keywords: Optional[list[str]] = Field(
 		default=None,
 		description="The keywords related to the subfigure.",
@@ -165,7 +172,8 @@ class Subfigure(ExsclaimSQLModel, table=True):
 class Scale(ExsclaimSQLModel, table=True):
 	__tablename__ = "scale"
 	__table_args__ = (
-		ForeignKeyConstraint(["run_id", "subfigure_id"], ["results.subfigure.run_id", "results.subfigure.id"], ondelete="CASCADE"),
+		ForeignKeyConstraint(["run_id", "subfigure_id"], ["results.subfigure.run_id", "results.subfigure.id"],
+							 ondelete="CASCADE", onupdate="CASCADE"),
 		dict(schema="results")
 	)
 
@@ -183,11 +191,11 @@ class Scale(ExsclaimSQLModel, table=True):
 		default=None,
 		nullable=True,
 	)
-	label_line_distance: Optional[float] = Field(# TODO: Make this DOUBLE PRECISION
+	label_line_distance: Optional[float] = Field(
 		default=None,
 		nullable=True,
 	)
-	confidence: Optional[float] = Field(# TODO: Make this DOUBLE PRECISION
+	confidence: Optional[float] = Field(
 		default=None,
 		nullable=True,
 	)
@@ -200,7 +208,8 @@ class Scale(ExsclaimSQLModel, table=True):
 class SubfigureLabel(ExsclaimSQLModel, table=True):
 	__tablename__ = "subfigurelabel"
 	__table_args__ = (
-		ForeignKeyConstraint(["run_id", "subfigure_id"], ["results.subfigure.run_id", "results.subfigure.id"], ondelete="CASCADE"),
+		ForeignKeyConstraint(["run_id", "subfigure_id"], ["results.subfigure.run_id", "results.subfigure.id"],
+							 ondelete="CASCADE", onupdate="CASCADE"),
 		dict(schema="results")
 	)
 
@@ -212,11 +221,11 @@ class SubfigureLabel(ExsclaimSQLModel, table=True):
 	y1: int
 	x2: int
 	y2: int
-	label_confidence: Optional[float] = Field(# TODO: Make this DOUBLE PRECISION
+	label_confidence: Optional[float] = Field(
 		default=None,
 		nullable=True,
 	)
-	box_confidence: Optional[float] = Field(# TODO: Make this DOUBLE PRECISION
+	box_confidence: Optional[float] = Field(
 		default=None,
 		nullable=True,
 	)
@@ -230,7 +239,8 @@ class SubfigureLabel(ExsclaimSQLModel, table=True):
 class ScaleLabel(ExsclaimSQLModel, table=True):
 	__tablename__ = "scalelabel"
 	__table_args__ = (
-		ForeignKeyConstraint(["run_id", "scale_bar_id"], ["results.scale.run_id", "results.scale.id"], ondelete="CASCADE"),
+		ForeignKeyConstraint(["run_id", "scale_bar_id"], ["results.scale.run_id", "results.scale.id"],
+							 ondelete="CASCADE", onupdate="CASCADE"),
 		dict(schema="results")
 	)
 

@@ -1,26 +1,55 @@
 from ..models import *
+from .users import CurrentUser
 
-from fastapi import APIRouter
-from starlette.responses import JSONResponse
+from fastapi import APIRouter, status, HTTPException
+from re import findall
 from starlette.requests import Request
-from sqlmodel import SQLModel
-from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import Any, Callable
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any, Callable, Optional
 from uuid import UUID
 
 __all__ = ["router", "get_items_responses", "articles", "figures", "subfigures", "article", "figure", "subfigure"]
 
-router = APIRouter()
-DJANGO_COMPATIBILITY = "Django API Backwards Compatibility"
+router = APIRouter(prefix="/results/v1")
+TAG = "Results from Queries"
 
 
-async def get_item(cls, results_id:UUID, _id:str, session: AsyncSession, error_msg:Callable[[str], str]):
-	item = await cls.get_item(results_id, _id, session)
+async def check_run_owner(user: User, session: AsyncSession, results_id: UUID, cls: Type[ExsclaimSQLModel]):
+	query = await session.execute(select(Results).where(Results.id == results_id))
+	results: Optional[Results] = query.scalar_one_or_none()
+
+	if not User.has_permission(user, results):
+		match = findall(r"([A-Z][a-z]+)", cls.__name__)
+		if match:
+			description = " ".join(match).capitalize()
+		else:
+			description = cls.__name__
+
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{description}s not found.")
+
+
+async def get_item(cls, results_id: UUID, _id: str, user: User, session: AsyncSession, error_msg: Callable[[str], str]):
+	await check_run_owner(user, session, results_id, cls)
+	
+	statement = select(cls).where(cls.id == _id).where(cls.run_id == results_id)
+	results = await session.execute(statement)
+	item = results.scalar_one_or_none()
 
 	if item is not None:
 		return item
 
-	return JSONResponse(dict(message=error_msg(_id), status_code=404, media_type="application/json"))
+	return dict(message=error_msg(_id), status_code=status.HTTP_404_NOT_FOUND, media_type="application/json")
+
+
+async def get_items(cls, results_id: UUID, user: User, session: AsyncSession, page: Optional[int] = None):
+	await check_run_owner(user, session, results_id, cls)
+
+	statement = select(cls).where(cls.run_id == results_id)
+	if isinstance(page, int) and page != -1:
+		statement = statement.limit(50).offset(page * 50)
+	query = await session.execute(statement)
+	return query.scalars().all()
 
 
 def get_items_responses(_type:str, description_word:str, example:list[dict[str, Any]]):
@@ -89,8 +118,8 @@ def get_item_responses(*args, **kwargs):
 
 
 # region Lists of Objects
-@router.get("/{results_id}/articles", tags=[DJANGO_COMPATIBILITY], response_model=list[Article],
-		 responses=get_items_responses("Article", "articles", [
+@router.api_route("/{results_id}/articles", methods=["GET", "HEAD"], tags=[TAG], response_model=list[Article],
+			responses=get_items_responses("Article", "articles", [
 			 {
 				 "id": "s41467-024-50040-6",
 				 "title": "Offshore wind and wave energy can reduce total installed capacity required in zero-emissions grids | Nature Communications",
@@ -119,93 +148,80 @@ def get_item_responses(*args, **kwargs):
 				 "abstract": "null"
 			 }
 		 ]))
-async def articles(request: Request, results_id:UUID):
-	session = request.state.session
-	return await Article.get_items(results_id, session)
+async def articles(request: Request, results_id: UUID, user: CurrentUser):
+	return await get_items(Article, results_id, user, request.state.session)
 
 
-@router.get("/{results_id}/figures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Figure],
-		 responses=get_items_responses("Figure", "figures", []))
-async def figures(request: Request, results_id:UUID, page=None):
-	session = request.state.session
-	return await Figure.get_items(results_id, session)
+@router.api_route("/{results_id}/figures", methods=["GET", "HEAD"], tags=[TAG], response_model=list[Figure],
+			responses=get_items_responses("Figure", "figures", []))
+async def figures(request: Request, results_id: UUID, user: CurrentUser, page=None):
+	return await get_items(Figure, results_id, user, request.state.session, page)
 
 
-@router.get("/{results_id}/subfigures/", tags=[DJANGO_COMPATIBILITY], response_model=list[Subfigure],
-		 responses=get_items_responses("Subfigure", "subfigures", []))
-async def subfigures(request: Request, results_id:UUID, page=None):
-	session = request.state.session
-	return await Subfigure.get_items(results_id, session)
+@router.api_route("/{results_id}/subfigures", methods=["GET", "HEAD"], tags=[TAG], response_model=list[Subfigure],
+			responses=get_items_responses("Subfigure", "subfigures", []))
+async def subfigures(request: Request, results_id: UUID, user: CurrentUser, page=None):
+	return await get_items(Subfigure, results_id, user, request.state.session)
 
 
-@router.get("/{results_id}/scales/", tags=[DJANGO_COMPATIBILITY], response_model=list[Scale],
-		 responses=get_items_responses("Scale", "scales", []))
-async def scales(request: Request, results_id:UUID):
-	session = request.state.session
-	return await Scale.get_items(results_id, session)
+@router.api_route("/{results_id}/scales", methods=["GET", "HEAD"], tags=[TAG], response_model=list[Scale],
+			responses=get_items_responses("Scale", "scales", []))
+async def scales(request: Request, results_id: UUID, user: CurrentUser):
+	return await get_items(Scale, results_id, user, request.state.session)
 
 
-@router.get("/{results_id}/subfigure_labels/", tags=[DJANGO_COMPATIBILITY], response_model=list[SubfigureLabel],
-		 responses=get_items_responses("SubfigureLabel", "subfigure labels", []))
-async def subfigure_labels(request: Request, results_id:UUID):
-	session = request.state.session
-	return await SubfigureLabel.get_items(results_id, session)
+@router.api_route("/{results_id}/subfigure_labels", methods=["GET", "HEAD"], tags=[TAG], response_model=list[SubfigureLabel],
+			responses=get_items_responses("SubfigureLabel", "subfigure labels", []))
+async def subfigure_labels(request: Request, results_id: UUID, user: CurrentUser):
+	return await get_items(SubfigureLabel, results_id, user, request.state.session)
 
 
-@router.get("/{results_id}/scale_labels/", tags=[DJANGO_COMPATIBILITY], response_model=list[ScaleLabel],
-		 responses=get_items_responses("ScaleLabel", "scale labels", []))
-async def scale_labels(request: Request, results_id:UUID):
-	session = request.state.session
-	return await ScaleLabel.get_items(results_id, session)
-
-
-@router.get("/{results_id}/articles/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Article,
-		 responses=get_item_responses())
-async def article(request: Request, results_id:UUID, id:str) -> JSONResponse | SQLModel:
-	session = request.state.session
-	return await get_item(Article, results_id, id, session, "No article with id: {}.".format)
+@router.api_route("/{results_id}/scale_labels", methods=["GET", "HEAD"], tags=[TAG], response_model=list[ScaleLabel],
+			responses=get_items_responses("ScaleLabel", "scale labels", []))
+async def scale_labels(request: Request, results_id: UUID, user: CurrentUser):
+	return await get_items(ScaleLabel, results_id, user, request.state.session)
 # endregion
 
 
 # region Individual Objects
-@router.get("/{results_id}/articles/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Article,
-			responses=get_item_responses("Article", "articles"))
-async def articles(request: Request, results_id:UUID, id:str):
+@router.api_route("/{results_id}/articles/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=Article,
+			responses=get_item_responses("Article", "article"))
+async def article(request: Request, results_id: UUID, id: str, user: CurrentUser):
 	session = request.state.session
-	return await get_item(Article, results_id, id, session, "No Article with id: {}".format)
+	return await get_item(Article, results_id, id, user, session, "No Article with id: {}".format)
 
 
-@router.get("/{results_id}/figures/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Figure,
-			responses=get_item_responses("Figure", "figures", []))
-async def figures(request: Request, results_id:UUID, id:str):
+@router.api_route("/{results_id}/figures/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=Figure,
+			responses=get_item_responses("Figure", "figure", []))
+async def figure(request: Request, results_id: UUID, id: str, user: CurrentUser):
 	session = request.state.session
-	return await get_item(Figure, results_id, id, session, "No Figure with id: {}".format)
+	return await get_item(Figure, results_id, id, user, session, "No Figure with id: {}".format)
 
 
-@router.get("/{results_id}/subfigures/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Subfigure,
-			responses=get_item_responses("Subfigure", "subfigures", []))
-async def subfigures(request: Request, results_id:UUID, id:str):
+@router.api_route("/{results_id}/subfigures/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=Subfigure,
+			responses=get_item_responses("Subfigure", "subfigure", []))
+async def subfigure(request: Request, results_id: UUID, id: str, user: CurrentUser):
 	session = request.state.session
-	return await get_item(Subfigure, results_id, id, session, "No Subfigure with id: {}".format)
+	return await get_item(Subfigure, results_id, id, user, session, "No Subfigure with id: {}".format)
 
 
-@router.get("/{results_id}/scales/{id}", tags=[DJANGO_COMPATIBILITY], response_model=Scale,
-			responses=get_item_responses("Scale", "scales", []))
-async def scales(request: Request, results_id:UUID, id:str):
+@router.api_route("/{results_id}/scales/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=Scale,
+			responses=get_item_responses("Scale", "scale", []))
+async def scale(request: Request, results_id: UUID, id: str, user: CurrentUser):
 	session = request.state.session
-	return await get_item(Scale, results_id, id, session, "No Scale with id: {}".format)
+	return await get_item(Scale, results_id, id, user, session, "No Scale with id: {}".format)
 
 
-@router.get("/{results_id}/subfigure_labels/{id}", tags=[DJANGO_COMPATIBILITY], response_model=SubfigureLabel,
-			responses=get_item_responses("SubfigureLabel", "subfigure labels", []))
-async def subfigure_labels(request: Request, results_id:UUID, id:str):
+@router.api_route("/{results_id}/subfigure_labels/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=SubfigureLabel,
+			responses=get_item_responses("SubfigureLabel", "subfigure label", []))
+async def subfigure_label(request: Request, results_id: UUID, id: str, user: CurrentUser):
 	session = request.state.session
-	return await get_item(SubfigureLabel, results_id, id, session, "No SubfigureLabel with id: {}".format)
+	return await get_item(SubfigureLabel, results_id, id, user, session, "No SubfigureLabel with id: {}".format)
 
 
-@router.get("/{results_id}/scale_labels/{id}", tags=[DJANGO_COMPATIBILITY], response_model=ScaleLabel,
-			responses=get_item_responses("ScaleLabel", "scale labels", []))
-async def scale_labels(request: Request, results_id:UUID, id:str):
+@router.api_route("/{results_id}/scale_labels/{id}", methods=["GET", "HEAD"], tags=[TAG], response_model=ScaleLabel,
+			responses=get_item_responses("ScaleLabel", "scale label", []))
+async def scale_label(request: Request, results_id: UUID, id: str, user: CurrentUser):
 	session = request.state.session
-	return await get_item(ScaleLabel, results_id, id, session, "No ScaleLabel with id: {}".format)
+	return await get_item(ScaleLabel, results_id, id, user, session, "No ScaleLabel with id: {}".format)
 # endregion

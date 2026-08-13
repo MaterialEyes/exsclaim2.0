@@ -2,72 +2,116 @@
 Common Dash components converted from React components.
 """
 import dash_bootstrap_components as dbc
-from dash import html, clientside_callback, Output, Input, State
+from dash import html, clientside_callback, Output, Input, State, callback, ClientsideFunction, dcc
+from dash.development.base_component import Component
+from dash_extensions import Purify
+from typing import Any, Optional
+
+__all__ = ["create_header_component", "create_notification_component", "create_footer_component"]
 
 
-def create_header_component():
+def create_login_component():
+	return [
+		dcc.Interval(
+			id="check-user",
+			max_intervals=1,
+		),
+		html.Div([
+				html.Button(children="Menu", className="dropbtn"), # TODO: Add the menu icon here
+				html.Div(children=[
+					html.Div([
+						html.P([
+							html.A("Signup", href="/signup"),
+							"|",
+							html.A("Login", href="/login"),
+						])], id="signup-banner"),
+						html.A(
+							children="See Previous Runs",
+							href="/previous"
+						)
+					],
+					className="dropdown-content",
+				)
+			],
+			className="dropdown"
+		),
+
+	]
+
+
+def create_header_component(description: Optional[list[Component]] = None):
 	"""
 	Create the header component with logo, welcome message, and notification.
 	
 	Returns:
 		dbc.Container: Header component
 	"""
+	description = description or [html.P(style={"textAlign": "center", "marginBottom": "20px"}, children=[
+		"On this website, you can submit a query for EXSCLAIM to run through. ",
+		html.Br(),
+		"Once you submit, a list of subfigures will appear on the right and a menu on the left. Then, you can query through the subfigures with the left-hand menu. ",
+		html.Br(),
+		"Have fun querying!"
+	])]
+
 	return dbc.Container([
 		# Logo section
 		html.Div([
-			html.Img(
-				id="exsclaim-logo",
-				src="/assets/ExsclaimLogo-Inverted.png",
-				alt="EXSCLAIM Logo",
-				style={
-					"maxWidth": "350px",
-					"height": "auto",
-					"display": "block",
-					"margin": "0 auto"
-				},
+			html.A(
+				html.Img(
+					id="exsclaim-logo",
+					src="/assets/ExsclaimLogo-Inverted.png",
+					alt="EXSCLAIM Logo",
+					style={
+						"maxWidth": "350px",
+						"height": "auto",
+						"display": "block",
+						"margin": "0 auto"
+					},
+				),
+				href="/"
 			)
 		], style={"textAlign": "center", "marginBottom": "20px"}),
 
 		# Welcome message
 		html.H5(
 			"Welcome to the EXSCLAIM UI!",
-			style={"fontWeight": "bold", "textAlign": "center", "marginBottom": "15px"}
+			style={"fontWeight": "bold", "textAlign": "center", "marginBottom": "15px"},
+			id="welcome-banner"
 		),
 
-		dbc.Row([
-			dbc.Col([
-				# Description
-				html.P(style={"textAlign": "center", "marginBottom": "20px"}, children=[
-					"On this website, you can submit a query for EXSCLAIM to run through. ",
-					html.Br(),
-					"Once you submit, a list of subfigures will appear on the right and a menu on the left. Then, you can query through the subfigures with the left-hand-side menu. ",
-					html.Br(),
-					"Have fun querying!"
-				]),
-			]),
-			dbc.Col(width="auto", children=[
-				dbc.Switch(
-					id="theme-button",
-					label_class_name="checkbox-label",
-					label_id="theme-label",
-					label=[
-						html.I(className="fas fa-moon"),
-						html.I(className="fas fa-sun"),
-						html.Span(className="ball")
-					],
-					value=False,
-					persistence=True,
-					className="checkbox"
-				)
-			])
-		]),
+		*create_login_component(),
+
+		dbc.Switch(
+			id="theme-button",
+			label_class_name="checkbox-label",
+			label_id="theme-label",
+			label=[
+				html.I(className="fas fa-moon"),
+				html.I(className="fas fa-sun"),
+				html.Span(className="ball")
+			],
+			value=False,
+			persistence=True,
+			className="checkbox",
+			style={
+				"position": "fixed",
+				"z-index": "100",
+				"top": "20px",
+				"right": "20px"
+			}
+		),
+
+		*description,
 
 		# Notification component
-		create_notification_component()
+		create_notification_component(),
+
+		create_banner_component()
 	], fluid=True)
 
 
-def create_notification_component() -> dbc.Alert:
+def create_notification_component() -> html.Center:
 	"""
 	Create notification component for alerts.
 
@@ -75,11 +119,34 @@ def create_notification_component() -> dbc.Alert:
 		dbc.Alert: Notification component
 	"""
 
-	return dbc.Alert(
-		id="notification",
-		dismissable=True,
-		is_open=False
-	)
+	return html.Center([
+		dbc.Alert(
+			Purify(id="notification-html"),
+			id="notification",
+			dismissable=True,
+			is_open=False,
+			fade=False
+		)
+	])
+
+
+def create_banner_component() -> html.Center:
+	"""
+	Create notification component for alerts.
+
+	Returns:
+		html.Center: Centered Banner
+	"""
+
+	return html.Center([
+		dbc.Alert(
+			Purify(id="banner-html"),
+			id="banner",
+			dismissable=True,
+			is_open=False,
+			fade=False
+		)
+	])
 
 
 def create_footer_component():
@@ -124,6 +191,18 @@ def create_footer_component():
 						href="https://arxiv.org/abs/2103.10631",
 						target="_blank",
 						style={"display": "block", "marginBottom": "5px"}
+					),
+					html.A(
+						"Terms of Service",
+						href="/terms-of-service",
+						target="_blank",
+						style={"display": "block", "marginBottom": "5px"}
+					),
+					html.A(
+						"Privacy Policy",
+						href="/privacy-policy",
+						target="_blank",
+						style={"display": "block", "marginBottom": "5px"}
 					)
 				])
 			])
@@ -132,27 +211,83 @@ def create_footer_component():
 
 
 clientside_callback(
-	"""
-	function setTheme(theme="dark", data) {
-		if(data.first_visit === undefined){
-			data.first_visit = false;
-			if(window.matchMedia){
-				if(window.matchMedia("(prefers-color-scheme: dark)")){
-					theme = "dark";
-				}
-			}
-		} else if (theme){
-			theme = "light";
-		} else {
-			theme = "dark";
-		}
-		
-		document.body.setAttribute("data-theme", theme);
-		data.theme = theme;
-		return data;
-	}
-	""",
-	Output("theme", "data"),
+	ClientsideFunction(
+		namespace="clientside",
+		function_name="setTheme"
+	),
+	Output("storage", "data"),
 	Input("theme-button", "value"),
-	State("theme", "data")
+	State("storage", "data")
+)
+
+
+clientside_callback(
+	ClientsideFunction(
+		namespace="clientside",
+		function_name="update_info_banner"
+	),
+	Output("banner", "is_open"),
+	Output("banner-html", "html"),
+	Output("storage", "data"),
+	State("storage", "data"),
+	State("exsclaim-store", "data"),
+	_allow_dynamic_callbacks=True
+)
+
+
+@callback(
+	Output("signup-banner", "children"),
+	Output("welcome-banner", "children"),
+	Input("check-user", "n_intervals"),
+	State("exsclaim-store", "data"),
+	_allow_dynamic_callbacks=True
+)
+async def get_username_if_logged_in(_, data: dict[str, Any]):
+	from httpx import AsyncClient
+	from flask import request
+
+	cookie = request.cookies.get("access_token")
+
+	default_values = ([html.P(children=[
+		html.A("Signup", href="/signup"),
+		"  |  ",
+		html.A("Login", href="/login"),
+	])], ["Welcome to the EXSCLAIM UI!"])
+
+	if not cookie:
+		return default_values
+
+	async with AsyncClient() as client:
+		response = await client.get(f"{data['fast_api_url']}/user/name", cookies=dict(access_token=cookie))
+		if response.status_code != 200:
+			return default_values
+		else:
+			username = response.json()["username"]
+
+	return (
+		html.P("Logout", id="logout-button"),
+		f"Welcome to the EXSCLAIM UI, {username}!"
+	)
+
+
+clientside_callback(
+	ClientsideFunction(
+		namespace="user",
+		function_name="logout"
+	),
+	[
+		Output("notification", "is_open", allow_duplicate=True),
+		Output("notification", "children", allow_duplicate=True),
+		Output("notification", "color", allow_duplicate=True),
+		Output("url", "href", allow_duplicate=True),
+		Output("url", "refresh", allow_duplicate=True),
+	],
+	[
+		Input("logout-button", "n_clicks", allow_optional=True)
+	],
+	[
+		State("exsclaim-store", "data"),
+		State("url", "href"),
+	],
+	prevent_initial_call=True
 )

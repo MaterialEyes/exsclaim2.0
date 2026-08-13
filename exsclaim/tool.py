@@ -7,23 +7,28 @@ package. All the model classes are independent of each
 other, but they expose the same interface, so they are
 interchangeable.
 """
-
-from .caption import LLM
-from .exceptions import JournalScrapeError
+from .caption import LLM, LLMUsage, OptionalSemaphore
+from .config import settings
+from .exceptions import PipelineInterruptionException, JournalScrapeError
 from .journal import JournalFamily
 from .utilities import initialize_results_dir, PrinterFormatter
 
 from abc import ABC, abstractmethod
-from asyncio import gather, Lock, Semaphore
 from json import dump, load, JSONEncoder
 from logging import getLogger, StreamHandler
 from os import PathLike
 from pathlib import Path
-from re import match
 from time import time_ns as timer
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Collection
 
+import asyncio
 import numpy as np
+import re
+
+if settings.DISPLAY_TQDM:
+	from tqdm.asyncio import tqdm_asyncio
+	# from tqdm.contrib.logging import logging_redirect_tqdm
+	from .utilities.tqdm import tqdm_logging_redirect
 
 
 __all__ = ["ExsclaimTool", "JournalScraper", "CaptionDistributor"]
@@ -51,9 +56,14 @@ class ExsclaimTool(ABC):
 				handler.setFormatter(PrinterFormatter())
 				logger.addHandler(handler)
 
-		self.default_permissions = search_query.get("default_permissions", 0o775)
 		self.logger = logger
 		self.search_query = search_query
+
+	async def __aenter__(self):
+		await self.load()
+
+	async def __aexit__(self, exc_type, exc_val, exc_tb):
+		await self.unload()
 
 	async def load(self):
 		...
@@ -78,8 +88,8 @@ class ExsclaimTool(ABC):
 					# Load query file to dict
 					search_query = load(f)
 			except Exception as e:
-				self.logger.debug(f"Search Query must be a pathlib.Path or dictionary, not {search_query.__class__.__name__}.")
-				self.logger.exception(e)
+				self.logger.exception(f"Search Query must be a pathlib.Path or dictionary, not {search_query.__class__.__name__}.", exc_info=e)
+				raise PipelineInterruptionException("Could not validate the search query passed.") from e
 
 		self._search_query = search_query
 
@@ -126,15 +136,33 @@ class ExsclaimTool(ABC):
 	def _start_timer() -> int:
 		return timer()
 
-	def _end_timer(self, t0:int, context:str):
+	def _end_timer(self, start: int, context: str, idx: Optional[int] = None, total: Optional[int] = None):
 		# The timer measures in nanoseconds, this will convert it to seconds
-		time_diff = (timer() - t0) / 1e9
+		time_diff = (timer() - start) / 1e9
 		context = f"\t({context})" if context else ""
-		self.display_info(f">>> Time Elapsed: {time_diff:,.2f} sec{context}\n")
+		message = f">>> Time Elapsed: {time_diff:,.2f} sec{context}"
+		if idx is not None:
+			message += f"\t[{idx:,} of {total:,}]"
+		self.display_info(message + "\n")
 
 	@abstractmethod
-	async def run(self, search_query:dict, exsclaim_json:dict):
+	async def run(self, search_query: dict, exsclaim_json: dict):
 		pass
+
+	async def _await_task_completions(self, tasks: Collection[asyncio.Task], t0: int, units: str, tqdm_desc: Callable[[str], str]):
+		num_items = len(tasks)
+		if not settings.DISPLAY_TQDM:
+			for i, future in enumerate(asyncio.as_completed(tasks), start=1):
+				_id = await future
+				self._end_timer(t0, f"{self.__class__.__name__}: {_id}", i, num_items)
+		else:
+			pbar = tqdm_asyncio(asyncio.as_completed(tasks), total=num_items,
+			                    desc=f"Scraping articles from {journal_family_name}")
+			with tqdm_logging_redirect(self.logger):
+				for f in pbar:
+					await f
+
+		self._end_timer(t0, f"{num_items:,} {units}")
 
 	def display_info(self, info):
 		"""Display information to the user as the specified in the query
@@ -144,9 +172,9 @@ class ExsclaimTool(ABC):
 		"""
 		self.logger.info(info)
 
-	def display_exception(self, e:Exception, figure_path):
-		error_msg = f"<!> ERROR: An exception occurred in {self.__class__.__name__} on figure: {figure_path}. Exception: {e}"
-		self.logger.exception(error_msg)
+	def display_exception(self, e: Exception, figure_path: str):
+		error_msg = f"<!> ERROR: An exception occurred in {self.__class__.__name__} on figure: {figure_path}."
+		self.logger.exception(error_msg, exc_info=e)
 
 
 class JournalScraper(ExsclaimTool):
@@ -162,40 +190,49 @@ class JournalScraper(ExsclaimTool):
 		super().__init__(search_query, **kwargs)
 		self.new_articles_visited = set()
 
-	def _appendJSON(self, exsclaim_json):
+	def _appendJSON(self, exsclaim_json: dict, data: Iterable[str] = None, filename: Optional[str] = None):
 		"""Commit updates to exsclaim json and update list of scraped articles
 
 		Args:
 			filename (string): File in which to store the updated EXSCLAIM JSON
 			exsclaim_json (dict): Updated EXSCLAIM JSON
 		"""
-		super()._appendJSON(exsclaim_json, data=map(lambda article: article.split('/')[-1], self.new_articles_visited), filename="articles")
+		super()._appendJSON(exsclaim_json, data=map(lambda article: article.split('/')[-1], data), filename=filename)
 
-	def _run_loop_function(self, search_query, exsclaim_json: dict, figure: Path, new_separated: set):
-		return exsclaim_json
+	async def _handle_scrape_error(self, e: JournalScrapeError):
+		self.logger.exception("An error occurred during the journal scraping.", exc_info=e)
+		if (error_dir := settings.UNSCRAPED_HTML_PATH) is not None:
+			if e.url is not None and e.html is not None:
+				error_dir.mkdir(parents=True, exist_ok=True)
 
-	async def runner(self, exsclaim_json:dict, search_query:dict, article:str, journal_family_name:str, lock:Lock):
+				with open(error_dir / f"{e.url.split('/')[-1]}.html", 'w') as f:
+					f.write(await e.html.prettify())
+		
+	async def task(self, exsclaim_json: dict, search_query: dict, article: str, journal_family_name: str, html_directory: Path,
+					 lock: asyncio.Lock):
 		# Extract figures, captions, and metadata from each article
-		t0 = self._start_timer()
 		self.display_info(f">>> Extracting figures from: {article.split('/')[-1]}")
 		try:
 			async with JournalFamily(journal_family_name, search_query,
 								 scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
 				url = journal.domain + article
 				try:
-					article_dict = await journal.get_article_figures(url)
+					article_dict = await journal.get_article_figures(url, html_directory)
 
-					async with lock:
-						self._update_exsclaim(exsclaim_json, article_dict)
+					if article_dict:
+						async with lock:
+							self._update_exsclaim(exsclaim_json, article_dict)
 					self.new_articles_visited.add(article)
-				except JournalScrapeError:
+				except JournalScrapeError as e:
 					self.logger.exception(f"Could not scrape the details for {url}.")
+					await self._handle_scrape_error(e)
+					raise e
+
 		except Exception as e:
 			self.display_exception(e, article)
+		return article
 
-		self._end_timer(t0, f"JournalScraper: {article}")
-
-	async def run(self, search_query:dict, exsclaim_json:dict):
+	async def run(self, search_query: dict, exsclaim_json: dict):
 		"""Run the JournalScraper to find relevant article figures
 
 		Args:
@@ -209,17 +246,42 @@ class JournalScraper(ExsclaimTool):
 		journal_family_name = search_query["journal_family"]
 		exsclaim_json = exsclaim_json or dict()
 
+		# List of objects (articles) that have already been separated
+		already_done = self.results_directory / "_articles"
+
+		if already_done.is_file():
+			with open(already_done, "r", encoding="utf-8") as f:
+				separated = {line.strip() for line in f.readlines()}
+		else:
+			separated = set()
+
+		with open(already_done, "w", encoding="utf-8") as f:
+			for figure in separated:
+				f.write(f"{Path(figure).name}\n")
+
+		html_directory = self.results_directory / "html"
+		html_directory.mkdir(exist_ok=True)
+
 		self.display_info(f"Running Journal Scraper\n")
 
 		async with JournalFamily(journal_family_name, search_query,
 								 scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
-			extensions = await journal.get_article_extensions()
+			try:
+				extensions = await journal.get_article_extensions()
+			except JournalScrapeError as e:
+				await self._handle_scrape_error(e)
+				raise e
 
-		lock = Lock()
-		await gather(*[
-			self.runner(exsclaim_json, search_query, extension, journal_family_name, lock) for extension in extensions
-		])
+		lock = asyncio.Lock()
 
+		async with asyncio.TaskGroup() as tg:
+			t0 = self._start_timer()
+			tasks = [tg.create_task(self.task(exsclaim_json, search_query, extension, journal_family_name, html_directory, lock))
+					 for extension in extensions]
+			
+			await self._await_task_completions(tasks, t0, "articles", "Scraping articles from {}".format)
+
+		self._appendJSON(exsclaim_json, data=separated, filename="_articles")
 		return exsclaim_json
 
 
@@ -233,35 +295,30 @@ class CaptionDistributor(ExsclaimTool):
 		Absolute path to caption nlp model
 	"""
 
-	def __init__(self, search_query:dict, **kwargs):
+	def __init__(self, search_query: dict, **kwargs):
 		kwargs.setdefault("logger_name", __name__ + ".CaptionDistributor")
 		super().__init__(search_query, **kwargs)
+		self.llm: LLM = LLM.from_search_query(search_query, run_id=kwargs.get("run_id"))
 
-	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, delimiter,
-						 caption_dict: dict[str, str], keywords: tuple[str]):
-		exsclaim_dict[figure_name]["caption_delimiter"] = delimiter
-
-		# Gets the figure number out of the figure name
-		# match = search(r"^.+_(fig\d+)\.\w{3,4}$", exsclaim_dict[figure_name]["figure_name"])
-		# if match is None:
-		# 	raise ValueError(f"Could not find figure number in name: {figure_name}.")
-		# del match
+	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, caption_dict: dict[str, str],
+						 keywords: Collection[str], usage: LLMUsage):
+		regex = re.compile(r"\s*\[\s*]\s*")
 
 		for label, capt in caption_dict.items():
-			if match(r"\s*\[\s*]\s*", capt):
+			if regex.match(capt):
 				capt = ""
 
 			master_image = {
 				"label": label,
-				"description": capt,  # ["description"],
+				"description": capt,
 				"keywords": keywords,
-				# "context": get_context(query, documents, embeddings),
-				# "general": get_keywords(get_context(query, documents, embeddings), api, llm).split(', '),
+				"input_tokens": usage.input_tokens,
+				"output_tokens": usage.output_tokens
 			}
 			exsclaim_dict[figure_name]["unassigned"]["captions"].append(master_image)
 		return exsclaim_dict
 
-	def _appendJSON(self, exsclaim_json: dict, data: Iterable[str] = None, filename:str=None):
+	def _appendJSON(self, exsclaim_json: dict, data: Iterable[str] = None, filename: Optional[str] = None):
 		"""Commit updates to EXSCLAIM JSON and updates list of ed figures
 
 		Args:
@@ -272,46 +329,40 @@ class CaptionDistributor(ExsclaimTool):
 		super()._appendJSON(exsclaim_json, data=map(lambda figure: figure.split('/')[-1], data), filename=filename)
 
 	async def load(self):
-		await LLM.from_search_query(self.search_query).load()
+		self.logger.info(f"Loading LLM: {self.llm.model}.")
+		load_status = await self.llm.load(logger=self.logger)
+		if load_status:
+			self.logger.info(f"Finished loading LLM: {self.llm.model}.")
 
 	async def unload(self):
-		await LLM.from_search_query(self.search_query).unload()
+		self.logger.info(f"Unloading LLM: {self.llm.model}.")
+		await self.llm.unload(logger=self.logger)
+		self.logger.info(f"Finished unloading LLM: {self.llm.model}.")
 
-	async def _runner(self, exsclaim_json:dict, search_query:dict, figure:str, new_separated:set, lock:Lock,
-					 semaphore:Semaphore, i:int, num_captions:int):
-		try:
-			if figure == "s41929-023-01090-4_fig4.jpg":
-				self.logger.error(
-					f"There's an extra \"'\" in this {figure}'s caption that causes the JSON to not be parsed properly, skipping for now.")
-				return
-
-			async with semaphore:
-				t0 = self._start_timer()
-				self.display_info(f">>> Parsing captions from: {figure} ({i:,} of {num_captions:,}).")
-
+	async def _task(self, exsclaim_json: dict, search_query: dict, figure: str, new_separated: set, lock: asyncio.Lock,
+					 semaphore: OptionalSemaphore):
+		async with semaphore:
+			try:
 				caption_text = exsclaim_json[figure]["full_caption"]
 
-				delimiter = "0"
+				# caption_dict = await self.llm.separate_captions(caption_text)
+				# keywords = await self.llm.get_keywords(caption_text)
+				caption_dict, keywords, usage = await self.llm.parse_captions(caption_text)
 
-				llm = LLM.from_search_query(search_query)
+				if caption_dict is not None:
+					self.logger.debug(f"Full caption dict: \"{caption_dict}\".")
+					async with lock:
+						self._update_exsclaim(search_query, exsclaim_json, figure, caption_dict, keywords, usage)
+						new_separated.add(figure)
+				else:
+					self.logger.exception(f"Could not find full caption in {figure}.")
 
-				caption_dict = await llm.separate_captions(caption_text)
-				keywords = await llm.get_keywords(caption_text)
+			except Exception as e:
+				self.display_exception(e, figure)
 
-			if caption_dict is not None:
-				self.logger.debug(f"Full caption dict: \"{caption_dict}\".")
-				async with lock:
-					self._update_exsclaim(search_query, exsclaim_json, figure, delimiter, caption_dict, keywords)
-					new_separated.add(figure)
-			else:
-				self.logger.exception(f"Could not find full caption in {figure}.")
+		return figure
 
-		except Exception as e:
-			self.display_exception(e, figure)
-
-		self._end_timer(t0, f"CaptionDistributor: {figure} ({i:,} of {num_captions:,}).")
-
-	async def run(self, search_query:dict, exsclaim_json:dict, limit_llms_to:Optional[int] = 5):
+	async def run(self, search_query: dict, exsclaim_json: dict, limit_llms_to: Optional[int] = None):
 		"""Run the CaptionDistributor to distribute subfigure captions
 
 		Args:
@@ -322,8 +373,6 @@ class CaptionDistributor(ExsclaimTool):
 			exsclaim_json (dict): Updated with results of search
 		"""
 		exsclaim_json = exsclaim_json or dict()
-		semaphore = Semaphore(limit_llms_to or len(exsclaim_json))
-
 		self.display_info(f"Running Caption Distributor\n")
 
 		t0 = self._start_timer()
@@ -342,20 +391,21 @@ class CaptionDistributor(ExsclaimTool):
 		# Figure extra goes here
 		new_separated = set()
 
-		counter = 1
 		figures = [
 			value["figure_name"]
 			for value in exsclaim_json.values()
 			if value["figure_name"] not in separated
 		]
 
-		num_figures = len(figures)
-		lock = Lock()
-		await gather(*[
-			self._runner(exsclaim_json, search_query, _path, new_separated, lock, semaphore, i+1, num_figures)
-			for i, _path in enumerate(figures)
-		])
+		lock = asyncio.Lock()
+		concurrency = self.llm.request_concurrency()
+		semaphore = OptionalSemaphore(concurrency)
 
-		self._end_timer(t0, f"{counter:,} figures")
+		async with asyncio.TaskGroup() as tg:
+			tasks = [tg.create_task(self._task(exsclaim_json, search_query, _path, new_separated, lock, semaphore))
+			         for _path in figures]
+
+			await self._await_task_completions(tasks, t0, "captions", "Distributing captions from {}".format)
+
 		self._appendJSON(exsclaim_json, data=new_separated, filename="_captions")
 		return exsclaim_json

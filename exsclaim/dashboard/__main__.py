@@ -1,102 +1,130 @@
 try:
-	from ..caption import LLM
+	from ..config import ui_settings
+	from ..caption import LLMMeta
 	from ..journal import JournalFamily
 	from ..utilities import PrinterFormatter, ExsclaimFormatter
-	from .components import create_homepage_layout, create_resultpage_layout
 except ImportError:
-	from exsclaim import LLM, JournalFamily, PrinterFormatter, ExsclaimFormatter
-	from components import create_homepage_layout, create_resultpage_layout
+	from exsclaim import LLMMeta, JournalFamily, PrinterFormatter, ExsclaimFormatter, ui_settings
 
+from .components.query import get_llms
+
+import dash
 import dash_bootstrap_components as dbc
 import logging
 
-from dash import Dash, html, Output, Input, dcc, callback
-from os import getenv
-from re import search
-from uuid import UUID
+from dash import Dash, html, dcc
+from flask import Flask, send_from_directory, redirect
 
 
 __all__ = ["app", "server"]
 
 
-printer_handler = logging.StreamHandler()
-printer_handler.setFormatter(PrinterFormatter())
-file_handler = logging.FileHandler("/exsclaim/logs/exsclaim-dashboard.log", "a")
-file_handler.setFormatter(ExsclaimFormatter())
-
-logging.basicConfig(level=logging.DEBUG,
-					handlers=(printer_handler, file_handler),
-					force=True)
-
-logger = logging.getLogger(__name__)
-DEBUG = getenv("EXSCLAIM_DEBUG") is not None
-
-
-def error_handler(exception:Exception) -> None:
-	print(f"ERROR: {exception}")
-	logger.exception(str(exception))
-
-
+logger, app = None, None
 title = "EXSCLAIM Dashboard"
-app = Dash(title, title=title, on_error=error_handler,
-		   external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME])
-server = app.server
-
-available_llms = [dict(
-					model_name=model_name,
-					needs_api_key=needs_api_key,
-					display_name=label if label is not None else model_name.title()
-				  ) for model_name, (cls, needs_api_key, label) in LLM]
-show_api_key = {llm["model_name"]: llm["needs_api_key"] for llm in available_llms}
-
-journal_families = [name for name, cls in JournalFamily]
-fastapi_url = getenv("FAST_API_URL", "http://localhost:8000").rstrip('/')
-public_fastapi_url = getenv("PUBLIC_FAST_API_URL", fastapi_url).rstrip('/')
-
-# Use the new Dash HomePage layout instead of React components
-home_page = create_homepage_layout(title, journal_families, available_llms)
-
-healthcheck = html.Div([
-	html.P("EXSCLAIM Dashboard is operating normally.")
-])
+server = Flask(title, static_folder="assets")
 
 
-app.layout = html.Div([
-	dcc.Store(
-		id="theme",
-		storage_type="local",
-		data=dict(theme="light")),
-	dcc.Store(
-		id="exsclaim-store",
-		storage_type="session",
-		data=dict(
-			fast_api_url=fastapi_url,
-			available_llms=available_llms,
-			show_api_key=show_api_key,
-			public_fastapi_url=public_fastapi_url
-		)),
-	dcc.Location(id="url", refresh=False),
-	html.Div(id="page-content"),
-])
+def create_logger(settings) -> logging.Logger:
+	printer_handler = logging.StreamHandler()
+	printer_handler.setFormatter(PrinterFormatter())
+	printer_handler.setLevel(logging.INFO)
+
+	file_handler = logging.FileHandler(settings.LOGS_PATH / "exsclaim-dashboard.log", "a")
+	file_handler.setFormatter(ExsclaimFormatter())
+	file_handler.setLevel(logging.DEBUG)
+
+	handlers = (printer_handler, file_handler)
+	logging.basicConfig(level=logging.INFO, force=True, handlers=[printer_handler])
+						# handlers=handlers,
+
+	logger = logging.getLogger("exsclaim.dashboard")
+	for handler in handlers:
+		logger.addHandler(handler)
+	return logger
 
 
-@callback(
-	Output("page-content", "children"),
-	Input("url", "pathname")
-)
-def page_router(pathname:str):
-	if pathname == "/" or pathname == "":
-		return home_page
-	elif pathname == "/healthcheck":
-		return healthcheck
-	elif (result_id := search(r"/results/([\da-z-]+)", pathname)) is not None:
-		result_id = result_id.group(1)
-		return create_resultpage_layout(UUID(result_id), fastapi_url)
-	return None # TODO: Raise 404
+def error_handler(exception: Exception) -> None:
+	print(f"ERROR: {exception}")
+	logger.exception(str(exception), exc_info=exception)
+
+
+def get_app() -> Dash:
+	global logger, app
+
+	logger = create_logger(ui_settings)
+	app = Dash(title, title=title, on_error=error_handler, suppress_callback_exceptions=not ui_settings.DEBUG, compress=True,
+			   external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME], use_pages=True,
+			   external_scripts=["https://cdn.plot.ly/plotly-3.5.1.min.js"],
+			   meta_tags=[
+				   {"property": "og:type", "content": "website"},
+				   {"property": "og:url", "content": ui_settings.DOMAIN},
+				   {"property": "og:title", "content": "EXSCLAIM Dashboard"},
+				   {"property": "og:description", "content": ""},
+				   {"property": "og:image", "content": f"{ui_settings.DOMAIN}/banner"},
+			   ],
+			   health_endpoint="/healthcheck", server=server)
+	available_llms, show_api_key, required_api_key = get_llms()
+
+	fastapi_url = ui_settings.FAST_API_URL
+	public_fastapi_url = ui_settings.PUBLIC_API_URL
+
+	app.layout = html.Div([
+		dcc.Interval(
+			id="check-credentials",
+			interval=300_000 # Check every 5 minutes
+		),
+		dcc.Store(
+			id="storage",
+			storage_type="local",
+			data=dict(
+				theme="light",
+				last_seen_banner=None
+			)
+		),
+		dcc.Store(
+			id="exsclaim-store",
+			storage_type="memory",
+			data=dict(
+				fast_api_url=fastapi_url,
+				available_llms=available_llms,
+				show_api_key=show_api_key,
+				required_api_key=required_api_key,
+				public_fastapi_url=public_fastapi_url
+			)),
+		dcc.Location(id="url", refresh=False),
+		# html.Div([
+		# 	dcc.Link(page["name"], href=page["relative_path"]) for page in dash.page_registry.values()
+		# ]),
+		dash.page_container
+	])
+	return app
+
+
+@server.route("/terms-of-service")
+def terms_of_service():
+	return send_from_directory("assets", "terms_of_service.html")
+
+
+@server.route("/privacy-policy")
+def privacy_policy():
+	return send_from_directory("assets", "privacy_policy.html")
+
+
+@server.route("/favicon.ico")
+def favicon():
+	return send_from_directory("assets", "favicon.ico")
+
+
+@server.route("/logout")
+def logout():
+	return redirect(f"{ui_settings.PUBLIC_API_URL}/user/logout")
 
 
 def main():
-	app.run(debug=DEBUG, port=getenv("DASHBOARD_PORT", 3000), host="0.0.0.0")
+	app.run(debug=ui_settings.DEBUG, port=ui_settings.DASHBOARD_PORT, host="0.0.0.0")
+
+
+app = get_app()
 
 
 if __name__ == "__main__":

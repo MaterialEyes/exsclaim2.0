@@ -21,13 +21,13 @@ def enablePrint():
 class ExsclaimFormatter(Formatter):
     def __init__(self):
         super().__init__(
-            "%(levelname)5s %(asctime)s.%(msecs)03d - PID: %(process)s - Thread: %(thread)d - %(name)s - Function: %(funcName)s() in %(pathname)s on line %(lineno)3d - %(message)s",
-            "%m/%d/%Y %H:%M:%S")
+            "%(asctime)s.%(msecs)03d %(levelname)5s - PID: %(process)s - Thread: %(thread)d - %(name)s - Function: %(funcName)s() in %(pathname)s on line %(lineno)3d - %(message)s",
+            "%Y/%m/%d %H:%M:%S")
 
 
 class PrinterFormatter(Formatter):
     def __init__(self):
-        super().__init__("%(asctime)s\t%(pathname)s:%(lineno)3d: %(message)s", "%m/%d/%Y %H:%M:%S")
+        super().__init__("%(asctime)s %(levelname)5s\t%(pathname)s:%(lineno)3d: %(message)s", "%Y/%m/%d %H:%M:%S")
         # super().__init__("\r\x1b[K%(asctime)s: %(message)s", "%m/%d/%Y %H:%M:%S")
 
 

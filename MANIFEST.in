@@ -9,8 +9,6 @@ recursive-include exsclaim/api *.pyi
 recursive-include exsclaim/dashboard *.py
 recursive-include exsclaim/dashboard *.pyi
 
-include exsclaim/figures/config/yolov3_default_master.cfg
-include exsclaim/figures/config/yolov3_default_subfig.cfg
 include exsclaim/figures/config/scale_label_reader.json
 include exsclaim/figures/scale/corpus.txt
 
@@ -25,5 +23,8 @@ include exsclaim/tests/data/nature_closed_expected.json
 include exsclaim/dashboard/assets/*.png
 include exsclaim/dashboard/assets/*.ico
 include exsclaim/dashboard/assets/*.css
+include exsclaim/dashboard/assets/*.js
+include exsclaim/dashboard/assets/*.svg
 
 include exsclaim/dashboard/components
+include exsclaim/dashboard/pages

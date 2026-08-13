@@ -84,7 +84,7 @@ def yolobox2label(box, info_img:ImageInfo):
 	return label
 
 
-def nms(bbox:np.ndarray, thresh:float, score:np.ndarray = None, limit:int = None) -> np.ndarray:
+def nms(bbox: np.ndarray, thresh: float, score: np.ndarray = None, limit: int = None) -> np.ndarray:
 	"""Suppress bounding boxes according to their IoUs and confidence scores.
 	Args:
 		bbox (array): Bounding boxes to be transformed. The shape is

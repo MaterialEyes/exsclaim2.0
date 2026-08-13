@@ -1,4 +1,4 @@
-from . import Pipeline, PipelineInterruptionException
+from .pipeline import Pipeline, PipelineInterruptionException
 
 try:
 	from . import __version__
@@ -7,10 +7,11 @@ except ImportError:
 from argparse import ArgumentParser
 from atexit import register
 from json import load
-from os import PathLike, chmod
-from os.path import splitext, isfile
+from os import PathLike
+from os.path import isfile
 from pathlib import Path
-from shutil import make_archive
+from typing import Optional
+from uuid import UUID
 
 
 @register
@@ -20,17 +21,16 @@ def on_terminate():
 
 	for handler in logger.handlers:
 		handler.flush()
+		handler.close()
 
 	logging.shutdown()
 
 
-async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compress_location:str=None, journal_scraper:bool=False,
-				 pdf_scraper:bool=False, caption_distributor:bool=False, figure_separator:bool=False, **kwargs):
+async def run_pipeline(query=None, verbose: bool = False, compress: Optional[str] = None, compress_location: Optional[str] = None,
+					   journal_scraper: bool = False, pdf_scraper: bool = False, caption_distributor: bool = False,
+					   figure_separator: bool = False, run_id: Optional[UUID] = None, **kwargs):
 	if query is None:
 		raise ValueError("The search query is required.")
-
-	# if not any((journal_scraper, pdf_scraper, caption_distributor, figure_separator)):
-	# 	raise ValueError("You must run the pipeline with at least one tool.")
 
 	compress = compress or ""
 
@@ -45,45 +45,33 @@ async def run_pipeline(query=None, verbose:bool=False, compress:str=None, compre
 		if not search_query.get("logging", None):
 			search_query["logging"] = ["print"]
 
-		if "print" not in search_query["logging"]:
+		elif "print" not in search_query["logging"]:
 			search_query["logging"].append("print")
 
 	pipeline = Pipeline(search_query)
 	try:
-		results = await pipeline.run(caption_distributor=caption_distributor, pdf_scraper=pdf_scraper,
-									 journal_scraper=journal_scraper, figure_separator=figure_separator)
-
-		for handler in pipeline.logger.handlers:
-			handler.flush()
-
-		if compress:
-			name = search_query["name"]
-			save_location, _ = splitext(compress_location or str(pipeline.results_directory))
-			make_archive(save_location, compress, root_dir=str(pipeline.results_directory.parent), base_dir=name)
-
-			try:
-				chmod(save_location, 0o775)
-				print("Changed the permissions.")
-			except PermissionError:
-				print(f"Could not change the permissions of {save_location} to 775.")
-				pipeline.logger.warning(f"Could not change the permissions of {save_location} to 775.")
-
+		await pipeline.run(caption_distributor=caption_distributor, pdf_scraper=pdf_scraper,
+						   journal_scraper=journal_scraper, figure_separator=figure_separator, run_id=run_id)
+		exit_code = 0
 	except PipelineInterruptionException as e:
-		pipeline.logger.exception("The pipeline could not successfully finish running.")
-		if hasattr(e, "errno"):
-			return e.errno
-		return -1
+		pipeline.logger.exception("The pipeline could not successfully finish running.", exc_info=e)
+		exit_code = e.errno if hasattr(e, "errno") else 1
+	finally:
+		pipeline.close_file_handlers()
+		if compress is not None:
+			pipeline.compress_results(compress, compress_location)
 
-	return 0
+	return exit_code
 
 
-async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:PathLike[str] = None, blocking:bool = False):
+async def ui(dashboard_configuration: PathLike[str] = None, api_configuration: PathLike[str] = None, blocking: bool = False,
+			 pid_folder: Optional[Path] = None):
 	from signal import signal, SIGINT, SIGTERM, SIGQUIT
 	from subprocess import Popen
 
 	exsclaim_dir = Path(__file__).parent.resolve()
 
-	def get_configuration(configuration:PathLike[str], folder:str) -> str:
+	def get_configuration(configuration: PathLike[str], folder: str) -> str:
 		configuration = configuration or (exsclaim_dir / folder / "config.py")
 
 		if not isfile(configuration):
@@ -96,9 +84,21 @@ async def ui(dashboard_configuration:PathLike[str] = None, api_configuration:Pat
 	api_configuration = get_configuration(api_configuration, "api")
 	dashboard_configuration = get_configuration(dashboard_configuration, "dashboard")
 
-	api = Popen(["/usr/local/bin/hypercorn", "-c", api_configuration, "exsclaim.api:app"])
+	api = Popen(["/usr/local/bin/hypercorn", "-c", api_configuration, "exsclaim.api:get_app()"])
 	dashboard = Popen(["/usr/local/bin/gunicorn", "-c", dashboard_configuration, "exsclaim.dashboard:server"],
 		  cwd=str(exsclaim_dir / "dashboard"))
+
+	if pid_folder is None:
+		pid_folder = Path("/tmp")
+		if not pid_folder.exists():
+			pid_folder = None
+
+	if pid_folder is not None:
+		with open(pid_folder / "exsclaim-dashboard.pid", 'w') as f:
+			f.write(f"{dashboard.pid}")
+
+		with open(pid_folder / "exsclaim-api.pid", 'w') as f:
+			f.write(f"{api.pid}")
 
 	if not blocking:
 		return 0
@@ -122,11 +122,86 @@ async def init_db():
 	await db.initialize_database()
 
 
+async def train_model(**kwargs):
+	from .train import train_model
+
+	del kwargs["command"]
+
+	for (argname, actual_name) in (
+		("figures_output_model", "figures_save_path"),
+		("labels_output_model", "labels_save_path"),
+		("classification_output_model", "classification_save_path"),
+	):
+		kwargs[actual_name] = kwargs[argname]
+		del kwargs[argname]
+
+	await train_model(**kwargs)
+
+
+async def upload_results(csv_dir: PathLike[str], result_id: UUID, strict: bool = False):
+	from .db import Database
+	from csv import reader
+	from re import compile
+
+	csv_path = Path(csv_dir).resolve()
+	if not csv_path.is_dir():
+		raise FileNotFoundError(f"Could not find csv directory {csv_path}.")
+
+	file_regex = compile("_")
+	csv_info = {
+		"article": [],
+		"figure": [],
+		"subfigure": [],
+		"subfigure_label": [],
+		"scale_label": [],
+		"scale": []
+	}
+
+	for key in csv_info.keys():
+		file = csv_path / f"{file_regex.sub('', key)}.csv"
+		if not file.is_file():
+			if strict:
+				raise FileNotFoundError(f"Could not find file {file}.")
+			print(f"Cannot find file {file}, skipping these contents.")
+
+		with open(csv_path / file, "r") as f:
+			csv_reader = reader(f)
+			csv_info[key] = [list(row) for row in csv_reader]
+
+	db = Database()
+	await db.ensure_connection()
+	await db.upload(csv_info, result_id)
+
+
+async def upload_training_data(args):
+	from .train import append_to_hub, convert_json_to_ds
+
+	json_file: Path = args.json
+	image_repo: Optional[str] = args.figure_dataset
+	caption_repo: Optional[str] = args.caption_dataset
+
+	if not args.prioritize_old_data and not args.prioritize_new_data:
+		prioritize_old_data = True
+	else:
+		prioritize_old_data = args.prioritize_old_data
+
+	image_ds, caption_ds = convert_json_to_ds([json_file])
+
+	if image_repo is not None:
+		append_to_hub(image_repo, image_ds, prioritize_old_data=prioritize_old_data)
+
+	if caption_repo is not None:
+		append_to_hub(caption_repo, caption_ds, prioritize_old_data=prioritize_old_data)
+
+	return 0
+
+
 async def launch(args=None):
 	parser = ArgumentParser(prog="exsclaim")
 
 	parser.add_argument("-v", "--version", action="version",
 						version=f"EXSCLAIM v{__version__}" if __version__ is not None else "EXSCLAIM! version is currently unavailable.")
+	parser.add_argument("-db", "--initialize_db", help="Initializes the PostgreSQL database.", action="store_true")
 
 	subparsers = parser.add_subparsers(dest="command", required=True)
 	query_subparser = subparsers.add_parser("query", help="The path to the JSON file holding the search query.")
@@ -145,20 +220,42 @@ async def launch(args=None):
 	view_subparser.add_argument("-dc", "--dashboard_configuration", help="The path to the gunicorn configuration file for the dashboard. Example at https://github.com/benoitc/gunicorn/blob/bacbf8aa5152b94e44aa5d2a94aeaf0318a85248/examples/example_config.py")
 	view_subparser.add_argument("-ac", "--api_configuration", help="The path to the gunicorn configuration file for the api.")
 	view_subparser.add_argument("-B", "--blocking", action="store_true", help="If the program should wait for the subprocesses to finish before closing.")
+	view_subparser.add_argument("-p", "--pid-folder", type=Path, help="The path to the folder where the pid files are stored. Default is /tmp if it exists, else None.")
 
-	db_subparser = subparsers.add_parser("initialize_db", help="Initializes the PostgreSQL database.")
+	results_subparsers = subparsers.add_parser("upload_results", help="Upload the EXSCLAIM results to the PostgreSQL database if they results weren't fully uploaded.")
+	results_subparsers.add_argument("json", help="The path to the `exsclaim.json` file.")
 
-	for subparser in (query_subparser, view_subparser):
-		subparser.add_argument("--force_ollama", action="store_true", help="Fails if EXSCLAIM can't connect to the Ollama API.")
+	train_subparser = subparsers.add_parser("train", help="Train a new YOLOv11 model.")
+	train_subparser.add_argument("-fi", "--figures_input_model", default=None, help="The path to the detection YOLOv11 model that is being used to train the subfigure coordinate finder.")
+	train_subparser.add_argument("-fo", "--figures_output_model", default=None, help="The path where the refined model should be saved.")
+	train_subparser.add_argument("-fn", "--detector_name", default=None, help="The name of the detector.")
+	train_subparser.add_argument("-li", "--labels_input_model", default=None, help="The path to the detection YOLOv11 model that is being used to train the label coordinate finder.")
+	train_subparser.add_argument("-lo", "--labels_output_model", default=None, help="The path where the refined model should be saved.")
+	train_subparser.add_argument("-ln", "--labels_name", default=None, help="The name of the detector.")
+	train_subparser.add_argument("-ci", "--classification_input_model", default=None, help="The path to the classification YOLOv11 model that is being used to train.")
+	train_subparser.add_argument("-co", "--classification_output_model", default=None, help="The path where the refined model should be saved.")
+	train_subparser.add_argument("-cn", "--classifier_name", default=None, help="The name of the classifier.")
+	train_subparser.add_argument("-ts", "--test_size", default=0.1, help="The size of the test set.")
+	train_subparser.add_argument("-r", "--random_state", type=int, default=42, help="The random state to use.")
+	train_subparser.add_argument("-d", "--dataset_dir", default=None, help="The path to the dataset directory.")
+	train_subparser.add_argument("-p", "--project", default=None, help="The name of the wandb project.")
 
-	args = vars(parser.parse_args(args))
+	dataset_subparser = subparsers.add_parser("upload_training_data", help="Uploads training data instances to a HuggingFace dataset.")
+	dataset_subparser.add_argument("json", help="The path to the training data json downloaded from the EXSCLAIM site.", type=Path),
+	dataset_subparser.add_argument("-f", "--figure_dataset", help="The repo id of the dataset where the figure information should be stored.")
+	dataset_subparser.add_argument("-c", "--caption_dataset", help="The repo id of the dataset where the caption information should be stored.")
+	group = dataset_subparser.add_mutually_exclusive_group()
+	group.add_argument("-o", "--prioritize_old_data", action="store_true",
+	                   help="If there is a collision between the current dataset and the new dataset, the data in the old dataset with the same conflicting IDs will be kept.")
+	group.add_argument("-n", "--prioritize_new_data", action="store_true",
+	                   help="If there is a collision between the current dataset and the new dataset, the data in the new dataset with the same conflicting IDs will be kept.")
 
-	if "force_ollama" in args:
-		if args["force_ollama"]:
-			from .captions.ollama_llms import Ollama
-			Ollama.available_models(silent_fail=False)
+	parsed_args = parser.parse_args(args)
+	args = vars(parsed_args)
 
-		del args["force_ollama"]
+	if parsed_args.initialize_db:
+		await init_db()
+	del args["initialize_db"]
 
 	exit_code = None
 	match args["command"]:
@@ -167,10 +264,12 @@ async def launch(args=None):
 		case "ui":
 			del args["command"]
 			exit_code = await ui(**args)
-		case "initialize_db":
-			exit_code = await init_db()
 		case "train":
-			...
+			exit_code = await train_model(**args)
+		case "upload_results":
+			exit_code = await upload_results(args["json"])
+		case "upload_training_data":
+			exit_code = await upload_training_data(parsed_args)
 
 	return exit_code
 

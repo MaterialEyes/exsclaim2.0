@@ -4,18 +4,21 @@ __all__ = ["ExsclaimToolException", "JournalScrapeError", "PDFScrapeException", 
 class ExsclaimToolException(Exception):
 	...
 
+
 class JournalScrapeError(ExsclaimToolException):
-	def __init__(self, message:str, status:int = None, headers=None):
+	def __init__(self, message: str, status: int = None, headers=None, url: str = None, html=None):
 		self.message = message
 		self.status = status
-		self.headers = headers or {}
+		self.headers = headers or dict()
+		self.html = html
+		self.url = url
 
 	@property
 	def status(self) -> int | None:
 		return self._status
 
 	@status.setter
-	def status(self, status:int | None):
+	def status(self, status: int | None):
 		if status is None:
 			self._status = None
 			return

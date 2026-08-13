@@ -1,11 +1,12 @@
 # EXSCLAIM2.0: LLM-powered Automatic **EX**traction, **S**eparation, and **C**aption-based natural **L**anguage **A**nnotation of **IM**ages from scientific figures
 [![License](https://img.shields.io/github/license/MaterialEyes/exsclaim2.0.svg?color=blue)](https://github.com/MaterialEyes/exsclaim2.0/blob/main/LICENSE)
+[![Release](https://img.shields.io/github/release/MaterialEyes/exsclaim2.0.svg)](https://github.com/MaterialEyes/exsclaim2.0/releases)
+[![DOI](https://zenodo.org/badge/DOI/10.48550/arXiv.2103.10631.svg)](https://arxiv.org/abs/2103.10631)
+<br>
 [![Production Website](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Production%20Website)](https://exsclaim.materialeyes.org)
 [![Production API](https://img.shields.io/website?url=https%3A%2F%2Fapi.exsclaim.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Production%20API)](https://api.exsclaim.materialeyes.org)
 [![Development Website](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim-dev.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Development%20Website)](https://exsclaim-dev.materialeyes.org)
 [![Development API](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim-dev.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Development%20API)](https://api.exsclaim-dev.materialeyes.org)
-[![Release](https://img.shields.io/github/release/MaterialEyes/exsclaim2.0.svg)](https://github.com/MaterialEyes/exsclaim2.0/releases)
-[![DOI](https://zenodo.org/badge/DOI/10.48550/arXiv.2103.10631.svg)](https://arxiv.org/abs/2103.10631)
 
 ## 🤔 Consider Collaboration
 
@@ -22,9 +23,9 @@ There are four main steps:
 
 ## Examples and tutorials
 We provide several tutorials demonstrating how to use EXSCLAIM2.0:
-1. [Nature_exsclaim_search](/notebooks/1_Nature_exsclaim_search.ipynb): automatically scrapping data from literature and performing Named Entity Recognition (NER) on the extracted captions.
-2. [HTMLScraper](/notebooks/2_HTMLScraper.ipynb): automatically scrapping data from user provided HTML files
-3. [Microscopy_CLIP_retrieval](/notebooks/3_Microscopy_CLIP_retrieval.ipynb): Using Microscopy_CLIP to perform image-to-image and text-to-image retrieval on our multimodal microscopy dataset.
+1. [Nature_exsclaim_search](/jupyter/1_Nature_exsclaim_search.ipynb): automatically scrapping data from literature and performing Named Entity Recognition (NER) on the extracted captions.
+2. [HTMLScraper](/jupyter/2_HTMLScraper.ipynb): automatically scrapping data from user provided HTML files
+3. [Microscopy_CLIP_retrieval](/jupyter/3_Microscopy_CLIP_retrieval.ipynb): Using Microscopy_CLIP to perform image-to-image and text-to-image retrieval on our multimodal microscopy dataset.
 
 
 ## Installation
@@ -37,7 +38,7 @@ from exsclaim import Pipeline
 search_query = {
 		...
 }
-results = Pipeline(search_query_json)
+results = Pipeline(search_query)
 ```
 where `search_query` is either a dictionary representing a valid JSON object, or a Pathlike string pointing towards a valid JSON file,
 or 

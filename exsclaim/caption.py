@@ -1,29 +1,30 @@
 # -*- coding: utf-8 -*-
-import logging
+from .exceptions import ExsclaimToolException
 import numpy as np
 
 from abc import ABC, abstractmethod, ABCMeta
-from asyncio import sleep as asleep
+from asyncio import Semaphore
 from base64 import b64encode
-from functools import wraps
+from dataclasses import dataclass
 from io import BytesIO
-from json import JSONEncoder
+from json import dumps
+from logging import Logger
 from PIL import Image
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from pydantic_core import ValidationError
 from re import sub
 from textwrap import dedent
-from time import sleep
-from typing import Literal, Iterable, Type, Optional, Any, TypeVar
+from typing import Literal, Iterable, Type, Optional, Any, TypeVar, Self, Collection, NamedTuple
 
 
-__all__ = ["retry", "async_retry", "ChatMessage", "LLM", "CustomEncoder", "Captions", "Keywords", "ResponseBase"]
+__all__ = ["ChatMessage", "LLMOptions", "LLMMeta", "LLMUsage", "LLM", "CaptionEntry", "Captions", "Keywords", "ResponseBase", "OptionalSemaphore"]
 
 
 ResponseBase = TypeVar("ResponseBase", bound=str | BaseModel)
 
 
 class CaptionEntry(BaseModel):
-	label: str
+	label: str = Field(..., description="The caption label.")
 	caption: str
 
 
@@ -35,67 +36,14 @@ class Keywords(BaseModel):
 	keywords: list[str]
 
 
-def retry(*, max_tries=5, delay_seconds=2, logger:logging.Logger = logging.getLogger(__name__)):
-	"""
-	Retries a function if a failure occurs.
-	:param int max_tries: The maximum number of tries the system should attempt before throwing an error.
-	:param float delay_seconds: The number of seconds between tries.
-	:param logging.Logger logger: The logger to use if an error occurs.
-	:return: The returned value from the function.
-	"""
-	def retry_decorator(func):
-		@wraps(func)
-		def retry_wrapper(*args, **kwargs):
-			tries = 0
-			while tries < max_tries:
-				try:
-					return func(*args, **kwargs)
-				except Exception as e:
-					wait_time = delay_seconds * (2 ** tries)
-					logger.exception(f"Error: {e}. Retrying in {wait_time} seconds...")
-					tries += 1
-					if tries == max_tries:
-						logger.exception("Max retries reached. Skipping this caption.")
-						return None
-					# raise e
-					sleep(wait_time)
-
-		return retry_wrapper
-	return retry_decorator
-
-
-def async_retry(*, max_tries=5, delay_seconds=2, logger:logging.Logger = logging.getLogger(__name__)):
-	"""
-	Retries a function if a failure occurs.
-	:param int max_tries: The maximum number of tries the system should attempt before throwing an error.
-	:param float delay_seconds: The number of seconds between tries.
-	:param logging.Logger logger: The logger to use if an error occurs.
-	:return: The returned value from the function.
-	"""
-	def retry_decorator(func):
-		@wraps(func)
-		async def retry_wrapper(*args, **kwargs):
-			tries = 0
-			while tries < max_tries:
-				try:
-					return await func(*args, **kwargs)
-				except Exception as e:
-					wait_time = delay_seconds * (2 ** tries)
-					logger.exception(f"Error: {e}. Retrying in {wait_time} seconds...")
-					tries += 1
-					if tries == max_tries:
-						logger.exception("Max retries reached. Skipping this caption.")
-						return None
-					# raise e
-					await asleep(wait_time)
-
-		return retry_wrapper
-	return retry_decorator
+class CaptionInfo(BaseModel):
+	captions: list[CaptionEntry]
+	keywords: list[str]
 
 
 class ChatMessage:
-	def __init__(self, content, role:Literal["user", "assistant", "system", "tool"] = "user", temperature:float = None,
-				 images:Iterable[Any] = None):
+	def __init__(self, content: str, role: Literal["user", "assistant", "system", "tool"] = "user",
+				 temperature: Optional[float] = None, images: Optional[Collection[Any]] = None):
 		self.content = content
 		self.role = role
 		self.temperature = temperature
@@ -143,15 +91,24 @@ class ChatMessage:
 		return repr(self)
 
 
+class LLMOptions(NamedTuple):
+	id: str
+	allows_api_key: bool
+	requires_api_key: bool
+	display_name: str
+
+
 class LLMMeta(ABCMeta):
-	models:dict[str, tuple[Type, bool, Optional[str]]] = dict()
+	models: dict[str, tuple[Type, bool, bool, Optional[str]]] = dict()
 	unscanned_classes = []
+	classes = set()
 
 	def __new__(meta_class, name, bases, dct):
 		cls = super().__new__(meta_class, name, bases, dct)
 
 		if name != "LLM":
 			LLMMeta.unscanned_classes.append(cls)
+			LLMMeta.classes.add(cls)
 
 		return cls
 
@@ -162,7 +119,10 @@ class LLMMeta(ABCMeta):
 		cls.append_llms()
 
 		model_name = args[0]
-		actual_cls, needs_api_key, _ = LLMMeta.models[model_name]
+		try:
+			actual_cls, *_ = LLMMeta.models[model_name]
+		except KeyError as e:
+			raise ExsclaimToolException(f"{model_name} is not an available model.") from e
 		return actual_cls.__call__(*args, **kwargs)
 
 	def __iter__(cls):
@@ -171,21 +131,43 @@ class LLMMeta(ABCMeta):
 
 	def append_llms(cls):
 		for scan_cls in LLMMeta.unscanned_classes:
-			for model, needs_api_key, label in scan_cls.available_models():
-				LLMMeta.models[model] = (scan_cls, needs_api_key, label)
+			for model, allows_api_key, needs_api_key, label in scan_cls.available_models():
+				LLMMeta.models[model] = (scan_cls, allows_api_key, needs_api_key, label)
 
 		LLMMeta.unscanned_classes.clear()
 		LLM._models = LLMMeta.models
 
 
+@dataclass
+class LLMUsage:
+	input_tokens: Optional[int]
+	output_tokens: Optional[int]
+
+
+class OptionalSemaphore(Semaphore):
+	def __init__(self, value: Optional[int] = None):
+		self._is_valid_value = value is not None and value > 0
+		if self._is_valid_value:
+			super().__init__(value)
+
+	async def __aenter__(self):
+		if self._is_valid_value:
+			await super().__aenter__()
+
+	async def __aexit__(self, *args, **kwargs):
+		if self._is_valid_value:
+			await super().__aexit__(*args, **kwargs)
+
+
 class LLM(ABC, metaclass=LLMMeta):
 	_models = dict()
+	_classes = set()
 
-	def __init__(self, model:str, api_key:str = None, *args, **kwargs):
-		...
+	def __init__(self, model: str, api_key: str = None, *args, **kwargs):
+		self.model = model
 
 	@staticmethod
-	def models() -> dict[str, tuple[type["LLM"], bool, str]]:
+	def models() -> dict[str, tuple[type["LLM"], bool, bool, str]]:
 		"""Returns a dictionary containing each available LLM.
 		Each key is the name of the LLM, and the value includes the class that will instantiate the model, if the model needs an API key/password,
 		and an optional readable name."""
@@ -193,37 +175,77 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	@staticmethod
 	@abstractmethod
-	def available_models() -> Iterable[tuple[str, bool, str]]:
+	def available_models() -> Iterable[LLMOptions]:
 		"""Returns a list of tuples describing the available models.
 		Each tuple should contain the name of the model and a boolean indicating if it requires an api_key/password (True) or not (False)."""
 		...
 
+	@staticmethod
 	@abstractmethod
-	def format_messages(self, messages: Iterable[ChatMessage]) -> list[Any]:
+	def request_concurrency() -> Optional[int]:
+		"""
+		Returns: the number of requests that can be sent at once. -1 if there is no limit.
+		"""
 		...
 
-	async def load(self):
+	@abstractmethod
+	def format_messages(self, messages: Collection[ChatMessage]) -> list[Any]:
+		...
+
+	async def __aenter__(self) -> Self:
+		await self.load()
+		return self
+
+	async def __aexit__(self, *args, **kwargs):
+		await self.unload()
+
+	async def load(self, logger: Optional[Logger] = None, num_captions: Optional[int] = None) -> bool:
 		"""Does any needed preparation to load the model."""
-		...
+		return True
 
-	async def unload(self):
+	async def unload(self, logger: Optional[Logger] = None):
 		"""Does any needed preparation to unload the model."""
 		...
 
 	@abstractmethod
-	async def get_response(self, prompt: list[ChatMessage], response_format:Type[ResponseBase] = str) -> ResponseBase:
+	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str) -> tuple[ResponseBase, LLMUsage]:
 		if response_format != str and not issubclass(response_format, BaseModel):
-			raise TypeError("response_format should be None or a subclass of BaseModel.")
+			raise TypeError("response_format should be str or a subclass of BaseModel.")
 
+	async def parse_captions(self, caption: str) -> tuple[dict[str, str], list[str], LLMUsage]:
+		messages = [
+			ChatMessage(role="system", content=(
+				"You are an experienced material scientist. " 
+				"Please parse the given caption with the response only containing a valid JSON object that can be plugging into Pydantic's BaseModel.model_validation_json. " 
+				"Do not add any markdown wrappers or code blocks, only the raw JSON object. " 
+				"The `keywords` key should hold a list of three to five (3-5) broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. " 
+				"The `captions` key should be a list of objects, where each object holds the letter sublabel in the `label` key and the parsed subcaption in the `caption` key. " 
+				"Please include any HTML tags from the full caption in the separated caption values. " 
+				"Remove as little content as possible when splitting the subcaptions, and having duplicated content across labels is okay. " 
+				"If there is no full caption then return an object with `keywords` and `captions` being empty lists. " 
+				"Do not hallucinate or create content that does not exist in the provided text."
+			)),
+			ChatMessage(role="user", content=caption)
+		]
+
+		while True:
+			try:
+				info, usage = await self.get_response(messages, response_format=CaptionInfo)
+				break
+			except ValidationError as error:
+				messages.append(ChatMessage(role="user", content=f"Your previous response could not be parsed: {dumps(error.errors())}"))
+
+		captions = {entry.label: entry.caption for entry in info.captions}
+		return captions, info.keywords[:5], usage # TODO: Make sure the keywords are unique
+
+	# TODO: Add deprecations to these methods
 	async def separate_captions(self, caption: str) -> dict[str, str]:
 		messages = [
 			ChatMessage(role="system", content=dedent(f"""\
 				Please separate the given full caption into the exact subcaptions. 
-				It should be formatted as a syntactically valid Python 
-				dictionary with the letter as the key of each subcaption. 
-				The dictionary should be able to be loaded in using `json.loads`. 
-				If there is no full caption then return an empty dictionary. 
-				Do not hallucinate.""")),
+				Duplicating content across keys is okay. 
+				If there is no full caption then return a list with an empty dictionary. 
+				Do not hallucinate or create content that does not exist in the provided text.""")),
 			ChatMessage(role="user", content=caption)
 		]
 
@@ -231,14 +253,11 @@ class LLM(ABC, metaclass=LLMMeta):
 		captions = {entry.label: entry.caption for entry in captions.captions}
 		return captions
 
-	async def get_keywords(self, caption: str) -> tuple[str]:
+	async def get_keywords(self, caption: str) -> tuple[str, ...]:
 		messages = [
 			ChatMessage(role="system", content=dedent(f"""\
 				You are an experienced material scientist. 
 				Summarize the text in a less than three keywords separated by comma. 
-				The keywords should be a broad and general description of the caption and can be related
-				to the materials used, characterization techniques, or any other scientific related keyword. 
-				The output should formatted as a JSON object with a key named `keywords` and the value being the array of strings.
 				Do not hallucinate or create content that does not exist in the provided text:""")),
 			ChatMessage(role="user", content=caption)
 		]
@@ -247,20 +266,13 @@ class LLM(ABC, metaclass=LLMMeta):
 		return tuple(keywords.keywords)
 
 	@classmethod
-	def from_search_query(cls, search_query:dict):
+	def from_search_query(cls, search_query: dict, run_id: Optional["uuid.UUID"] = None):
 		llm = search_query.get("llm", None)
 		if llm is None:
 			raise ValueError("llm key must be provided to search_query.")
 		model_key = search_query.get("model_key", None)
-		return LLM(llm, model_key)
+		return cls(llm, model_key, run_id=run_id)
 
 	@staticmethod
-	def remove_control_characters(string:str) -> str:
+	def remove_control_characters(string: str) -> str:
 		return sub(r"[\x00-\x1F\x7F-\x9F]", "", string)
-
-
-class CustomEncoder(JSONEncoder):
-	def default(self, obj):
-		if isinstance(obj, str):
-			return obj.encode('utf-8', 'ignore').decode('utf-8')
-		return super().default(obj)

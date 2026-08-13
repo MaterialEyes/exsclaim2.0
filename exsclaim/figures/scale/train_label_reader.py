@@ -294,11 +294,11 @@ def ctc_decoders(beamWidth, constrict_search, lm, postprocess):
     return ctc_search
 
 
-def is_number(n):
+def is_number(n: str) -> bool:
     try:
         float(n)
         return True
-    except Exception:
+    except ValueError:
         return False
 
 
@@ -323,14 +323,14 @@ def postprocess_ctc(results):
             word += idx_to_class[step]
         word = word.strip()
         word = "".join(word.split("-"))
+        number, unit = word.split(" ")
         try:
-            number, unit = word.split(" ")
             number = float(number)
-            if unit.lower() not in ["nm", "mm", "cm", "um", "a"]:
-                continue
-            return word
-        except Exception:
+        except ValueError:
             continue
+        if unit.lower() not in {"nm", "mm", "cm", "um", "a"}:
+            continue
+        return word
     return None
 
 
@@ -355,9 +355,7 @@ def decode(logits, beam_width):
 
 
 def find_n_best_legal_moves(legal_idxs, next_timestep, n):
-    moves = []
-    for legal_idx in legal_idxs:
-        moves.append((legal_idx, next_timestep[legal_idx]))
+    moves = [(legal_idx, next_timestep[legal_idx]) for legal_idx in legal_idxs]
     ranked_moves = sorted(moves, key=itemgetter(1), reverse=True)
     return ranked_moves[:n]
 
@@ -369,9 +367,9 @@ def score_candidate(path, is_final=False):
     decimals = 0
     score = 0
     for label, logp in path:
-        if label in [1, 2, 3, 4, 5, 6, 7, 8, 9]:
+        if label in {1, 2, 3, 4, 5, 6, 7, 8, 9}:
             nonzero_digits += 1
-        elif label in [10, 11, 12, 13, 14, 15, 16, 17]:
+        elif label in {10, 11, 12, 13, 14, 15, 16, 17}:
             units += 1
         # Angstrom is standalone unit
         elif label == 20:
@@ -379,7 +377,7 @@ def score_candidate(path, is_final=False):
         elif label == 19:
             decimals += 1
         # score for ordering
-        if label in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] and units > 0:
+        if label in {0, 1, 2, 3, 4, 5, 6, 7, 8, 9} and units > 0:
             return -100
         score = logp
     if units > 2 or (units > 0 and nonzero_digits == 0):
@@ -387,7 +385,7 @@ def score_candidate(path, is_final=False):
     if not is_final:
         return score
     # change score to 0 for rule violations
-    if units != 2 or nonzero_digits not in [1, 2, 3, 4, 5] or decimals > 1:
+    if units != 2 or nonzero_digits not in {1, 2, 3, 4, 5} or decimals > 1:
         score = -100
     return score
 
@@ -404,21 +402,21 @@ def valid_next_char(path, sequence_length=8):
     decimals = 0
 
     for label, _ in path:
-        if label in [1, 2, 3, 4, 5, 6, 7, 8, 9]:
+        if label in {1, 2, 3, 4, 5, 6, 7, 8, 9}:
             nonzero_digits += 1
             digits += 1
         elif label == 0:
             digits += 1
         elif label == 19:
             decimals += 1
-        elif label in [10, 11, 12, 13, 14, 15, 16, 17] and not prefix:
+        elif label in {10, 11, 12, 13, 14, 15, 16, 17} and not prefix:
             prefix = True
         elif label == 20:
             prefix = True
             base_unit = True
-        elif label in [10, 11] and prefix:
+        elif label in {10, 11} and prefix:
             base_unit = True
-        elif label in [18, 21, 22]:
+        elif label in {18, 21, 22}:
             continue
         else:
             print("How did I get here?\nThe path is: ", path)
@@ -444,13 +442,13 @@ def valid_next_char(path, sequence_length=8):
         return [20]
     elif spots_left == 2:
         # current label is a space, can go right into unit
-        if label in [18, 21]:
+        if label in {18, 21}:
             return [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 21]
         else:
             return [18, 21]
     # more than 2 spots left
     # if last spot is not a blank, must be followed by more numbers or spaces
-    if label not in [18, 21]:
+    if label not in {18, 21}:
         if decimals == 1:
             return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 18, 21]
         else:

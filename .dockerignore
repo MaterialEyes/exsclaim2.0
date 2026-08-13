@@ -8,12 +8,13 @@ gen
 
 **/exsclaim.egg-info
 
-.git_hooks
+.git
 build
 dist
 logs
 notebooks
 output
+*.passwd
 
 Dockerfile*
 docker-compose.yml
@@ -24,7 +25,6 @@ exsclaim/dashboard/node_modules
 exsclaim/figures/checkpoints/*
 
 **/__pycache__
+*.pyc
 
-default.env
-.env
-.git*
+**.env

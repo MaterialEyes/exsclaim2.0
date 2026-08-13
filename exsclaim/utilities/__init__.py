@@ -1,4 +1,3 @@
-from .boxes import *
 from .download import *
 from .files import *
 from .logging import *
