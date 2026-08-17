@@ -2,14 +2,13 @@ from ..caption import LLM, LLMOptions
 from .openai_llms import OpenAI
 
 from openai import AsyncOpenAI, NotGiven, NOT_GIVEN
-from orjson import loads
 from os import getenv
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 from typing import Literal, Optional, Callable, Coroutine
 
-import httpx
+import httpx2
 import logging
 import re
 import ssl
@@ -46,7 +45,7 @@ class LlamaCPPSettings(BaseSettings):
 
 	SSL_CERT_FILE: Optional[Path] = Field(
 		default=None,
-		description="The path to the certificate that httpx can use to verify its authenticity.",
+		description="The path to the certificate that httpx2 can use to verify its authenticity.",
 	)
 
 	SEND_RUN_ID_HEADER: bool = Field(
@@ -113,9 +112,9 @@ class LlamaCPP(OpenAI):
 		if api_key is not None:
 			headers["Authorization"] = f"Bearer {api_key}"
 
-		self.event_hooks: dict[str, list[Coroutine[None, None, Callable[[httpx.Request | httpx.Response], None]]]] = \
+		self.event_hooks: dict[str, list[Coroutine[None, None, Callable[[httpx2.Request | httpx2.Response], None]]]] = \
 			kwargs.get("event_hooks", dict())
-		self.http_client = httpx.AsyncClient(base_url=base_url, timeout=timeout, verify=self._ctx, headers=headers,
+		self.http_client = httpx2.AsyncClient(base_url=base_url, timeout=timeout, verify=self._ctx, headers=headers,
 											 event_hooks=self.event_hooks)
 
 		api_key = api_key or "not-needed"
@@ -130,6 +129,10 @@ class LlamaCPP(OpenAI):
 		return f"LlamaCPP({self.model} [{self.alias}])"
 
 	@staticmethod
+	def check_validity(model: str, api_key: Optional[str]):
+		...
+
+	@staticmethod
 	def available_models(silent_fail: bool = False):
 		if settings.HOST is None:
 			if silent_fail:
@@ -137,14 +140,14 @@ class LlamaCPP(OpenAI):
 				return ()
 			raise ValueError("Cannot get available models from Llama.cpp since the value in `LLAMA_ARG_HOST` is None.")
 
-		with httpx.Client(base_url=settings.HOST, verify=_get_context(), timeout=120) as client:
+		with httpx2.Client(base_url=settings.HOST, verify=_get_context(), timeout=120) as client:
 			try:
 				response = client.get("/v1/models")
-			except httpx.ConnectError as e:
+			except httpx2.ConnectError as e:
 				if silent_fail:
 					logging.error(f"Could not connect to Llama.cpp. This may cause issues down the line if Llama.cpp LLMs are required.", exc_info=e)
 					return ()
-				raise httpx.ConnectError(f"Could not connect to Llama.cpp server to retrieve the models: {e}") from e
+				raise httpx2.ConnectError(f"Could not connect to Llama.cpp server to retrieve the models: {e}") from e
 
 			if silent_fail and not response.is_success:
 				logging.error(f"Could not connect to Llama.cpp. This may cause issues down the line if Llama.cpp LLMs are required.")
@@ -157,7 +160,7 @@ class LlamaCPP(OpenAI):
 		)
 
 	def convert_alias_to_id(self) -> str:
-		with httpx.Client(base_url=self.http_client.base_url, verify=self._ctx, headers=self.http_client.headers) as client:
+		with httpx2.Client(base_url=self.http_client.base_url, verify=self._ctx, headers=self.http_client.headers) as client:
 			response = client.get("/v1/models")
 			response.raise_for_status()
 			models = response.json()["data"]
@@ -181,15 +184,24 @@ class LlamaCPP(OpenAI):
 		:return: True if the model has been confirmed as fully loaded, False if the request was successfully sent but the load status is unknown
 		:rtype:
 		"""
-		timeout = httpx.Timeout(5, read=timeout)
+		timeout = httpx2.Timeout(5, read=timeout)
 		headers = {"Content-Type": "application/json"}
 		if additional_headers is not None:
 			headers.update(additional_headers)
 
+		if hasattr(self, "__last_sse_id"):
+			last_sse_id = self.__last_sse_id
+		else:
+			self.__last_sse_id = last_sse_id = None
+
+			sse_headers = self.http_client.headers.copy()
+			if last_sse_id is not None:
+				sse_headers["Last-Event-ID"] = last_sse_id
+
 		try:
-			async with httpx.AsyncClient(base_url=self.http_client.base_url, verify=self._ctx, event_hooks=self.event_hooks,
-			                             headers=self.http_client.headers, timeout=timeout) as client:
-				async with client.stream("GET", "/models/sse") as response:
+			async with httpx2.AsyncClient(base_url=self.http_client.base_url, verify=self._ctx, event_hooks=self.event_hooks,
+			                             headers=sse_headers, timeout=timeout) as client:
+				async with client.sse("/models/sse") as source:
 					endpoint_response = await self.http_client.post(f"/models/{endpoint}", json={"model": self.model},
 																	headers=headers)
 					if endpoint_response.status_code == 400:
@@ -199,46 +211,48 @@ class LlamaCPP(OpenAI):
 
 					try:
 						endpoint_response.raise_for_status()
-					except httpx.HTTPStatusError as e:
-						raise httpx.HTTPStatusError(f"[{endpoint_response.status_code}] Server failed to {endpoint} the model: {endpoint_response.json()}", request=e.request, response=e.response) from e
+					except httpx2.HTTPStatusError as e:
+						raise httpx2.HTTPStatusError(f"[{endpoint_response.status_code}] Server failed to {endpoint} the model: {endpoint_response.json()}", request=e.request, response=e.response) from e
 
-					if response.status_code != 200:
+					if source.response.status_code != 200:
 						if logger is not None:
-							logger.warning(f"Could not wait for Llama's server side events to say when model {self.model} was ready: {response.text}")
+							logger.warning(f"Could not wait for Llama's server side events to say when model {self.model} was ready: {source.text}")
 						return False
 
-					async for chunk in response.aiter_lines():
-						match = SSE_REGEX.search(chunk)
-						if not match:
-							continue
+					async for event in source:
+						data = event.json()
+						if event.id is not None:
+							self.__last_sse_id = event.id
 
-						data = loads(match.group(1))
+						match data["event"]:
+							case "error":
+								if data.get("message", "").startswith("No job has been posted for run"):
+									continue
+								if logger is not None:
+									logger.info(f"An error occurred when trying to get server side events: {data['error']}")
+								return False
 
-						if data["event"] == "error":
-							if data.get("message", "").startswith("No job has been posted for run"):
-								continue
+							case "done":
+								if logger is not None:
+									logger.info(f"Server side events finished before matching event was sent.")
+								return False
 
-						if "error" in data:
-							if logger is not None:
-								logger.info(f"An error occurred when trying to get server side events: {data['error']}")
-							return False
+							case "status_change":
+								try:
+									if data["model"] in {self.id, self.model} and message_filter(data):
+										return True
+								except KeyError as e:
+									if logger is not None:
+										logger.warning(f"Could not get event from SSE: {data}", exc_info=e)
 
-						if data["event"] == "done":
-							if logger is not None:
-								logger.info(f"Server side events finished before matching event was sent.")
-							return False
-
-						try:
-							if data["model"] in {self.id, self.model} and data["event"] == "status_change" and message_filter(data):
-								return True
-						except KeyError as e:
-							if logger is not None:
-								logger.warning(f"Could not get event from SSE: {data}", exc_info=e)
-		except httpx.ReadTimeout as e:
+							case _:
+								if logger is not None:
+									logger.warning(f"Unknown event type \"{data["event"]}\" received from Llama's SSE with message: {data.get("message", "")}")
+		except httpx2.ReadTimeout as e:
 			if logger is not None:
 				logger.info(f"Did not receive any new server side events in the last {timeout.read:,} seconds.", exc_info=e)
 			return False
-		except httpx.TimeoutException as e:
+		except httpx2.TimeoutException as e:
 			if logger is not None:
 				logger.info(f"Could not connect to server side events to see when the LLM was fully loaded.", exc_info=e)
 			return False

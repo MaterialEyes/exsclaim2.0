@@ -1,8 +1,29 @@
-__all__ = ["ExsclaimToolException", "JournalScrapeError", "PDFScrapeException", "PipelineInterruptionException"]
+from typing import Collection
+
+__all__ = ["ExsclaimError", "ExsclaimToolException", "JournalScrapeError", "PDFScrapeException", "PipelineInterruptionException",
+		   "PipelineConfigError"]
 
 
-class ExsclaimToolException(Exception):
+class ExsclaimError(Exception):
 	...
+
+
+class ExsclaimToolException(ExsclaimError):
+	...
+
+
+class PipelineConfigError(ExsclaimError):
+	"""An error thrown when the search query has information that would crash the run."""
+	def __init__(self, message: str, keys: Optional[Collection[str]]):
+		super().__init__()
+		self.message = message
+		self.keys = keys
+
+	@property
+	def string_keys(self) -> str:
+		if self.keys is None:
+			return "None"
+		return f"[{', '.join(self.keys)}]"
 
 
 class JournalScrapeError(ExsclaimToolException):
@@ -40,5 +61,5 @@ class PDFScrapeException(ExsclaimToolException):
 	...
 
 
-class PipelineInterruptionException(BaseException):
+class PipelineInterruptionException(ExsclaimError):
 	...

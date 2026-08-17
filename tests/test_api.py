@@ -1,14 +1,13 @@
 from faker import Faker
 from itertools import pairwise
 from starlette.testclient import TestClient
-from sqlalchemy import MetaData, text
-from sqlalchemy.orm import sessionmaker
-from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy import text
+from typing import Optional
 
 import asyncio
 import pytest
 import pytest_asyncio
-import httpx
+import httpx2
 
 
 def get_valid_query() -> dict:
@@ -93,7 +92,7 @@ def check_username(response: Response, expected_username: str) -> bool:
 	return expected_username == response.json()["username"]
 
 
-def test_user_methods(client: TestClient, name: str = None, email: str = None, password: str = None):
+def test_user_methods(client: TestClient, name: Optional[str] = None, email: Optional[str] = None, password: Optional[str] = None):
 	Faker.seed(1111)
 	faker = Faker()
 

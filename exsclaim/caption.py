@@ -182,6 +182,10 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	@staticmethod
 	@abstractmethod
+	def check_validity(model: str, api_key: Optional[str]): ...
+
+	@staticmethod
+	@abstractmethod
 	def request_concurrency() -> Optional[int]:
 		"""
 		Returns: the number of requests that can be sent at once. -1 if there is no limit.
@@ -265,13 +269,23 @@ class LLM(ABC, metaclass=LLMMeta):
 		keywords = await self.get_response(messages, response_format=Keywords)
 		return tuple(keywords.keywords)
 
-	@classmethod
-	def from_search_query(cls, search_query: dict, run_id: Optional["uuid.UUID"] = None):
+	@staticmethod
+	def get_info_from_search_query(search_query: dict[str, Any]) -> tuple[str, Optional[str]]:
 		llm = search_query.get("llm", None)
 		if llm is None:
 			raise ValueError("llm key must be provided to search_query.")
 		model_key = search_query.get("model_key", None)
+		return llm, model_key
+
+	@classmethod
+	def from_search_query(cls, search_query: dict, run_id: Optional["uuid.UUID"] = None):
+		llm, model_key = cls.get_info_from_search_query(search_query)
 		return cls(llm, model_key, run_id=run_id)
+
+	@classmethod
+	def validate_search_query(cls, search_query: dict):
+		llm, model_key = cls.get_info_from_search_query(search_query)
+		cls.check_validity(llm, model_key)
 
 	@staticmethod
 	def remove_control_characters(string: str) -> str:

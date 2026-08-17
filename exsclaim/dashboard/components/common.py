@@ -243,7 +243,7 @@ clientside_callback(
 	_allow_dynamic_callbacks=True
 )
 async def get_username_if_logged_in(_, data: dict[str, Any]):
-	from httpx import AsyncClient
+	from httpx2 import AsyncClient
 	from flask import request
 
 	cookie = request.cookies.get("access_token")

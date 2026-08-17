@@ -1,7 +1,7 @@
 from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform, \
 	geometry_boxes as boxes
 from .config import settings
-from .exceptions import ExsclaimToolException
+from .exceptions import ExsclaimToolException, PipelineConfigError
 from .tool import ExsclaimTool
 from .utilities import load_model_from_checkpoint, download_model_checkpoint
 
@@ -35,11 +35,18 @@ class FigureSeparator(ExsclaimTool):
 	None
 	"""
 
-	def __init__(self, search_query: dict, **kwargs):
+	def __init__(self, search_query: dict, yolov11_subfigure_bbox: Optional[Path] = None, yolov11_subfigure_label: Optional[Path] = None,
+				 yolov11_classifier: Optional[Path] = None, **kwargs):
 		kwargs.setdefault("logger_name", __name__ + ".FigureSeparator")
 		super().__init__(search_query, **kwargs)
 		self.exsclaim_json = dict()
 		self._get_unrecognized_image_folders()
+
+		checkpoint_path = settings.CHECKPOINTS_PATH
+
+		self._yolov11_subfigure_bbox_path = yolov11_subfigure_bbox or checkpoint_path / "yolov11_finetuned_augmentation_best.pt"
+		self._yolov11_subfigure_label_path = yolov11_subfigure_label or checkpoint_path / "yolov11_label.pt"
+		self._yolov11_classifier_path = yolov11_classifier or checkpoint_path / "yolov11_classification.pt"
 
 	def _get_unrecognized_image_folders(self):
 		self.undetected_path = settings.UNDETECTED_SUBFIGURES_PATH
@@ -49,8 +56,15 @@ class FigureSeparator(ExsclaimTool):
 			if path is not None:
 				path.mkdir(parents=True, exist_ok=True)
 
-	async def load(self, yolov11_subfigure_bbox: Optional[Path] = None, yolov11_subfigure_label: Optional[Path] = None,
-				   yolov11_classifier: Optional[Path] = None):
+	async def check_search_query(self, query_dict: dict[str, Any]):
+		try:
+			for model_file in (self._yolov11_subfigure_bbox_path, self._yolov11_subfigure_label_path, self._yolov11_classifier_path):
+				if not model_file.is_file():
+					await download_model_checkpoint(model_file)
+		except (FileNotFoundError, ConnectionError) as e:
+			raise PipelineConfigError("Could not download the YOLO models from the server.", keys=None) from e
+
+	async def load(self):
 		"""Load relevant models for the object detection tasks"""
 		from ultralytics import YOLO
 		from torchvision.models.detection import fasterrcnn_resnet50_fpn
@@ -58,7 +72,6 @@ class FigureSeparator(ExsclaimTool):
 
 		# Set configuration variables
 		figures_path = Path(__file__).parent.resolve() / "figures"
-		checkpoint_path = settings.CHECKPOINTS_PATH
 		self.cuda = torch.cuda.is_available()
 
 		self.dtype = torch.cuda.FloatTensor if self.cuda else torch.FloatTensor
@@ -67,24 +80,16 @@ class FigureSeparator(ExsclaimTool):
 
 		self.device = torch.device("cuda" if self.cuda else "cpu")
 
-		yolov11_subfigure_bbox = yolov11_subfigure_bbox or checkpoint_path / "yolov11_finetuned_augmentation_best.pt"
-		yolov11_subfigure_label = yolov11_subfigure_label or checkpoint_path / "yolov11_label.pt"
-		yolov11_classifier = yolov11_classifier or checkpoint_path / "yolov11_classification.pt"
-
-		for model_file in (yolov11_subfigure_bbox, yolov11_subfigure_label, yolov11_classifier):
-			if not model_file.is_file():
-				await download_model_checkpoint(model_file)
-
 		try:
-			self.subfigure_bbox = YOLO(yolov11_subfigure_bbox)
+			self.subfigure_bbox = YOLO(self._yolov11_subfigure_bbox_path)
 			self.subfigure_bbox.to(self.device)
 			self.logger.info("Subfigure bounding box model has been loaded.")
 
-			self.subfigure_label = YOLO(yolov11_subfigure_label)
+			self.subfigure_label = YOLO(self._yolov11_subfigure_label_path)
 			self.subfigure_label.to(self.device)
 			self.logger.info("Subfigure label bounding box model has been loaded.")
 
-			self.classification_model = YOLO(yolov11_classifier)
+			self.classification_model = YOLO(self._yolov11_classifier_path)
 			self.classification_model.to(self.device)
 			self.logger.info("Subfigure classification model has been loaded.")
 		except BaseException as e:

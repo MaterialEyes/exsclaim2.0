@@ -19,7 +19,7 @@ from logging import getLogger, StreamHandler
 from os import PathLike
 from pathlib import Path
 from time import time_ns as timer
-from typing import Iterable, Optional, Collection
+from typing import Any, Iterable, Optional, Collection
 
 import asyncio
 import numpy as np
@@ -146,6 +146,11 @@ class ExsclaimTool(ABC):
 		self.display_info(message + "\n")
 
 	@abstractmethod
+	async def check_search_query(self, query_dict: dict[str, Any]):
+		"""Checks if any values from the search query would cause the pipeline to crash later on, such as an invalid API key for the LLM or a missing model for the Figure Separator."""
+		...
+
+	@abstractmethod
 	async def run(self, search_query: dict, exsclaim_json: dict):
 		pass
 
@@ -207,7 +212,10 @@ class JournalScraper(ExsclaimTool):
 
 				with open(error_dir / f"{e.url.split('/')[-1]}.html", 'w') as f:
 					f.write(await e.html.prettify())
-		
+
+	async def check_search_query(self, query_dict: dict[str, Any]):
+		...
+
 	async def task(self, exsclaim_json: dict, search_query: dict, article: str, journal_family_name: str, html_directory: Path,
 					 lock: asyncio.Lock):
 		# Extract figures, captions, and metadata from each article
@@ -338,6 +346,9 @@ class CaptionDistributor(ExsclaimTool):
 		self.logger.info(f"Unloading LLM: {self.llm.model}.")
 		await self.llm.unload(logger=self.logger)
 		self.logger.info(f"Finished unloading LLM: {self.llm.model}.")
+
+	async def check_search_query(self, query_dict: dict[str, Any]):
+		self.llm.validate_search_query(query_dict)
 
 	async def _task(self, exsclaim_json: dict, search_query: dict, figure: str, new_separated: set, lock: asyncio.Lock,
 					 semaphore: OptionalSemaphore):

@@ -4,16 +4,14 @@ Converted from React Layout.js component.
 """
 
 import dash_bootstrap_components as dbc
+import httpx2
 
-from certifi import where
 from dash import html, dcc, callback, clientside_callback, ClientsideFunction, Output, Input, State, no_update, ALL
 from dash_extensions import Purify
 
 from exsclaim.api import Status
-from httpx import Client
 from re import sub
 from uuid import UUID
-from ssl import create_default_context
 
 
 def create_layout_component(result_id: UUID, base_url: str, public_api_url: str):
@@ -216,8 +214,7 @@ def create_keywords_component():
 
 def create_classification_component(base_url):
 	"""Create classification component."""
-	ssl_context = create_default_context(cafile=where())
-	with Client(verify=ssl_context) as client:
+	with httpx2.Client() as client:
 		response = client.get(f"{base_url}/classification_codes")
 		if not response.is_success:
 			raise ValueError(f"Could not get classification codes from the API: {response.text}")

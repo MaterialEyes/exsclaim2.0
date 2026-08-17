@@ -6,7 +6,7 @@ from ..models import User, PasswordReset, Results, cryptographic_hash, generate_
 from datetime import datetime as dt, timezone as tz, timedelta as td
 from fastapi import APIRouter, Form, status, Depends, HTTPException, Body, Cookie
 from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from starlette.requests import Request
 from starlette.responses import Response, HTMLResponse, RedirectResponse, PlainTextResponse
 from pydantic import EmailStr, BaseModel
@@ -334,7 +334,7 @@ async def login_user(request: Request, info: LoginInfo) -> Response:
 
 
 @router.api_route("/login-orcid", methods=["GET", "HEAD"], tags=[TAG], include_in_schema=False)
-async def login_with_orcid(request: Request, code: str): # TODO: Create a way for users to merge there email account with their ORCID
+async def login_with_orcid(request: Request, code: str):
 	logger = request.state.logger
 	async with AsyncClient() as client:
 		headers = {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}

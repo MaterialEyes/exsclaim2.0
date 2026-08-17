@@ -8,7 +8,7 @@ ultralytics==8.4.117
 pi_heif==1.4.0
 
 # HTTP requests
-httpx==0.28.1
+httpx2==2.10.0
 brotli==1.2.0
 playwright==1.61.0
 urllib3==2.7.0
@@ -32,7 +32,7 @@ pytorch-model-summary==0.1.2
 datasets==5.0.0
 
 # Run LLMs
-openai==2.41.0
+openai==3.0.0
 asksageclient==1.42
 
 # Used with the API
@@ -57,4 +57,3 @@ cryptography==50.0.0
 # Used with the Dashboard
 dash_bootstrap_components==2.0.4
 gunicorn[gevent]==26.0.0
-certifi==2026.6.17

@@ -2,7 +2,7 @@ from .exceptions import JournalScrapeError
 from .utilities import paths
 
 import asyncio
-import httpx
+import httpx2
 import re
 
 from abc import ABC, abstractmethod, ABCMeta
@@ -471,7 +471,7 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 		return tuple(figures)
 
 	@staticmethod
-	async def _get_image(url: str, client: httpx.AsyncClient, *args, **kwargs) -> bytes:
+	async def _get_image(url: str, client: httpx2.AsyncClient, *args, **kwargs) -> bytes:
 		headers = kwargs.get("headers", {
 			"Accept": 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
 			"Accept-encoding": 'gzip, deflate, br, zstd',
@@ -495,7 +495,7 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 
 		return await response.aread()
 
-	async def _get_image_stream(self, client: httpx.AsyncClient, image_url: str, save_file: Path, chunk_size: int = 1_024,
+	async def _get_image_stream(self, client: httpx2.AsyncClient, image_url: str, save_file: Path, chunk_size: int = 1_024,
 								sleep_time: float = 30, retries: int = 5):
 		for retry in range(retries):
 			async with client.stream("GET", image_url) as response:
@@ -531,12 +531,12 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 			if hasattr(self, "client"):
 				await self._get_image_stream(self.client, image_url, out_file, chunk_size=chunk_size)
 				return out_file
-		except httpx.HTTPStatusError as e:
+		except httpx2.HTTPStatusError as e:
 			self.logger.warning(f"Could not save figure by streaming from {image_url}. Attempting to load the full image.", exc_info=e)
 
 		try:
 			image_source = await self.get_image_source(image_url)
-		except httpx.HTTPStatusError as e:
+		except httpx2.HTTPStatusError as e:
 			self.logger.error(f"Could not save figure {figure_name} from {image_url}.", exc_info=e)
 
 		with open(out_file, 'wb') as f:
@@ -774,7 +774,7 @@ class JournalFamily(ABC, metaclass=JournalMeta):
 class JournalFamilyStatic(JournalFamily, ABC):
 	def __init__(self, search_query:dict, **kwargs):
 		super().__init__(search_query, **kwargs)
-		self.client = httpx.AsyncClient()
+		self.client = httpx2.AsyncClient()
 
 	async def close(self):
 		await self.client.aclose()
@@ -1244,7 +1244,7 @@ class RSC(JournalFamilyDynamic):
 			"recent": "Latest to oldest",
 		}
 		self._articles_path = "/doi/"
-		self._image_client = httpx.AsyncClient()
+		self._image_client = httpx2.AsyncClient()
 
 	@staticmethod
 	def name():

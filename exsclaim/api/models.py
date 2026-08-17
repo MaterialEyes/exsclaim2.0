@@ -9,17 +9,15 @@ from .json_models import *
 
 from datetime import datetime as dt, timezone as tz
 from enum import StrEnum
-from fastapi import Path, status
+from fastapi import Path
 from fastapi.responses import JSONResponse
 from orjson import dumps
-from pydantic import BaseModel, EmailStr, field_validator, model_validator, Field
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from sqlalchemy import Enum as SAEnum, Column, ForeignKeyConstraint, CheckConstraint, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlmodel import text, SQLModel, Field, DateTime
 from typing import Annotated, Literal, Optional, Any, Self
 from uuid import UUID
-
-import httpx
 
 __all__ = ["BaseModel", "NTFY", "Query", "ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
 		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Results", "User", "get_guest_uuid",

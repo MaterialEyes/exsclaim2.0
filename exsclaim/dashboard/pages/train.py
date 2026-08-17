@@ -38,7 +38,7 @@ def get_article_button():
 
 
 def get_data_table():
-	from httpx import Client
+	from httpx2 import Client
 
 	client = Client(base_url=ui_settings.FAST_API_URL)
 	response = client.get("/classification_codes")

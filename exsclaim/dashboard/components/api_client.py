@@ -1,5 +1,5 @@
 from exsclaim.api import Status
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from typing import Any, Optional
 
 

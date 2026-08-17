@@ -16,7 +16,6 @@ import numpy as np
 import re
 
 from csv import writer
-from datetime import datetime as dt, timezone as tz
 from enum import Flag, auto
 from functools import reduce
 from json import load, dump
@@ -246,6 +245,30 @@ class Pipeline:
 
 			# Ensure that any save methods that need to load something before hand do it before pipeline runs
 			save_methods = SaveMethods.from_list(query_dict.get("save_format", []))
+
+			try:
+				for tool in tools:
+					await tool.check_search_query(self.query_dict)
+			except PipelineConfigError as e:
+				self.logger.exception("The search query was found to be invalid.", exc_info=e)
+				if e.keys is None:
+					message = e.message
+				else:
+					if len(e.keys) == 1:
+						_key = "key"
+						tense = "was"
+					else:
+						_key = "keys"
+						tense = "were"
+					message = f"The following {_key} in the search query {tense} invalid: {e.string_keys}."
+
+				notification = ErrorNotification(
+					message=message,
+					run_id=run_id,
+					name=self.query_dict["name"],
+					exception=e
+				)
+				return self.exsclaim_dict
 
 			if SaveMethods.POSTGRES in save_methods:
 				try:

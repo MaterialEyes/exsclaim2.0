@@ -6,14 +6,14 @@ from bs4 import BeautifulSoup
 from os import PathLike
 from typing import Optional
 
-import httpx
+import httpx2
 
 __all__ = ["download_file_from_google_drive", "get_confirm_token", "save_response_content"]
 
 
 async def download_file_from_google_drive(file_id: str, destination: PathLike[str]):
 	url = "https://drive.usercontent.google.com/download"
-	async with httpx.AsyncClient() as client:
+	async with httpx2.AsyncClient() as client:
 		params = dict(id=file_id, export="download", confirm="t")
 		response = await client.get(url, params=params)
 		token = await get_confirm_token(response)
@@ -23,7 +23,7 @@ async def download_file_from_google_drive(file_id: str, destination: PathLike[st
 		await save_response_content(response, destination)
 
 
-async def get_confirm_token(response: httpx.Response) -> Optional[dict]:
+async def get_confirm_token(response: httpx2.Response) -> Optional[dict]:
 	for header, value in response.headers.items():
 		if header == "Content-Type":
 			if value == "application/octet-stream":
@@ -39,7 +39,7 @@ async def get_confirm_token(response: httpx.Response) -> Optional[dict]:
 	return {_input["name"]: _input["value"] for _input in form.find_all("input", attrs={"type": "hidden"})}
 
 
-async def save_response_content(response: httpx.Response, destination: PathLike[str]):
+async def save_response_content(response: httpx2.Response, destination: PathLike[str]):
 	CHUNK_SIZE = 2_048
 	with open(destination, "wb") as f:
 		async for chunk in response.aiter_bytes(CHUNK_SIZE):

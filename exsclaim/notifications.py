@@ -12,7 +12,7 @@ from uuid import UUID
 
 import asyncio
 import fastapi
-import httpx
+import httpx2
 import logging
 import re
 import ssl
@@ -141,12 +141,12 @@ class NTFY(Notifications):
 	def is_valid_notifier(self) -> Self:
 		"""Checks if the given NTFY server is valid."""
 		try:
-			with httpx.Client() as client:
-				response: httpx.Response = client.get(self.url)
+			with httpx2.Client() as client:
+				response: httpx2.Response = client.get(self.url)
 				if response.is_success or response.is_redirect:
 					return self
 				raise ValueError(response.text)
-		except httpx.InvalidURL as e:
+		except httpx2.InvalidURL as e:
 			raise ValueError(str(e)) from e
 
 	@field_serializer("timezone")
@@ -182,10 +182,10 @@ class NTFY(Notifications):
 			data = f"An error occurred at {finished_at} running{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}.\n"
 			data += ' '.join(format_exception(notification.exception))
 
-		async with httpx.AsyncClient() as client:
+		async with httpx2.AsyncClient() as client:
 			try:
 				await client.post(self.url, data=data, headers=headers)
-			except httpx.ConnectError as e:
+			except httpx2.ConnectError as e:
 				raise CouldNotNotifyException from e
 
 
@@ -276,18 +276,18 @@ class Webhook(Notifications):
 
 		return cls.model_validate(data)
 
-	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx.Response:
+	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx2.Response:
 		headers = self.headers.copy()
 		if self.authorization is not None:
 			headers["Authorization"] = self.authorization
 
 		headers["Content-Type"] = "application/json"
 
-		async with httpx.AsyncClient() as client:
+		async with httpx2.AsyncClient() as client:
 			try:
 				response = await client.post(self.url, data=notification.model_dump(), headers=headers)
 				response.raise_for_status()
-			except httpx.HTTPError as e:
+			except httpx2.HTTPError as e:
 				raise CouldNotNotifyException from e
 
 
@@ -303,7 +303,7 @@ class Slack(Webhook):
 	def get_url_pattern() -> re.Pattern[str]:
 		return re.compile(r"https://hooks.slack.com/services/T(\w{8,})/B(\w{8,})/(\w{24})")
 
-	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx.Response:
+	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx2.Response:
 		headers = {"Content-Type": "application/json"}
 		timestamp = f"<!date^{int(notification.time.timestamp())}^ {{date_short_pretty}} at {{time_secs}}|{notification.time.isoformat()}>"
 
@@ -346,11 +346,11 @@ class Slack(Webhook):
 			else:
 				data = {"text": f"Results for *{notification.name}* finished compiling{timestamp}."}
 
-		async with httpx.AsyncClient() as client:
+		async with httpx2.AsyncClient() as client:
 			try:
 				response = await client.post(self.url, headers=headers, json=data)
 				response.raise_for_status()
-			except httpx.HTTPError as e:
+			except httpx2.HTTPError as e:
 				raise CouldNotNotifyException(f"[{response.status_code}] The status code that the webhook responded with "
 			                              f"did not match what was expected: {response.text}.") from e
 		return response
@@ -361,7 +361,7 @@ class Discord(Webhook):
 	def get_url_pattern() -> re.Pattern[str]:
 		return re.compile(r"https://discord.com/api/webhooks/(\d{17,19})/(\w+)")
 
-	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx.Response:
+	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx2.Response:
 		headers = {"Content-Type": "application/json"}
 		iso_timestamp = f"{notification.time:%Y-%m-%d %H:%M}"
 		timestamp = int(notification.time.timestamp())
@@ -409,11 +409,11 @@ class Discord(Webhook):
 		data["username"] = "EXSCLAIM Pipeline"
 		data["avatar_url"] = "https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/54317f169b0436eadde45bcc391c9beaf0a1135e/exsclaim/dashboard/assets/favicon.png"
 
-		async with httpx.AsyncClient() as client:
+		async with httpx2.AsyncClient() as client:
 			try:
 				response = await client.post(self.url, headers=headers, json=data)
 				response.raise_for_status()
-			except httpx.HTTPError as e:
+			except httpx2.HTTPError as e:
 				raise CouldNotNotifyException(
 					f"[{response.status_code}] The status code that the webhook responded with "
 					f"did not match what was expected: {response.text}.") from e
@@ -425,11 +425,11 @@ class Discord(Webhook):
 			"Content-Type": "application/json",
 		}
 
-		with httpx.Client() as client:
+		with httpx2.Client() as client:
 			try:
 				response = client.get(self.url, headers=headers)
 				response.raise_for_status()
-			except httpx.HTTPError as e:
+			except httpx2.HTTPError as e:
 				raise ValueError("Test ping for Discord did not work") from e
 
 		return self

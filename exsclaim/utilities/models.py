@@ -7,7 +7,7 @@ from pathlib import Path
 from torch import load, nn
 from typing import Literal
 
-import httpx
+import httpx2
 
 
 __all__ = ["download_model_checkpoint", "load_model_from_checkpoint", "model_names_to_googleids"]
@@ -27,7 +27,7 @@ async def download_model_checkpoint(file_path: Path, exsclaim_domain: str = "htt
 	"""Downloads a model from the EXSCLAIM servers. The name of the file_path object should match with the name in the server, and the file_path is where it'll be stored."""
 	file_path.parent.mkdir(parents=True, exist_ok=True)
 
-	async with httpx.AsyncClient() as client:
+	async with httpx2.AsyncClient() as client:
 		url = f"{exsclaim_domain.rstrip('/')}/checkpoints/{file_path.name}"
 		response = await client.get(url)
 		if response.status_code != 200:

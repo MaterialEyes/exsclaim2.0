@@ -1,7 +1,7 @@
 from ..models import *
 
 import exsclaim
-import httpx
+import httpx2
 import logging
 
 from asyncpg import UndefinedTableError
@@ -30,7 +30,7 @@ async def get(url: str) -> tuple[Response | bytes, str]:
 	if url in cache:
 		return cache[url]
 
-	async with httpx.AsyncClient() as client:
+	async with httpx2.AsyncClient() as client:
 		response = await client.get(url)
 		if not response.is_success:
 			return Response(status_code=status.HTTP_301_MOVED_PERMANENTLY, headers={"Location": url})

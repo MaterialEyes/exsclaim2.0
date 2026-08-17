@@ -1,5 +1,6 @@
 from ..caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
 from ..config import settings
+from ..exceptions import PipelineConfigError
 
 from logging import warning, exception
 from ollama import AsyncClient, Client, ChatResponse, ResponseError
@@ -35,6 +36,10 @@ class Ollama(LLM):
 		labels = (space_regex.sub(r"\1 \2", model) for model in models)
 
 		return tuple(LLMOptions(model, False, False, label.title()) for model, label in zip(models, labels))
+
+	@staticmethod
+	def check_validity(model: str, api_key: Optional[str]):
+		...
 
 	@staticmethod
 	def request_concurrency() -> Optional[int]:
