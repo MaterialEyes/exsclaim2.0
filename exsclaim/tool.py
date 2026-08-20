@@ -227,6 +227,7 @@ class JournalScraper(ExsclaimTool):
 				try:
 					article_dict = await journal.get_article_figures(url, html_directory)
 			url = journal.domain + article
+			url = journal.domain + article
 
 			try:
 				article_dict = await journal.get_article_figures(url, html_directory)
