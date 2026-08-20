@@ -220,25 +220,18 @@ class JournalScraper(ExsclaimTool):
 					 lock: asyncio.Lock):
 		# Extract figures, captions, and metadata from each article
 		self.display_info(f">>> Extracting figures from: {journal.get_article_name_from_url(article)}")
+		url = journal.domain + article
 		try:
-			async with JournalFamily(journal_family_name, search_query,
-								 scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
-				url = journal.domain + article
-				try:
-					article_dict = await journal.get_article_figures(url, html_directory)
-			url = journal.domain + article
+			article_dict = await journal.get_article_figures(url, html_directory)
 
-			try:
-				article_dict = await journal.get_article_figures(url, html_directory)
-
-				if article_dict:
-					async with lock:
-						self._update_exsclaim(exsclaim_json, article_dict)
-				self.new_articles_visited.add(article)
-			except JournalScrapeError as e:
-				self.logger.exception(f"Could not scrape the details for {url}.")
-				await self._handle_scrape_error(e)
-				raise e
+			if article_dict:
+				async with lock:
+					self._update_exsclaim(exsclaim_json, article_dict)
+			self.new_articles_visited.add(article)
+		except JournalScrapeError as e:
+			self.logger.exception(f"Could not scrape the details for {url}.")
+			await self._handle_scrape_error(e)
+			raise e
 		except Exception as e:
 			self.display_exception(e, article)
 		return article
