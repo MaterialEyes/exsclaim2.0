@@ -9,7 +9,7 @@ async def initialize_db(conn):
 		CREATE TABLE IF NOT EXISTS settings.banned_ips(
 			address INET PRIMARY KEY,
 			ban_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			reason CHAR(90) DEFAULT ''
+			reason TEXT DEFAULT ''
 	);"""))
 
 	await conn.execute(text("""\

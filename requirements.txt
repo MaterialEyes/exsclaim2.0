@@ -4,11 +4,11 @@ loguru==0.7.3
 numpy==2.4.4
 opencv-contrib-python-headless==4.13.0.92
 Pillow==12.3.0
-ultralytics==8.4.117
+ultralytics==8.4.124
 pi_heif==1.4.0
 
 # HTTP requests
-httpx2==2.10.0
+httpx2==2.12.0
 brotli==1.2.0
 playwright==1.62.0
 playwright-stealth==2.0.3
@@ -34,7 +34,7 @@ pytorch-model-summary==0.1.2
 datasets==5.0.0
 
 # Run LLMs
-openai==3.0.0
+openai==3.3.1
 asksageclient==1.42
 
 # Used with the API
@@ -51,7 +51,7 @@ sqlmodel==0.0.38
 sqlalchemy==2.0.49
 pydantic_settings==2.14.2
 uuid-utils==0.16.0
-orjson==3.11.9
+orjson==3.12.0
 # python-ulid[pydantic]==3.1.0
 pyjwt==2.13.0
 cryptography==50.0.0

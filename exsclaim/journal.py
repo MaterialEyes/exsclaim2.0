@@ -19,6 +19,7 @@ from pathlib import Path
 from playwright.async_api import Playwright, Locator, async_playwright, Response, PlaywrightContextManager
 from playwright._impl import _errors as playwright_errors
 from playwright_stealth import Stealth
+from starlette.datastructures import URL
 from typing import Any, Callable, Iterable, Literal, Optional, Self, Type, overload
 
 
@@ -217,7 +218,7 @@ class DynamicHtml(JournalHtml):
 
 	async def get_data_value(self, attribute: str) -> str:
 		if attribute.startswith("data-"):
-			self.convert_dataset_name(attribute)
+			attribute = self.convert_dataset_name(attribute)
 		value = await self.locator.evaluate(f"el => el.dataset.{attribute}")
 		if value is None:
 			raise AttributeError(f"Could not find data attribute value for {attribute}.")
@@ -302,11 +303,6 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 	def author_param(self) -> str:
 		"""URL parameter noting results order"""
 		return self._author_param
-
-	@property
-	def open_param(self) -> str:
-		"""URL parameter optionally noting open results only"""
-		return self._open_param
 
 	@property
 	def journal_param(self) -> str:
@@ -530,7 +526,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 				figures.append(figure)
 		return tuple(figures)
 
-	async def find_captions(self, figure_subtree: T) -> tuple[T]:
+	async def get_caption(self, figure_subtree: T) -> str:
 		"""
 		Returns all captions associated with a given figure
 		Args:
@@ -538,7 +534,8 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		Returns:
 			all captions for the given figure
 		"""
-		return await figure_subtree.select("p")
+		caption_elements = await figure_subtree.select("p")
+		return "".join([(await caption.get_html()).strip() for caption in caption_elements])
 
 	# @abstractmethod
 	async def is_link_to_open_article(self, tag: str | T) -> bool:
@@ -651,12 +648,8 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		search_url = self.domain + self.search_path
 		search_url_args = []
 		for term in search_product:
-			url_parameters = "&".join([self.term_param + self.join.join(term), self.max_page_size])
-			search_url = self.domain + self.search_path + self.pub_type + url_parameters
-			if self.open:
-				search_url += f"&{self.open_param}"
-
-			soup = await self.get(search_url)
+			url_parameters = self.get_search_params(term)
+			soup = await self.get(search_url, params=url_parameters)
 
 			years, journal_codes, orderings = await self.get_additional_url_arguments(soup)
 			starting_length = len(search_url_args)
@@ -792,14 +785,9 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		article_json = dict()
 
 		for figure_number, figure_subtree in enumerate(figure_subtrees, start=1):
-			captions = await self.find_captions(figure_subtree)
+			figure_caption = await self.get_caption(figure_subtree)
 
-			if len(captions) == 0:
-				continue
-
-			figure_caption = "".join([(await caption.get_html()).strip() for caption in captions])
-
-			if figure_caption.isspace():
+			if len(figure_caption) == 0 or figure_caption.isspace():
 				continue
 
 			figure_json = {
@@ -954,6 +942,11 @@ class JournalFamilyDynamic(JournalFamily[DynamicHtml], ABC):
 		page = await self._browser.new_page()
 		page.on("response", self.response_handler)
 
+		if params is not None:
+			url = URL(url)
+			url = url.include_query_params(**params)
+			url = str(url)
+
 		if response_handlers is not None:
 			for response_handler in response_handlers:
 				page.on("response", response_handler)
@@ -1037,7 +1030,6 @@ class ACS(JournalFamilyDynamic):
 		self._max_page_size = "pageSize=100"
 		self._page_param = "startPage="
 		self._order_param = "sortBy="
-		self._open_param = "openAccess=18&accessType=openAccess"
 		self._journal_param = "SeriesKey="
 		self._date_range_param = "Earliest="
 
@@ -1057,29 +1049,20 @@ class ACS(JournalFamilyDynamic):
 
 	def get_search_params(self, terms: tuple[str]) -> dict[str, str | int]:
 		"""Generate the URL parameters for the search in the necessary order"""
-		return {
+		params = {
 			"page": 1,
 			"q": terms[0]
 		}
 
-	async def get_license(self, html: DynamicHtml):
-		unknown_license = (False, "unknown")
-		open_access = html.select_one("a.access__control--link")
+		if self.open:
+			params["openAccess"] = 1
+			params["accessType"] = "openAccess"
 
-		if not open_access:
-			return unknown_license
+		return params
 
-		return True, open_access.get("href")
-
-	async def get_authors(self, html: DynamicHtml) -> tuple[str]:
-		authors = await html.select("span.hlFld-ContribAuthor[data-id=article_author_info]")
-		author_list = []
-		for author in authors:
-			author_list.append(await author.get_text())
-		return tuple(author_list)
-
-	async def get_figure_url(self, figure: DynamicHtml) -> str:
-		return await figure.select_one("img").get("src")
+	async def get_additional_url_arguments(self, html: T):
+		# rsc allows unlimited results, so no need for additional args # TODO: Check if ACS has unlimited results
+		return [""], {""}, [""]
 
 	async def get_page_info(self, html: DynamicHtml):
 		try:
@@ -1095,6 +1078,10 @@ class ACS(JournalFamilyDynamic):
 		current_page = int(page_counter_list[0])
 		total_pages = total_results // 20
 		return current_page, total_pages, total_results
+
+	async def is_link_to_open_article(self, tag: str | Tag):
+		# ACS allows filtering for search. Therefore, if self.open is True, all results will be open.
+		return True
 
 	async def get_articles_from_search_url(self, search_url: str, search_query_args: URLParams):
 		"""Generates a list of articles from a single search term"""
@@ -1127,9 +1114,9 @@ class ACS(JournalFamilyDynamic):
 				await self.turn_page(search_url, page_number + 1)
 		return article_paths
 
-	async def get_additional_url_arguments(self, soup: T):
-		# rsc allows unlimited results, so no need for additional args # TODO: Check if ACS has unlimited results
-		return [""], {""}, [""]
+	async def turn_page(self, url: str, page_number: int) -> T:
+		new_url = f"{url.split('&startPage=')[0]}&startPage={page_number}&pageSize=20"
+		return await self.get(new_url)
 
 	@staticmethod
 	def get_license_type(soup: BeautifulSoup):
@@ -1153,13 +1140,24 @@ class ACS(JournalFamilyDynamic):
 
 		return unknown_license
 
-	async def is_link_to_open_article(self, tag: str | Tag):
-		# ACS allows filtering for search. Therefore, if self.open is True, all results will be open.
-		return True
+	async def get_license(self, html: DynamicHtml):
+		unknown_license = (False, "unknown")
+		open_access = html.select_one("a.access__control--link")
 
-	async def turn_page(self, url: str, page_number: int) -> T:
-		new_url = f"{url.split('&startPage=')[0]}&startPage={page_number}&pageSize=20"
-		return await self.get(new_url)
+		if not open_access:
+			return unknown_license
+
+		return True, open_access.get("href")
+
+	async def get_authors(self, html: DynamicHtml) -> tuple[str]:
+		authors = await html.select("span.hlFld-ContribAuthor[data-id=article_author_info]")
+		author_list = []
+		for author in authors:
+			author_list.append(await author.get_text())
+		return tuple(author_list)
+
+	async def get_figure_url(self, figure: DynamicHtml) -> str:
+		return await figure.select_one("img").get("src")
 
 
 class Nature(JournalFamilyStatic):
@@ -1170,10 +1168,8 @@ class Nature(JournalFamilyStatic):
 		self._page_param = "page="
 		self._max_page_size = ""  # not available for nature
 		self._order_param = "order"
-		self._open_param = ""
-		self._date_range_param = "date_range="
-		self._journal_param = "journal="
-		self._pub_type = ""
+		self._date_range_param = "date_range"
+		self._journal_param = "journal"
 		self._author_param = "author="
 		# order options
 		self._order_values = {"relevant": "relevance", "old": "date_asc", "recent": "date_desc"}
@@ -1208,39 +1204,20 @@ class Nature(JournalFamilyStatic):
 			"journal": ""
 		}
 
-	async def get_title(self, html: T, url: str) -> str:
-		elements = await html.select("h1.c-article-title")
-		if len(elements) > 0:
-			return await elements[0].get_text()
+	async def get_additional_url_arguments(self, html: T):
+		current_year = datetime.now().year
+		earliest_year = 1845
+		non_exhaustive_years = 25
+		# If the search is exhaustive, search all 161 nature journals, for all years since 1845, in relevance, oldest, and youngest order.
+		if self.order == "exhaustive":
+			new_soup = await self.get("https://www.nature.com/search/advanced")
+			journal_tags = await new_soup.select("li[data-action='filter-remove-btn']")
 
-		title = await super().get_title(html, url)
-		self.logger.warning(f"Could not find title for {url}.")
-		return title
-
-	async def get_license(self, html: StaticHtml) -> tuple[bool, str]:
-		data_layer = html.select_one("script[data-test='dataLayer']")
-		data_layer_string = await data_layer.get_text()
-		data_layer_json = "{" + data_layer_string.split("[{", 1)[1].split("}];", 1)[0] + "}"
-		parsed = loads(data_layer_json)
-
-		# try to get whether the journal is open
-		_copyright = parsed.get("content", dict()).get("attributes", dict()).get("copyright")
-		if _copyright is None:
-			return False, "unknown"
-
-		is_open = _copyright.get("open", False)
-
-		# try to get the license
-		try:
-			_license = _copyright["legacy"]["webtrendsLicenceType"]
-		except KeyError:
-			_license = "unknown"
-		return is_open, _license
-
-	async def get_authors(self, html: T) -> tuple[str]:
-		if isinstance(html, str):
-			html = await self.get(html)
-			close_html = True
+			journal_codes = {tag.get_text().strip() for tag in journal_tags}
+			years = [f"{year}-{year}" for year in range(current_year, earliest_year, -1)]
+			orderings = set(self.order_values.values())
+			await new_soup.close()
+		# If the search is not exhaustive, search the most relevant materials journals, for the past 25 years, ordered by self.order.
 		else:
 			close_html = False
 		locators = await html.select("a[data-test=\"author-name\"]")
@@ -1305,29 +1282,7 @@ class Nature(JournalFamilyStatic):
 
 		return current_page, total_pages, total_results
 
-	async def get_additional_url_arguments(self, html: T):
-		current_year = datetime.now().year
-		earliest_year = 1845
-		non_exhaustive_years = 25
-		# If the search is exhaustive, search all 161 nature journals, for all years since 1845, in relevance, oldest, and youngest order.
-		if self.order == "exhaustive":
-			new_soup = await self.get("https://www.nature.com/search/advanced")
-			journal_tags = await new_soup.select("li[data-action='filter-remove-btn']")
-
-			journal_codes = {tag.get_text().strip() for tag in journal_tags}
-			years = [f"{year}-{year}" for year in range(current_year, earliest_year, -1)]
-			orderings = set(self.order_values.values())
-			await new_soup.close()
-		# If the search is not exhaustive, search the most relevant materials journals, for the past 25 years, ordered by self.order.
-		else:
-			journal_codes = self._materials_journals
-			years = [f"{year}-{year}" for year in range(current_year - non_exhaustive_years, current_year)]
-			orderings = [self.order_values[self.order]]
-		years = [""] + years
-		# author =
-		return years, journal_codes, orderings
-
-	async def is_link_to_open_article(self, tag:str | StaticHtml) -> bool:
+	async def is_link_to_open_article(self, tag: str | StaticHtml) -> bool:
 		if isinstance(tag, str):
 			html = await self.get(self.domain + tag)
 			is_open, _ = await self.get_license(html)
@@ -1346,6 +1301,62 @@ class Nature(JournalFamilyStatic):
 			if text.startswith("Open"):
 				return True
 		return False
+
+	async def get_license(self, html: StaticHtml) -> tuple[bool, str]:
+		data_layer = html.select_one("script[data-test='dataLayer']")
+		data_layer_string = await data_layer.get_text()
+		data_layer_json = "{" + data_layer_string.split("[{", 1)[1].split("}];", 1)[0] + "}"
+		parsed = loads(data_layer_json)
+
+		# try to get whether the journal is open
+		_copyright = parsed.get("content", dict()).get("attributes", dict()).get("copyright")
+		if _copyright is None:
+			return False, "unknown"
+
+		is_open = _copyright.get("open", False)
+
+		# try to get the license
+		try:
+			_license = _copyright["legacy"]["webtrendsLicenceType"]
+		except KeyError:
+			_license = "unknown"
+		return is_open, _license
+
+	async def get_title(self, html: T, url: str) -> str:
+		elements = await html.select("h1.c-article-title")
+		if len(elements) > 0:
+			return await elements[0].get_text()
+
+		title = await super().get_title(html, url)
+		self.logger.warning(f"Could not find title for {url}.")
+		return title
+
+	async def get_authors(self, html: T) -> tuple[str]:
+		if isinstance(html, str):
+			html = await self.get(html)
+			close_html = True
+		else:
+			close_html = False
+		locators = await html.select("a[data-test=\"author-name\"]")
+
+		authors = [None] * len(locators)
+		for i, author in enumerate(locators):
+			text = await author.get_text()
+			authors[i] = text.strip().replace("\n", '')
+
+		if close_html:
+			await html.close()
+		return tuple(authors)
+
+	async def get_figure_url(self, figure: StaticHtml) -> str:
+		image_tag = figure.select_one("img")
+		image_url = await image_tag.get("src")
+		if image_url is None:
+			image_url = await image_tag.get("data-src")
+			if image_url is None:
+				raise ValueError("No image url found.")
+		image_url = image_url.lstrip(r"/")
+		return re.sub(r"(.+.com/)lw\d+(/.+)", r"\1full\2", image_url)
 
 
 class RSC(JournalFamilyDynamic):
@@ -1382,39 +1393,26 @@ class RSC(JournalFamilyDynamic):
 		"""Compiles a list of regex patterns that will be used a lot when finding the name of a given article."""
 		self._name_patterns: tuple[tuple[re.Pattern, int], ...] = (
 			(re.compile(r"https://pubs.rsc.org/(\w{2})/article/doi/(10\.\d{4,9}/([-._;()/:A-Z0-9]+))/(\d+)/.+", re.I), 3),
-			(re.compile(r"https://pubs.rsc.org/ta/article/(\d+)/(\d+)/(\d+)/(\d+)/(.+)", re.I), 4),
-			(re.compile(r"https://pubs.rsc.org/ra/article/(\d+)?searchresult=1#(\d+)", re.I), 1),
+			(re.compile(r"https://pubs.rsc.org/(\w{2})/article/(\d+)/(\d+)/(\d+)/(\d+)/(.+)", re.I), 5),
+			(re.compile(r"https://pubs.rsc.org/(\w{2})/article/(\d+)?searchresult=1#(\d+)", re.I), 2),
 		)
 
-	@staticmethod
-	def name():
-		return "RSC"
+	def get_search_params(self, terms: tuple[str]) -> dict[str, str | bool]:
+		"""Generate the URL parameters for the search in the necessary order"""
+		params = {
+			"q": terms[0].replace(" ", "%20"),
+			"hd": "advancedAny",
+			"searchType": "advanced",
+		}
+		if self.open:
+			params["access_openaccess"] = True
+			params["access_unlocked"] = True
+			params["access_free"] = True
+		return params
 
-	async def get_license(self, html: DynamicHtml) -> tuple[bool, str]:
-		license_ = await html.select("div.license.license-creative-commons.hide")
-		if not license_:
-			return False, "unknown"
-
-		return True, await license_[0].select_one("a[href]").get("href")
-
-	async def get_authors(self, html: DynamicHtml) -> tuple[str]:
-		authors = []
-		for author in await html.select("div.al-author-name"):
-			author = await author.select_one("div.name-role-wrap").get_text()
-			author = author.strip().split("\n")[0]
-			authors.append(author)
-
-		return tuple(authors)
-
-	async def get_figure_list(self, html: DynamicHtml) -> tuple[DynamicHtml]:
-		return await html.select("div.fig.fig-section")
-
-	async def find_captions(self, figure_subtree: DynamicHtml) -> tuple[DynamicHtml]:
-		return await figure_subtree.select("div.caption.fig-caption > p")
-
-	async def get_figure_subtrees(self, html: T):
-		figure_subtrees = await html.select("div[image_table]")
-		return figure_subtrees
+	async def get_additional_url_arguments(self, html: T):
+		# rsc allows unlimited results, so no need for additional args
+		return [], {}, []
 
 	async def get_page_info(self, html: DynamicHtml):
 		try:
@@ -1466,17 +1464,6 @@ class RSC(JournalFamilyDynamic):
 
 			return True
 
-	def get_article_name_from_url(self, url) -> str:
-		if url.startswith("/"):
-			url = self.prepend + url
-
-		for pattern, group_number in self._name_patterns:
-			if (match := pattern.search(url)) is not None:
-				return match.group(group_number)
-
-		self.logger.info(f"Could not find the article ID for RSC article: {url}.")
-		return super().get_article_name_from_url(url)
-
 	async def get_articles_from_search_url(self, search_url: str, search_query_args: URLParams) -> set:
 		"""Generates a list of articles from a single search term"""
 		max_scraped = self.search_query["maximum_scraped"]
@@ -1493,10 +1480,17 @@ class RSC(JournalFamilyDynamic):
 			article_paths = set()
 
 			for page_number in range(start_page, stop_page + 1):
-				for article in await html.select("div.capsule.capsule--article"):
+				articles = await html.select("div.sr-list.al-article-box.al-normal.clearfix.content-type-journal-articles")
+				if len(articles) == 0:
+					with open(self.results_directory / f"page_{page_number}.html", 'w') as f:
+						f.write(await html.prettify())
+					continue
+
+				for article in articles:
 					tag = article.select_one("a[href]")
-					url = (await tag.get("href")).split('?page=search')[0]
-					if url.split("/")[-1] in self.articles_visited:
+					url = await tag.get("href")
+					raw_url = url.split("?")[0]
+					if raw_url in self.articles_visited:
 						# It is an article but we are not interested
 						continue
 
@@ -1528,9 +1522,52 @@ class RSC(JournalFamilyDynamic):
 		new_url = f"{url.split('1&tab=all')[0]}{page_number}&tab=all&fcategory=all&filter=all&Article%20Access=Open+Access"
 		return await self.get(new_url)
 
-	async def get_additional_url_arguments(self, html: T):
-		# rsc allows unlimited results, so no need for additional args
-		return [], {}, []
+	async def get_license(self, html: DynamicHtml) -> tuple[bool, str]:
+		license_ = await html.select("div.license.license-creative-commons.hide")
+		if not license_:
+			return False, "unknown"
+
+		return True, await license_[0].select_one("a[href]").get("href")
+
+	async def get_title(self, html: DynamicHtml, url: str) -> str:
+		elements = await html.select("h1.wi-article-title.article-title-main")
+		if len(elements) > 0:
+			return await elements[0].get_text()
+
+		title = await super().get_title(html, url)
+		self.logger.warning(f"Could not find title for {url}.")
+		return title
+
+	async def get_authors(self, html: DynamicHtml) -> tuple[str]:
+		authors = []
+		for author in await html.select("div.al-author-name"):
+			author = await author.select_one("div.name-role-wrap").get_text()
+			author = author.strip().split("\n")[0]
+			authors.append(author)
+
+		return tuple(authors)
+
+	async def get_figure_list(self, html: DynamicHtml) -> tuple[DynamicHtml]:
+		return await html.select("div.fig.fig-section")
+
+	async def get_caption(self, figure_subtree: DynamicHtml) -> str:
+		caption_elements = await figure_subtree.select("div.caption.fig-caption > p")
+		return "".join([(await caption.get_html()).strip() for caption in caption_elements])
+
+	async def get_figure_subtrees(self, html: DynamicHtml):
+		figure_subtrees = await html.select("div[image_table]")
+		return figure_subtrees
+
+	def get_article_name_from_url(self, url) -> str:
+		if url.startswith("/"):
+			url = self.prepend + url
+
+		for pattern, group_number in self._name_patterns:
+			if (match := pattern.search(url)) is not None:
+				return match.group(group_number)
+
+		self.logger.info(f"Could not find the article ID for RSC article: {url}.")
+		return super().get_article_name_from_url(url)
 
 	async def get_large_figure_url(self, figure: DynamicHtml) -> str:
 		locator = figure.locator
@@ -1547,8 +1584,7 @@ class RSC(JournalFamilyDynamic):
 		if "cdn" in url:
 			return url
 
-	async def get_image_source(self, url: str, *args, **kwargs) -> bytes:
-		return await self._get_image(url, self._image_client, *args, **kwargs)
+		return await figure.select_one("img.content-image.lazyLoadInit").get_data_value("src")
 
 
 class Wiley(JournalFamilyStatic):
@@ -1557,7 +1593,6 @@ class Wiley(JournalFamilyStatic):
 	page_param = "startPage="
 	max_page_size = "pageSize=20"
 	order_param = "sortBy="
-	open_param = "ConceptID=15941"
 	journal_param = "SeriesKey="
 	date_range_param = "AfterYear="
 	# order options
@@ -1631,28 +1666,6 @@ class Wiley(JournalFamilyStatic):
 
 		return params
 
-	async def get_license(self, html: StaticHtml):
-		open_access = html.select_one("div.doi-access")
-		if open_access and "Open Access" in open_access.text:
-			return True, open_access.text
-		return False, "unknown"
-
-	async def get_authors(self, soup: BeautifulSoup) -> tuple[str]:
-		authors = soup.select("p.author-name")
-		# Each author's name is repeated in the HTML in the same order, this will only look at each name once
-		author = authors[len(authors)//2]
-
-		author_map = map(lambda tag: tag.get_text(), authors)
-		return tuple(author_map)
-
-	async def get_page_info(self, soup):
-		totalResults = await soup.select_one("span.result__count").get_text()
-		totalResults = int(totalResults.replace(",", ""))
-
-		totalPages = math.ceil(float(totalResults / 20)) - 1
-		page = 1
-		return page, totalPages, totalResults
-
 	async def get_additional_url_arguments(self, html: StaticHtml):
 		current_year = datetime.now().year
 		journal_list = html.select_one("#Published in").parent.next_sibling
@@ -1677,24 +1690,47 @@ class Wiley(JournalFamilyStatic):
 		years = [["", ""]] + years
 		return years, journal_codes, orderings
 
-	async def turn_page(self, url, page_number: int):
-		new_url = f"{url.split('&startPage=')[0]}&startPage={page_number}&pageSize=20"
-		return await self.get(new_url)
+	async def get_page_info(self, html: StaticHtml):
+		totalResults = await soup.select_one("span.result__count").get_text()
+		totalResults = int(totalResults.replace(",", ""))
+
+		totalPages = math.ceil(float(totalResults / 20)) - 1
+		page = 1
+		return page, totalPages, totalResults
 
 	async def is_link_to_open_article(self, tag):
 		"""Wiley allows filtering for search. Therefore, if self.open is True, all results will be open."""
 		return super().is_link_to_open_article(tag)
 
-	async def find_captions(self, figure: T) -> tuple[T]:
-		return await figure.select("div.figure__caption.figure__caption-text")
+	async def turn_page(self, url, page_number: int):
+		new_url = f"{url.split('&startPage=')[0]}&startPage={page_number}&pageSize=20"
+		return await self.get(new_url)
+
+	async def get_license(self, html: StaticHtml):
+		open_access = html.select_one("div.doi-access")
+		if open_access and "Open Access" in open_access.text:
+			return True, open_access.text
+		return False, "unknown"
+
+	async def get_authors(self, html: StaticHtml) -> tuple[str]:
+		authors = await html.select("p.author-name")
+		# Each author's name is repeated in the HTML in the same order, this will only look at each name once
+		author = authors[:len(authors) // 2]
+
+		author_map = map(lambda tag: tag.get_text(), authors)
+		return tuple(author_map)
+
+	async def get_caption(self, figure_subtree: StaticHtml) -> str:
+		caption_elements = await figure_subtree.select("div.figure__caption.figure__caption-text")
+		return "".join([(await caption.get_html()).strip() for caption in caption_elements])
 
 	async def get_figure_subtrees(self, html: StaticHtml):
 		figure_subtrees = await html.select("div[image_table]")
 		return figure_subtrees
 
-	async def get_figure_url(self, figure:Tag) -> str:
-		href = figure.select_one("a[href]")
-		return self.prepend + href["href"]
+	async def get_figure_url(self, figure: StaticHtml) -> str:
+		href = await figure.select_one("a[href]").get("href")
+		return self.prepend + href
 
 
 COMPATIBLE_JOURNALS = Literal["ACS", "Nature", "RSC", "Wiley"]

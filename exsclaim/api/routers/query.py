@@ -184,7 +184,7 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			},
 			"llm": search_query.llm,
 			"model_key": search_query.model_key,
-			"open": search_query.open_access,
+			"open": search_query.open,
 			"save_format": search_query.save_format,
 			"logging": ["exsclaim.log"],
 			"results_dir": str(results_dir),

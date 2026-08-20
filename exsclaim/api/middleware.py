@@ -102,7 +102,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 			async with get_db_session() as session:
 				await session.execute(
 					text("INSERT INTO settings.banned_ips(address, reason) VALUES (:address, :reason);"),
-					dict(address=address, reason=f"Attempted to access: {request.url.path}"[:90])
+					dict(address=address, reason=f"Attempted to access: {request.url.path}")
 				)
 				await session.commit()
 

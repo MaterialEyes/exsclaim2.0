@@ -360,7 +360,7 @@ class Query(BaseModel):
 	save_format: Annotated[list[Literal["subfigures", "visualization", "boxes", "postgres", "csv", "mongo"]],
 		Path(title="How the results should be saved.")] = ["boxes", "postgres"]
 
-	open_access: Annotated[bool, Path(title="Determines if EXSCLAIM only uses open-access articles (True).")] = False
+	open: Annotated[bool, Path(title="Determines if EXSCLAIM only uses open-access articles (True).")] = False
 
 	llm: Annotated[str,	Path(title="The Large Language Model (LLM) that is used to separate captions and generate keywords for articles and figures.")] = "llama3.2"
 
