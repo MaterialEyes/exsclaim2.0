@@ -216,26 +216,29 @@ class JournalScraper(ExsclaimTool):
 	async def check_search_query(self, query_dict: dict[str, Any]):
 		...
 
-	async def task(self, exsclaim_json: dict, search_query: dict, article: str, journal_family_name: str, html_directory: Path,
+	async def task(self, exsclaim_json: dict, journal: JournalFamily, article: str, html_directory: Path,
 					 lock: asyncio.Lock):
 		# Extract figures, captions, and metadata from each article
-		self.display_info(f">>> Extracting figures from: {article.split('/')[-1]}")
+		self.display_info(f">>> Extracting figures from: {journal.get_article_name_from_url(article)}")
 		try:
 			async with JournalFamily(journal_family_name, search_query,
 								 scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
 				url = journal.domain + article
 				try:
 					article_dict = await journal.get_article_figures(url, html_directory)
+			url = journal.domain + article
 
-					if article_dict:
-						async with lock:
-							self._update_exsclaim(exsclaim_json, article_dict)
-					self.new_articles_visited.add(article)
-				except JournalScrapeError as e:
-					self.logger.exception(f"Could not scrape the details for {url}.")
-					await self._handle_scrape_error(e)
-					raise e
+			try:
+				article_dict = await journal.get_article_figures(url, html_directory)
 
+				if article_dict:
+					async with lock:
+						self._update_exsclaim(exsclaim_json, article_dict)
+				self.new_articles_visited.add(article)
+			except JournalScrapeError as e:
+				self.logger.exception(f"Could not scrape the details for {url}.")
+				await self._handle_scrape_error(e)
+				raise e
 		except Exception as e:
 			self.display_exception(e, article)
 		return article
@@ -272,22 +275,22 @@ class JournalScraper(ExsclaimTool):
 
 		self.display_info(f"Running Journal Scraper\n")
 
-		async with JournalFamily(journal_family_name, search_query,
-								 scrape_hidden_articles=search_query.get("scrape_hidden_articles", False)) as journal:
+		lock = asyncio.Lock()
+		journal = JournalFamily(journal_family_name, search_query,
+								scrape_hidden_articles=search_query.get("scrape_hidden_articles", False))
+		async with journal:
 			try:
 				extensions = await journal.get_article_extensions()
 			except JournalScrapeError as e:
 				await self._handle_scrape_error(e)
-				raise e
+				raise
 
-		lock = asyncio.Lock()
+			async with asyncio.TaskGroup() as tg:
+				t0 = self._start_timer()
+				tasks = [tg.create_task(self.task(exsclaim_json, journal, extension, html_directory, lock))
+						 for extension in extensions]
 
-		async with asyncio.TaskGroup() as tg:
-			t0 = self._start_timer()
-			tasks = [tg.create_task(self.task(exsclaim_json, search_query, extension, journal_family_name, html_directory, lock))
-					 for extension in extensions]
-			
-			await self._await_task_completions(tasks, t0, "articles", "Scraping articles from {}".format)
+				await self._await_task_completions(tasks, t0, "articles", "Scraping articles from {}".format)
 
 		self._appendJSON(exsclaim_json, data=separated, filename="_articles")
 		return exsclaim_json
@@ -310,10 +313,10 @@ class CaptionDistributor(ExsclaimTool):
 
 	def _update_exsclaim(self, search_query, exsclaim_dict, figure_name, caption_dict: dict[str, str],
 						 keywords: Collection[str], usage: LLMUsage):
-		regex = re.compile(r"\s*\[\s*]\s*")
+		empty_list_regex = re.compile(r"\s*\[\s*]\s*")
 
 		for label, capt in caption_dict.items():
-			if regex.match(capt):
+			if empty_list_regex.match(capt):
 				capt = ""
 
 			master_image = {
@@ -356,8 +359,6 @@ class CaptionDistributor(ExsclaimTool):
 			try:
 				caption_text = exsclaim_json[figure]["full_caption"]
 
-				# caption_dict = await self.llm.separate_captions(caption_text)
-				# keywords = await self.llm.get_keywords(caption_text)
 				caption_dict, keywords, usage = await self.llm.parse_captions(caption_text)
 
 				if caption_dict is not None:
