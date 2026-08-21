@@ -38,10 +38,17 @@ def get_article_button():
 
 
 def get_data_table():
-	from httpx2 import Client
+	import httpx2
 
-	client = Client(base_url=ui_settings.FAST_API_URL)
-	response = client.get("/classification_codes")
+	client = httpx2.Client(base_url=ui_settings.FAST_API_URL)
+	try:
+		response = client.get("/classification_codes")
+	except httpx2.ConnectError:
+		# This typically occurs on startup when the Dashboard is ready before the API
+		import time
+		time.sleep(5)
+		response = client.get("/classification_codes")
+
 	if response.is_success:
 		classes = [i["name"] for i in response.json()]
 	else:

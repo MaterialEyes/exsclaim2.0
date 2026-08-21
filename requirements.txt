@@ -22,6 +22,7 @@ curl-cffi==0.16.0
 asyncpg==0.31.0
 
 # Used with the Figure Separator
+cairosvg==2.9.0
 pycocotools==2.0.11
 
 typing_extensions==4.15.0
