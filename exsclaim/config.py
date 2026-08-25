@@ -2,7 +2,7 @@ from datetime import datetime as dt
 from multiprocessing import cpu_count
 from os import getenv
 from pathlib import Path
-from pydantic import Field, computed_field, field_validator, EmailStr, model_validator
+from pydantic import Field, field_validator, EmailStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from re import compile
 from typing import Optional, Self
@@ -28,7 +28,7 @@ class EmailSettings(BaseSettings):
 
 		if self.PASSWORD_FILE is not None:
 			with open(self.PASSWORD_FILE, "r") as f:
-				self.PASSWORD = self.PASSWORD_FILE.read()
+				self.PASSWORD = f.read()
 
 		self.PASSWORD = self.PASSWORD.strip()
 		return self
@@ -49,7 +49,7 @@ class ExsclaimSettings(BaseSettings):
 	)
 
 	CHECKPOINTS_PATH: Path = Field(
-		default="/exsclaim/checkpoints",
+		default=Path("/exsclaim/checkpoints"),
 		description="The directory where the checkpoint files for the FigureSeparator should be stored.",
 		examples=["~/.exsclaim/checkpoints", "/exsclaim/checkpoints"],
 	)
@@ -73,8 +73,13 @@ class ExsclaimSettings(BaseSettings):
 		description="If the Email's model validator should raise an error if emails are provided without the pipeline being able to send emails."
 	)
 
+	PLAYWRIGHT_HEADLESS: bool = Field(
+		default=True,
+		description="If playwright should run headless (default, no visible screen) or headed (requires X server to show the pages)."
+	)
+
 	LOGS_PATH: Path = Field(
-		default="/exsclaim/logs",
+		default=Path("/exsclaim/logs"),
 		description="The directory where the log files should be stored.",
 		examples=["~/.exsclaim/logs", "/var/logs/exsclaim", "/exsclaim/logs"],
 	)
@@ -116,7 +121,7 @@ class ExsclaimSettings(BaseSettings):
 			return url
 		return url.rstrip("/")
 
-	@field_validator("ALLOW_PDF_PATHS", "DEBUG", "DISPLAY_TQDM", mode="before")
+	@field_validator("ALLOW_PDF_PATHS", "DEBUG", "DISPLAY_TQDM", "PLAYWRIGHT_HEADLESS", mode="before")
 	@classmethod
 	def validate_boolean(cls, value) -> bool:
 		if isinstance(value, bool):
@@ -257,10 +262,10 @@ def get_variables(port_env: str, default_port: str, log_subfolder: str) -> dict:
 	log_dir.mkdir(parents=True, exist_ok=True)
 	date = dt.now().strftime("%Y-%m-%d")
 
-	accesslog = log_dir / f"access-{date}.log"
-	errorlog = log_dir / f"error-{date}.log"
+	access_log = log_dir / f"access-{date}.log"
+	error_log = log_dir / f"error-{date}.log"
 
-	for log in (accesslog, errorlog):
+	for log in (access_log, error_log):
 		log.touch(exist_ok=True)
 
 	reload = settings.DEBUG and ui_settings.ALLOW_RELOAD
@@ -270,8 +275,8 @@ def get_variables(port_env: str, default_port: str, log_subfolder: str) -> dict:
 		reload=reload,
 		settings=settings,
 		include_date_header=True,
-		accesslog=str(accesslog),
-		errorlog=str(errorlog),
+		accesslog=str(access_log),
+		errorlog=str(error_log),
 	)
 
 	if settings.DEBUG:

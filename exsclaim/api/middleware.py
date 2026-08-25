@@ -1,7 +1,7 @@
 import ipaddress
 import logging
 
-from .models import get_guest_uuid, gen_uuid7
+from .models import gen_uuid7
 from ..db import async_engine, get_db_session
 
 from asyncio import wait_for, TimeoutError as AsyncTimeoutError
@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette import status
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse, JSONResponse
-from starlette.types import ASGIApp, Scope, Receive, Send, Message
+from starlette.types import ASGIApp
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio.session import AsyncSession
@@ -32,7 +32,7 @@ BLOCKED_PATHS = [
 ]
 
 
-def format_response(_id, request: Request, ip: ip._BaseAddress = None) -> str:
+def format_response(_id, request: Request, ip: Optional[ip._BaseAddress] = None) -> str:
 	if ip is None:
 		ip = request.headers.get('X-Forwarded-For', None)
 		if ip is None:
@@ -61,7 +61,8 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 			return f"{diff * 1000:,.4f}ms"
 		return f"{diff:,.2f}s"
 
-	def path_is_blocked(self, url: "starlette.datastructures.URL") -> bool:
+	@staticmethod
+	def path_is_blocked(url: "starlette.datastructures.URL") -> bool:
 		# TODO: Create a more comprehensive set of banned endpoints
 		for regex in BLOCKED_PATHS:
 			if regex.match(url.path):

@@ -1,35 +1,40 @@
-from .exceptions import JournalScrapeError
-from .utilities import paths
+from ..config import settings
+from ..exceptions import JournalScrapeError
+from ..utilities import paths
 
 import asyncio
 import cairosvg
 import curl_cffi
 import httpx2
 import inspect
-import json
 import logging
-import math
 import re
 import sys
 import urllib.parse
 
 from abc import ABC, abstractmethod, ABCMeta
 from bs4 import BeautifulSoup
-from datetime import datetime
 from itertools import product
 from pathlib import Path
-from playwright.async_api import Playwright, Locator, async_playwright, Response, PlaywrightContextManager, Cookie
+from playwright.async_api import BrowserContext, Locator, async_playwright, Response, PlaywrightContextManager, Page
 from playwright._impl import _errors as playwright_errors
 from playwright_stealth import Stealth
-from starlette.datastructures import URL
-from typing import Any, Awaitable, Callable, Iterable, Literal, Optional, Self, Type, overload
+from typing import Any, Awaitable, Callable, Iterable, Literal, Optional, Self, Sequence, Type, overload
 
-
-__all__ = ["JournalFamily", "JournalFamilyStatic", "JournalFamilyDynamic", "ACS", "Nature", "RSC", "Wiley", "COMPATIBLE_JOURNALS"]
+__all__ = ["JournalFamily", "JournalMeta", "JournalHtml", "StaticHtml", "DynamicHtml", "JournalFamilyStatic", "JournalFamilyDynamic",
+		   "URLParams", "DOI_REGEX", "ResponseFunction", "default_predicate"]
 
 URLParams = dict[str, Any]
-DOI_REGEX = r"(10\.\d{4,9})/([-.;()/:\w]+)"
+DOI_REGEX = r"(10\.\d{4,9})/([-.;()/:\w%]+)"
 ResponseFunction = str | re.Pattern[str] | Callable[[Response], bool | Awaitable[bool]]
+HTTPS_START = re.compile("https?://.+")
+
+
+def default_predicate(logger: logging.Logger, resp: Response, wanted_url: str, article_id: str):
+	logger.debug(f"[{resp.status}] {resp.url=}")
+	return resp.status < 300 and (
+		resp.url.strip("/") == wanted_url.strip("/") or article_id in wanted_url
+	)
 
 
 class JournalMeta(ABCMeta):
@@ -38,28 +43,19 @@ class JournalMeta(ABCMeta):
 	def __new__(cls, name, bases, dct):
 		_new = super().__new__(cls, name, bases, dct)
 
-		if name != "JournalFamily" and name != "JournalFamilyStatic" and name != "JournalFamilyDynamic":
+		if ABC not in bases:
 			JournalMeta.subclasses[name] = _new
 		return _new
 
-	def __call__(cls, *args, **kwargs):
-		if cls != JournalFamily:
-			return super().__call__(*args, **kwargs)
-
-		journal_name, *args = args
-		journal_name = journal_name.lower()
-		for name, subclass in JournalMeta.subclasses.items():
-			if journal_name == name.lower() or journal_name == subclass.name().lower():
-				return subclass.__call__(*args, **kwargs)
-
-		raise NameError(f"Journal family {journal_name} is not defined.")
+	def __len__(self):
+		return len(self.subclasses)
 
 	def __iter__(cls):
 		return iter(JournalMeta.subclasses.items())
 
 
 class JournalHtml(ABC):
-	"""A base class to create a general base on manipulating HTML without removing any functionality of the browser types."""
+	"""A base class for manipulating HTML elements without removing any functionality of the browser types."""
 	@abstractmethod
 	async def select(self, selector: str) -> tuple["JournalHtml"]:
 		"""Select all HTML elements that match the given CSS selector."""
@@ -73,8 +69,16 @@ class JournalHtml(ABC):
 		"""Gets the internal text within an element."""
 
 	@abstractmethod
+	async def get_surface_text(self) -> str:
+		"""Returns the HTML text of the element's surface, not including any internal tags that aren't purely formatting."""
+
+	@abstractmethod
 	async def get_html(self) -> str:
-		"""Gets the html within an element."""
+		"""Gets the HTML within an element."""
+
+	@abstractmethod
+	async def get_inner_contents(self) -> Optional[str]:
+		"""Gets the inner HTML within an element without the element's tags."""
 
 	@abstractmethod
 	async def get(self, attribute: str) -> str:
@@ -121,8 +125,14 @@ class StaticHtml(JournalHtml):
 	async def get_text(self) -> str:
 		return self.soup.get_text()
 
+	async def get_surface_text(self) -> str:
+		return await self.get_text()
+
 	async def get_html(self) -> str:
 		return str(self.soup)
+
+	async def get_inner_contents(self) -> str:
+		return self.soup.decode_contents()
 
 	async def get(self, attribute: str) -> Optional[str]:
 		return self.soup.get(attribute)
@@ -180,16 +190,18 @@ class DynamicHtml(JournalHtml):
 
 	def select_one(self, selector: str) -> "DynamicHtml":
 		return DynamicHtml(self.locator.locator(selector).nth(0))
-		# all_locators = await self.locator.locator(selector).all()
-		# if not all_locators:
-		# 	raise Attr("No locators available")
-		# return DynamicHtml(all_locators[0])
 
 	async def get_text(self) -> str:
 		return await self.locator.inner_text()
 
+	async def get_surface_text(self) -> str:
+		return await self.get_text()
+
 	async def get_html(self) -> str:
 		return await self.locator.inner_html()
+
+	async def get_inner_contents(self) -> Optional[str]:
+		return await self.locator.text_content()
 
 	async def get(self, attribute: str) -> str:
 		return await self.locator.get_attribute(attribute)
@@ -253,7 +265,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		those queries
 		* article_url: the general form of the url path containing **html**
 		versions of article
-	The methods of this class are focused on parsing the html structure
+	The methods of this class are focused on parsing the HTML structure
 	of the page types returned by the two url types above.
 	There are two major types of JournalFamilies (in the future, these
 	may make sense to be split into separate subclasses of JournalFamily):
@@ -269,6 +281,18 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 	"""
 	# journal attributes -- these must be defined for each journal
 	# family based on the explanations provided here
+
+	@classmethod
+	def from_search_query(cls, search_query: dict[str, Any], *args, **kwargs) -> "JournalFamily[JournalHtml]":
+		journal_name = search_query["journal_family"]
+		journal_name_lower = journal_name.lower()
+		kwargs["scrape_hidden_articles"] = search_query.get("scrape_hidden_articles", False)
+
+		for name, subclass in JournalMeta.subclasses.items():
+			if journal_name_lower == name.lower() or journal_name_lower == subclass.name().lower():
+				return subclass.__call__(search_query, *args, **kwargs)
+
+		raise NameError(f"Journal family {journal_name} is not defined.")
 
 	@classmethod
 	def name(cls) -> str:
@@ -341,29 +365,13 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 
 	# used for get_article_delimiters
 	@property
-	def articles_path(self) -> str:
-		"""The journal's url path to articles.
-		Articles are located at domain.name/articles_path/article
-		"""
-		return self._articles_path
-
-	@property
-	def articles_path_length(self) -> int:
-		"""Number of / separated segments to articles path"""
-		return self._articles_path_length
-
-	@property
-	def prepend(self) -> str:
-		return self._prepend or self._domain
-
-	@property
 	def extra_key(self) -> str:
 		return self._extra_key
 
 	def __init__(self, search_query: dict, name_patterns: Iterable[tuple[re.Pattern, int]] = (), **kwargs):
 		"""Creates an instance of a journal family search using a query
 		Args:
-			search_query: a query json (python dictionary)
+			search_query: a query JSON (python dictionary)
 			name_patterns: A list of tuples containing a regex pattern used to extract the id from a link, and the group number that ID exists in
 		Returns:
 			An initialized instance of a search on a journal family
@@ -372,7 +380,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		self._name_patterns = name_patterns
 		self.open = search_query.get("open", False)
 		self.order = search_query.get("sortby", "relevant")
-		self.logger = kwargs.get("logger", logging.getLogger(__name__))
+		self.logger: logger.Logger = kwargs.get("logger", logging.getLogger(__name__))
 
 		# Set up file structure
 		base_results_dir = paths.initialize_results_dir(search_query.get("results_dir", None))
@@ -404,41 +412,69 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		await self.close()
 
 	@staticmethod
-	async def get_cloudflare_headers(url: str, logger: logging.Logger, playwright: Optional[Playwright] = None) -> tuple[dict[str, str], list[dict[str, str]]]:
+	async def click_on_cloudflare(page: Page):
+		# Looks for the Ray ID at the bottom of the page. If it's there, it will click the checkbox to get past verification
+		try:
+			ray_ids = await page.locator("div.ray-id").all()
+		except playwright_errors.TimeoutError:
+			return
+
+		if len(ray_ids) == 0:
+			return
+
+		try:
+			await page.locator("input[type=checkbox]").click(force=True, timeout=7_500)
+		except playwright_errors.TimeoutError as e:
+			frame = page.frame(url=re.compile(".*cloudflare.*"))
+			if frame is None:
+				raise e
+			try:
+				await frame.locator("input[type=checkbox]").click(force=True, timeout=7_500)
+			except playwright_errors.TimeoutError:
+				pass
+
+	@classmethod
+	async def get_cloudflare_headers(cls, url: str, logger: logging.Logger, context: Optional[BrowserContext] = None,
+									 urls: Sequence[str] = tuple(), timeout: float = 20) -> tuple[dict[str, str], list[dict[str, str]]]:
 		"""
 		Uses playwright to pass Cloudflare's checks, then returns the headers for use with other session types.
 		Args:
 			url (str): The URL that is blocked by Cloudflare
-			playwright (Playwright, optional): The playwright to pass Cloudflare's checks):
+			context (Playwright, optional): The playwright to pass Cloudflare's checks:
+			urls (typing.Sequence[str]): The urls whose cookies should be returned. An empty list will return all cookies.
 
 		Returns:
 
 		"""
 		stealth = None
-		if playwright is None:
+		if context is None:
 			stealth = Stealth().use_async(async_playwright())
 			playwright = await stealth.start()
+			browser = await playwright.chromium.launch()
+			context = await browser.new_context()
 
-		browser = await playwright.chromium.launch()
-		page = await browser.new_page()
+		page = await context.new_page()
 
-		response = await page.goto(url)
+		_id = self.get_article_name_from_url(url)
+		async with page.expect_response(lambda resp: default_predicate(logger, resp, url, _id), timeout=timeout * 1000) as response:
+			await page.goto(url)
+			await cls.click_on_cloudflare(page)
 
+		response = await response.value
 		if response.status >= 400:
-			timeout = 35
 			logger.info(f"Playwright could not immediately bypass Cloudflare's checks. Waiting {timeout} seconds to see if it passes.")
-			page.expect_response(lambda response: response.url == url and 200 <= response.status < 300,
-								 timeout=timeout * 1000)
-			response = await page.goto(url)
-			if response.status >= 400:
-				html = await response.text()
-				raise JournalScrapeError("Could not get passed Cloudflare defense page.", response.status, response.headers.copy(),
-										 url, html)
+			html = await response.text()
+			raise JournalScrapeError("Could not get passed Cloudflare defense page.", response.status, response.headers.copy(),
+									 url, html)
 
 		headers = dict(filter(lambda header: "cf" in header[0].lower(), response.headers.items()))
-		cookies = await page.context.cookies()
+		cookies = await context.cookies(urls)
+		# await page.close()
 
 		if stealth is not None:
+			await context.close()
+			await browser.close()
+			await playwright.close()
 			await stealth.__aexit__()
 
 		return headers, cookies
@@ -467,11 +503,13 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		Returns:
 			soup of next page
 		"""
+		await html.close()
+
 		if self.page_param not in url:
 			url = f"{url}&{self.page_param}={page_number}"
 		else:
 			_url = urllib.parse.urlsplit(url)
-			_query = urllib.parse.parse_qs(_url.query)
+			_query = urllib.parse.parse_qs(_url.query, keep_blank_values=True)
 			_query[self.page_param] = [str(page_number)]
 			query_string = urllib.parse.urlencode(_query, doseq=True)
 			url = _url._replace(query=query_string).geturl()
@@ -550,7 +588,8 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 			all captions for the given figure
 		"""
 		caption_elements = await figure_subtree.select("p")
-		return "".join([(await caption.get_html()).strip() for caption in caption_elements])
+		caption_elements = [await caption.get_inner_contents() for caption in caption_elements]
+		return "".join([caption.strip() for caption in caption_elements if caption is not None])
 
 	# @abstractmethod
 	async def is_link_to_open_article(self, article: T) -> bool:
@@ -666,6 +705,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 
 			if len(search_url_args) == starting_length:
 				search_url_args.append(url_parameters)
+			await soup.close()
 
 		return search_url, search_url_args
 
@@ -700,14 +740,14 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 				url = await self.get_link_for_article(article)
 				raw_url = url.split("?")[0]
 
-				if raw_url in self.articles_visited or (
-						self.open and not (await self.is_link_to_open_article(article))
-				):
+				is_article_open = await self.is_link_to_open_article(article)
+				if raw_url in self.articles_visited or not is_article_open: # (self.open and not is_article_open)
 					# It is an article but we are not interested
 					continue
 
 				article_paths.add(raw_url)
 				if len(article_paths) >= max_scraped:
+					await html.close()
 					return article_paths
 			# Get next page at end of loop since page 1 is obtained from
 			# search_url
@@ -721,11 +761,12 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		# This returns urls based on the combinations of desired search terms.
 		article_paths: set[str] = set()
 		search_url, search_query_args = await self.get_search_query_urls()
+		maximum_scraped = self.search_query["maximum_scraped"]
 
 		for search_arg in search_query_args:
 			new_article_paths = await self.get_articles_from_search_url(search_url, search_arg)
 			article_paths.update(new_article_paths)
-			if len(article_paths) >= self.search_query["maximum_scraped"]:
+			if len(article_paths) >= maximum_scraped:
 				break
 
 		return tuple(article_paths)
@@ -736,7 +777,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 
 	def get_article_name_from_url(self, url: str) -> str:
 		if url.startswith("/"):
-			url = self.prepend + url
+			url = self.domain + url
 
 		for pattern, group_number in self._name_patterns:
 			if (match := pattern.search(url)) is not None:
@@ -748,7 +789,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 	async def get_figures(self, figure: T, figure_json: dict, url: str) -> tuple[dict, str]:
 		image_url = await self.get_figure_url(figure)
 
-		if not re.match("https?://.+", image_url):
+		if not HTTPS_START.match(image_url):
 			image_url = "https://" + image_url
 
 		article_name = self.get_article_name_from_url(url)
@@ -889,7 +930,6 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 	@abstractmethod
 	async def get_image_source(self, url: str, **kwargs) -> bytes:
 		...
-# endregion
 
 
 class JournalFamilyStatic(JournalFamily[StaticHtml], ABC):
@@ -902,6 +942,8 @@ class JournalFamilyStatic(JournalFamily[StaticHtml], ABC):
 
 	async def get(self, url: str, params: Optional[dict[str, Any]] = None, *args, **kwargs) -> StaticHtml:
 		await super().get(url, params)
+		if url.startswith("/"):
+			url = self.domain + url
 		response = await self.client.get(url, params=params)
 		response.raise_for_status()
 
@@ -935,8 +977,9 @@ class JournalFamilyDynamic(JournalFamily[DynamicHtml], ABC):
 
 		self._stealth = Stealth().use_async(playwright)
 		self._playwright = await self._stealth.start()
-		self._browser = await self._playwright.chromium.launch(headless=True)
-		await self.get_cloudflare_headers(self.domain, self.logger, self._playwright)
+		self._browser = await self._playwright.chromium.launch(headless=settings.PLAYWRIGHT_HEADLESS)
+		self._browser_context = await self._browser.new_context()
+		# await self.get_cloudflare_headers(self.domain, self.logger, self._browser_context)
 		return False
 
 	async def __aenter__(self) -> Self:
@@ -947,6 +990,7 @@ class JournalFamilyDynamic(JournalFamily[DynamicHtml], ABC):
 		await self._stealth.__aexit__(exc_type, exc_val, exc_tb)
 
 	async def close(self):
+		await self._browser_context.close()
 		await self._browser.close()
 		if hasattr(self, "_playwright"):
 			await self._playwright.stop()
@@ -982,27 +1026,25 @@ class JournalFamilyDynamic(JournalFamily[DynamicHtml], ABC):
 				  predicate: Optional[ResponseFunction] = None,
 				  *args, **kwargs) -> Optional[DynamicHtml]:
 		await super().get(url, params=params)
-		page = await self._browser.new_page()
+		page = await self._browser_context.new_page()
 		page.on("response", self.response_handler)
 
 		attempts = kwargs.get("attempts", 3)
 
 		if params is not None:
-			url = URL(url)
-			url = url.include_query_params(**params)
-			url = str(url)
+			query_string = urllib.parse.urlencode(params)
+			url = f"{url.strip('?')}?{query_string}"
 
 		if response_handlers is not None:
 			for response_handler in response_handlers:
 				page.on("response", response_handler)
 
-		def default_predicate(resp: Response):
-			self.logger.debug(f"[{resp.status}] {resp.url=}")
-			return resp.url == url and resp.status < 300
+		_id = self.get_article_name_from_url(url)
+		predicate = predicate or (lambda resp: default_predicate(self.logger, resp, url, _id))
 
 		for attempt in range(attempts):
 			try:
-				async with page.expect_response(predicate or default_predicate, timeout=60_000) as resp2:
+				async with page.expect_response(predicate, timeout=20_000) as resp2:
 					await page.goto(url)
 
 				response = await resp2.value
@@ -1027,6 +1069,7 @@ class JournalFamilyDynamic(JournalFamily[DynamicHtml], ABC):
 		if return_html:
 			return DynamicHtml(page.locator("html"))
 
+		await page.close()
 		return None
 
 	async def save_figure(self, figure_name: str, image_url: str, chunk_size: int = 1_024) -> Path:
@@ -1059,760 +1102,9 @@ class JournalFamilyDynamic(JournalFamily[DynamicHtml], ABC):
 				self.logger.info(f"Using cached {url}.")
 				return self.cache[url]
 
-		page = await self._browser.new_page()
+		page = await self._browser_context.new_page()
 		response = await page.goto(url)
 		if response.status >= 400:
 			raise JournalScrapeError(await response.text(), response.status, response.headers, url=url)
 
 		return await response
-
-
-# ############# JOURNAL FAMILY SPECIFIC INFORMATION ################
-# To add a new journal family, create a new subclass of JournalFamily.
-# Fill out the methods and attributes according to their descriptions in the JournalFamily class.
-# Then add an entry to the journals dictionary with the journal family's name in all lowercase as the key and
-# the new class as the value.
-# ##################################################################
-
-
-class ACS(JournalFamilyDynamic):
-	def __init__(self, search_query: dict, **kwargs):
-		name_patterns = (
-			(re.compile(r"/(\w{6})/article/doi/(10\.\d{4,9})/([-._;()/:A-Z0-9]+)/(\d+)/.+", re.I), 3),
-			(re.compile(r"/(\w{6})/article/(\d+)", re.I), 2)
-		)
-		super().__init__(search_query, name_patterns=name_patterns, **kwargs)
-		self._domain = "https://pubs.acs.org"
-		self._search_path = "/search-results"
-		self._max_page_size = "pageSize=100"
-		self._page_param = "startPage="
-		self._order_param = "sortBy"
-		self._journal_param = "SeriesKey"
-		self._date_range_param = "Earliest"
-
-		# order options
-		self._order_values = {
-			"relevant": "relevancy",
-			"old": "Earliest_asc",
-			"recent": "Earliest",
-		}
-		self._join = '"+"'
-
-		self._articles_path = "/doi/"
-		self._prepend = "https://pubs.acs.org"
-		self._extra_key = "inline-fig internalNav"
-		self._articles_path_length = 3
-		self._max_query_results = 1_000
-
-	def get_search_params(self, terms: tuple[str]) -> dict[str, str | int]:
-		"""Generate the URL parameters for the search in the necessary order"""
-		params = {
-			"page": 1,
-			"q": terms[0]
-		}
-
-		if self.open:
-			params["openAccess"] = 1
-			params["accessType"] = "openAccess"
-
-		return params
-
-	async def get_additional_url_arguments(self, html: DynamicHtml):
-		# rsc allows unlimited results, so no need for additional args
-		return [], {}, []
-
-	async def get_page_info(self, html: DynamicHtml):
-		total_results = html.select_one("div.sr-statistics.at-sr-statistics")
-		text_ = await total_results.get_text()
-		results_match = re.search(r"\s*(\d+)-(\d+)\s*of\s*(\d+)", text_)
-		if results_match is None:
-			raise JournalScrapeError("Could not find total number of articles found for the ASC search.", html=await html.prettify())
-
-		start_article_num = int(results_match.group(1))
-		end_article_num = int(results_match.group(2))
-		total = int(results_match.group(3))
-
-		articles_per_page = (1 + end_article_num - start_article_num)
-		total_pages = math.ceil(total / articles_per_page)
-
-		return 1, total_pages, total
-
-	async def is_link_to_open_article(self, article: DynamicHtml) -> bool:
-		return len(await article.select("i.icon-availability_open")) > 0
-
-	async def get_articles_from_search_page(self, html: DynamicHtml) -> tuple[DynamicHtml]:
-		return await html.select("div.sr-list.al-article-box.al-normal.clearfix.content-type-journal-articles")
-
-	async def get_link_for_article(self, article: DynamicHtml) -> str:
-		return await article.select_one("h4").select_one("a[href]").get("href")
-
-	async def old_get_articles_from_search_url(self, search_url: str, search_query_args: URLParams):
-		"""Generates a list of articles from a single search term"""
-		max_scraped = self.search_query["maximum_scraped"]
-		html = await self.get(search_url, params=search_query_args)
-		async with html:
-			article_paths = set()
-
-			# if "Verifying you are human" in html.select_one("p"):
-			# 	raise JournalScrapeError("ACS blocked scraping the results page.", 403, url=search_url, html=html)
-
-			start_page, stop_page, total_articles = await self.get_page_info(html)
-
-			for page_number in range(start_page, stop_page + 1):
-				for article in await html.select("div.sr-list.al-article-box.al-normal.clearfix.content-type-journal-articles"):
-					search_url = await article.select_one("h4").select_one("a[href]").get("href")
-					raw_url = search_url.split('?')[0]
-
-					if raw_url.split("/")[-1] in self.articles_visited:
-						# No need to revisit this article
-						continue
-
-					if search_url.startswith('/doi/full/') or search_url.startswith('/en/content/articlehtml/') or await self.is_link_to_open_article(article):
-						article_paths.add(raw_url)
-
-					if len(article_paths) >= max_scraped:
-						return article_paths
-
-				# Get next page at end of loop since page 1 is obtained from the search_url
-				await self.turn_page(html, search_url, page_number + 1)
-		return article_paths
-
-	async def turn_page(self, html: DynamicHtml, url: str, page_number: int) -> DynamicHtml:
-		try:
-			for next_page_button in await html.select("button.btn-as-link.sr-nav-next.al-nav-next"):
-				if await next_page_button.is_visible():
-					await next_page_button.locator.click()
-					return html
-		except playwright_errors.TimeoutError as e:
-			raise JournalScrapeError("Couldn't turn ASC search page.", html=await html.prettify()) from e
-
-	@staticmethod
-	def get_license_type(soup: BeautifulSoup):
-		unknown_license = (False, "unknown")
-		open_access = soup.select_one("li.access__control--item")
-
-		if not open_access:
-			return unknown_license
-
-		button = open_access.select_one("img")
-		if not button:
-			return unknown_license
-
-		button_text = button["alt"]
-
-		match button_text.lower():
-			case "open access" | "free to read":
-				return (True, button_text)
-			case "subscribed" | "token access":
-				return (False, button_text)
-
-		return unknown_license
-
-	async def get_license(self, html: DynamicHtml):
-		permissions_link = await html.select_one("a#PermissionsLink").get("href")
-		param_encoded_doi_regex = DOI_REGEX.replace("/", "%2F")
-		doi_match = re.search(rf"https://marketplace.copyright.com/rs-ui-web/(\w{{2}})/search/all/{param_encoded_doi_regex}", permissions_link)
-
-		if doi_match is None:
-			self.logger.warning("Could not get the permissions link for ...")
-			return (False, "unknown")
-
-		doi = f"{doi_match.group(2)}/{doi_match.group(3)}"
-
-		license_info = (False, "unknown")
-
-		async def predicate(response: Response) -> bool:
-			finished = response.request.method == "POST" and response.url == "https://marketplace.copyright.com/rs-ui-web/mp/rest/rights/openAccess"
-			if not finished:
-				return finished
-
-			content = await response.json()
-			info = content["response"]["content"]
-			work_id = tuple(info.keys())[0]
-			info = info[work_id]
-
-			if info.get("licenseType") is None:
-				return finished # There isn't a license, so there's no need to edit the return value
-
-			nonlocal license_info
-			license_info = (True, info["url"])
-
-			return finished
-
-		await self.get("https://marketplace.copyright.com/rs-ui-web/mp/search", return_html=False, predicate=predicate, params={
-			"type": "all",
-			"q": doi
-		})
-		return license_info
-
-	async def get_title(self, html: DynamicHtml, url: str) -> str:
-		elements = await html.select("h1.wi-article-title.article-title-main")
-		if len(elements) > 0:
-			return (await elements[0].get_text()).strip()
-
-		title = await super().get_title(html, url)
-		self.logger.warning(f"Could not find title for {url}.")
-		return title
-
-	async def get_authors(self, html: DynamicHtml) -> tuple[str]:
-		authors = await html.select("a.linked-name.js-linked-name.stats-author-info-trigger")
-		author_list = [await author.get_text() for author in authors]
-		return tuple(author_list)
-
-	async def get_figure_list(self, html: DynamicHtml) -> tuple[DynamicHtml]:
-		return await html.select("div.fig.fig-section")
-
-	async def get_caption(self, figure_subtree: DynamicHtml) -> str:
-		caption_elements = await figure_subtree.select("div.caption.fig-caption > p")
-		return "".join([(await caption.get_html()).strip() for caption in caption_elements])
-
-	async def get_figure_url(self, figure: DynamicHtml) -> str:
-		return await figure.select_one("img").get("src")
-
-
-class Nature(JournalFamilyStatic):
-	def __init__(self, search_query, **kwargs):
-		name_patterns = (
-			(re.compile(r"/articles/(s\d{5}-\d{3}-\d{5}-\d)"), 1),
-		)
-
-		super().__init__(search_query, name_patterns=name_patterns, **kwargs)
-		self._domain = "https://www.nature.com"
-		self._search_path = "/search"
-		self._page_param = "page="
-		self._max_page_size = ""  # not available for nature
-		self._order_param = "order"
-		self._date_range_param = "date_range"
-		self._journal_param = "journal"
-		self._author_param = "author="
-		# order options
-		self._order_values = {"relevant": "relevance", "old": "date_asc", "recent": "date_desc"}
-		# codes for journals most relevant to materials science
-		self._materials_journals = {
-			"",
-			"nature",
-			"nmat",
-			"ncomms",
-			"sdata",
-			"nnano",
-			"natrevmats",
-			"am",
-			"npj2dmaterials",
-			"npjcompumats",
-			"npjmatdeg",
-			"npjquantmats",
-			"commsmat",
-		}
-
-		self._join = "\"%20\""  # " "
-		self._articles_path = "/articles/"
-		self._articles_path_length = 2
-		self._prepend = ""
-		self._extra_key = " "
-		self._max_query_results = 1_000
-
-	def get_search_params(self, terms: tuple[str]) -> dict[str, str]:
-		"""Generate the URL parameters for the search in the necessary order"""
-		return {
-			"q": terms[0],
-			"journal": ""
-		}
-
-	async def turn_page(self, html: StaticHtml, url: str, page_number: int) -> StaticHtml:
-		next_button = html.select_one("li[data-page=next]")
-		new_url = await next_button.select_one("a[href]").get("href")
-		return await self.get(self.domain + new_url)
-
-	async def get_additional_url_arguments(self, html: StaticHtml):
-		current_year = datetime.now().year
-		earliest_year = 1845
-		non_exhaustive_years = 25
-		# If the search is exhaustive, search all 161 nature journals, for all years since 1845, in relevance, oldest, and youngest order.
-		if self.order == "exhaustive":
-			new_html = await self.get("https://www.nature.com/search/advanced")
-			journal_tags = await new_html.select("li[data-action='filter-remove-btn']")
-			journal_codes = {(await tag.get_text()).strip() for tag in journal_tags}
-
-			years = [f"{year}-{year}" for year in range(current_year, earliest_year, -1)]
-			orderings = set(self.order_values.values())
-			await new_html.close()
-		# If the search is not exhaustive, search the most relevant materials journals, for the past 25 years, ordered by self.order.
-		else:
-			journal_codes = self._materials_journals
-			years = [f"{year}-{year}" for year in range(current_year - non_exhaustive_years, current_year)]
-			orderings = [self.order_values[self.order]]
-		years = [""] + years
-		# author =
-		return years, journal_codes, orderings
-
-	async def get_page_info(self, html: StaticHtml):
-		page_re = re.compile(r"\s*page\s*(\d+)\s*")
-
-		async def page_regex(locator: StaticHtml) -> int:
-			if not locator:
-				raise ValueError("Could not find page numbers.")
-
-			match_ = page_re.search(await locator.get_text())
-			if match_ is None:
-				raise ValueError("Could not extract page numbers.")
-
-			return int(match_.group(1))
-
-		total_results = html.select_one("span[data-test=results-data]")
-		if not total_results:
-			if len(await html.select("h1[data-test='no-results']")) == 1:
-				return 0, 0, 0
-
-			raise ValueError("No articles were found, try to modify the search criteria")
-
-		results_match = re.search(r"Showing\s*(\d+)–(\d+)\s*of\s*(\d+) results", await total_results.get_text())
-		if results_match is None:
-			raise ValueError(f"Cannot extract the number of results from the Nature article: `{await html.select_one("title").get_text()}`.")
-
-		total_results = int(results_match.group(3))
-
-		pages = await html.select("li.c-pagination__item")
-		if not pages:
-			if not total_results:
-				with open("/opt/project/error.html", 'w') as f:
-					f.write(str(await html.prettify()))
-				raise ValueError("Could not find page information.")
-
-			total_pages, current_page = 1, 1
-		else:
-			total_pages = await html.select("a.c-pagination__link")
-			total_pages = await page_regex(total_pages[len(total_pages) - 2])
-			current_page = await page_regex(html.select_one(".c-pagination__link.c-pagination__link--active"))
-
-		return current_page, total_pages, total_results
-
-	async def is_link_to_open_article(self, article: StaticHtml) -> bool:
-		return len(await article.select("c-meta__item c-meta__item--block-at-lg")) > 0
-
-	async def get_license(self, html: StaticHtml) -> tuple[bool, str]:
-		data_layer = html.select_one("script[data-test='dataLayer']")
-		data_layer_string = await data_layer.get_text()
-		data_layer_json = "{" + data_layer_string.split("[{", 1)[1].split("}];", 1)[0] + "}"
-		parsed = json.loads(data_layer_json)
-
-		# try to get whether the journal is open
-		_copyright = parsed.get("content", dict()).get("attributes", dict()).get("copyright")
-		if _copyright is None:
-			return False, "unknown"
-
-		is_open = _copyright.get("open", False)
-
-		# try to get the license
-		try:
-			_license = _copyright["legacy"]["webtrendsLicenceType"]
-		except KeyError:
-			_license = "unknown"
-		return is_open, _license
-
-	async def get_title(self, html: StaticHtml, url: str) -> str:
-		elements = await html.select("h1.c-article-title")
-		if len(elements) > 0:
-			return await elements[0].get_text()
-
-		title = await super().get_title(html, url)
-		self.logger.warning(f"Could not find title for {url}.")
-		return title
-
-	async def get_authors(self, html: StaticHtml) -> tuple[str]:
-		if isinstance(html, str):
-			html = await self.get(html)
-			close_html = True
-		else:
-			close_html = False
-		locators = await html.select("a[data-test=\"author-name\"]")
-
-		authors = [None] * len(locators)
-		for i, author in enumerate(locators):
-			text = await author.get_text()
-			authors[i] = text.strip().replace("\n", '')
-
-		if close_html:
-			await html.close()
-		return tuple(authors)
-
-	async def get_articles_from_search_page(self, html: StaticHtml) -> tuple[StaticHtml]:
-		return await html.select("li.app-article-list-row__item")
-
-	async def get_link_for_article(self, article: StaticHtml) -> str:
-		return await article.select_one("a.c-card__link.u-link-inherit").get("href")
-
-	async def get_figure_url(self, figure: StaticHtml) -> str:
-		image_tag = figure.select_one("img")
-		image_url = await image_tag.get("src")
-		if image_url is None:
-			image_url = await image_tag.get("data-src")
-			if image_url is None:
-				raise ValueError("No image url found.")
-		image_url = image_url.lstrip(r"/")
-		return re.sub(r"(.+.com/)lw\d+(/.+)", r"\1full\2", image_url)
-
-
-class RSC(JournalFamilyDynamic):
-	def __init__(self, search_query: dict, **kwargs):
-		name_patterns = (
-			(re.compile(r"(\w{2})/article/doi/(10\.\d{4,9}/([-._;()/:A-Z0-9]+))/(\d+)/.+", re.I), 3),
-			(re.compile(r"(\w{2})/article/(\d+)/(\d+)/(\d+)/(\d+)/(.+)", re.I), 5),
-			(re.compile(r"(\w{2})/article/(\d+)?searchresult=1#(\d+)", re.I), 2),
-		)
-		super().__init__(search_query, name_patterns=name_patterns, **kwargs)
-		self._domain = "https://pubs.rsc.org"
-		self._relevant = "Relevance"
-		self._recent = "Latest%20to%20oldest"
-		self._join = '"%20"'
-		self._pre_sb = "\"&SortBy"
-		self._open_pre_sb = "\"&SortBy"
-		self._article_path = ('/en/content/articlehtml/', '')
-		self._prepend = "https://pubs.rsc.org"
-		self._extra_key = "/image/article"
-		self._search_path = "/search-results"
-		self._page_param = ""  # pagination through javascript
-		self._max_page_size = "PageSize=1000"
-		self._order_param = "SortBy"
-		self._date_range_param = "DateRange"
-		self._journal_param = "Journal"
-		# order options
-		self._order_values = {
-			"relevant": "Relevance",
-			"old": "Oldest to latest",
-			"recent": "Latest to oldest",
-		}
-		self._articles_path = "/doi/"
-
-	def get_search_params(self, terms: tuple[str]) -> dict[str, str | bool]:
-		"""Generate the URL parameters for the search in the necessary order"""
-		params = {
-			"q": terms[0].replace(" ", "%20"),
-			"hd": "advancedAny",
-			"searchType": "advanced",
-		}
-		if self.open:
-			params["access_openaccess"] = True
-			params["access_unlocked"] = True
-			params["access_free"] = True
-		return params
-
-	async def get_additional_url_arguments(self, html: DynamicHtml):
-		# rsc allows unlimited results, so no need for additional args
-		return [], {}, []
-
-	async def get_page_info(self, html: DynamicHtml):
-		try:
-			info = html.select_one("div.sr-statistics")
-			# total = await info.get_data_value("data-total-item-count")
-		except (playwright_errors.TimeoutError, AttributeError) as e:
-			raise JournalScrapeError("Could not find total number of articles found for the RSC search.", html=await html.prettify()) from e
-
-		inner_text = await info.get_text()
-		match_ = re.search(r"\s*(\d+)-(\d+)\sof\s(\d+)\s*", inner_text)
-		if not match_:
-			raise JournalScrapeError("Could not find page info for RSC.", html=await html.prettify())
-
-		start_article_num = int(match_.group(1))
-		end_article_num = int(match_.group(2))
-		total = int(match_.group(3))
-
-		articles_per_page = (1 + end_article_num - start_article_num)
-		total_pages = math.ceil(total / articles_per_page)
-
-		return 1, total_pages, total
-
-	async def is_link_to_open_article(self, article: DynamicHtml) -> bool:
-		return len(await article.select("i.icon-availability_open")) == 0
-
-	async def get_articles_from_search_page(self, html: DynamicHtml) -> tuple[DynamicHtml]:
-		return await html.select("div.sr-list.al-article-box.al-normal.clearfix.content-type-journal-articles")
-
-	async def get_link_for_article(self, article: DynamicHtml) -> str:
-		return await article.select_one("a[href]").get("href")
-
-	async def old_get_articles_from_search_url(self, search_url: str, search_query_args: URLParams) -> set:
-		"""Generates a list of articles from a single search term"""
-		max_scraped = self.search_query["maximum_scraped"]
-		html = await self.get(search_url, params=search_query_args)
-
-		async with html:
-			try:
-				start_page, stop_page, total_articles = await self.get_page_info(html)
-			except (AttributeError, playwright_errors.TimeoutError) as e:
-				with open(self.results_directory / "new_error.html", 'w') as f:
-					f.write(await html.prettify())
-				raise JournalScrapeError(str(e), url=search_url, html=html) from e
-
-			article_paths = set()
-
-			for page_number in range(start_page, stop_page + 1):
-				articles = await html.select("div.sr-list.al-article-box.al-normal.clearfix.content-type-journal-articles")
-				if len(articles) == 0:
-					with open(self.results_directory / f"page_{page_number}.html", 'w') as f:
-						f.write(await html.prettify())
-					continue
-
-				for article in articles:
-					tag = article.select_one("a[href]")
-					url = await tag.get("href")
-					raw_url = url.split("?")[0]
-					if raw_url in self.articles_visited:
-						# It is an article but we are not interested
-						continue
-
-					if not self.open and not (await self.is_link_to_open_article(article)):
-						continue
-
-					article_paths.add(raw_url)
-					if len(article_paths) >= max_scraped:
-						return article_paths
-
-				# Get next page at end of loop since page 1 is obtained from search_url
-
-				if page_number == stop_page:
-					return article_paths
-
-				await self.turn_page(html, search_url, page_number+1)
-			return article_paths
-
-	async def turn_page(self, html: DynamicHtml, url: str, page_number: int):
-		try:
-			for next_page_button in await html.select("button.btn-as-link.sr-nav-next.al-nav-next"):
-				if await next_page_button.is_visible():
-					await next_page_button.locator.click()
-					return html
-		except playwright_errors.TimeoutError as e:
-			raise JournalScrapeError("Couldn't turn RSC search page.", html=await html.prettify()) from e
-
-	async def get_license(self, html: DynamicHtml) -> tuple[bool, str]:
-		license_ = await html.select("div.license.license-creative-commons.hide")
-		if not license_:
-			return False, "unknown"
-
-		return True, await license_[0].select_one("a[href]").get("href")
-
-	async def get_title(self, html: DynamicHtml, url: str) -> str:
-		elements = await html.select("h1.wi-article-title.article-title-main")
-		if len(elements) > 0:
-			return await elements[0].get_text()
-
-		title = await super().get_title(html, url)
-		self.logger.warning(f"Could not find title for {url}.")
-		return title
-
-	async def get_authors(self, html: DynamicHtml) -> tuple[str]:
-		authors = []
-		for author in await html.select("div.al-author-name"):
-			author = await author.select_one("div.name-role-wrap").get_text()
-			author = author.strip().split("\n")[0]
-			authors.append(author)
-
-		return tuple(authors)
-
-	async def get_figure_list(self, html: DynamicHtml) -> tuple[DynamicHtml]:
-		return await html.select("div.fig.fig-section")
-
-	async def get_caption(self, figure_subtree: DynamicHtml) -> str:
-		caption_elements = await figure_subtree.select("div.caption.fig-caption > p")
-		return "".join([(await caption.get_html()).strip() for caption in caption_elements])
-
-	async def get_large_figure_url(self, figure: DynamicHtml) -> str:
-		locator = figure.locator
-		try: # RSC has a "large" image URL, but everytime I tried to go to it, I was stuck in an authentication loop that wouldn't let me see it.
-			url = await locator.get_by_text("View large").get_attribute("href")
-			if url is None:
-				raise playwright_errors.TimeoutError("Couldn't get the large version, going for the original.")
-			return self.prepend + url
-		except playwright_errors.TimeoutError:
-			return await self.get_figure_url(figure)
-
-	async def get_figure_url(self, figure: DynamicHtml) -> str:
-		url = await figure.select_one("a.fig-link").get("href")
-		if "cdn" in url:
-			return url
-
-		return await figure.select_one("img.content-image.lazyLoadInit").get_data_value("src")
-
-
-class Wiley(JournalFamilyStatic):
-	domain = "https://onlinelibrary.wiley.com"
-	search_path = "/action/doSearch"
-	page_param = "startPage="
-	max_page_size = "pageSize=20"
-	order_param = "sortBy"
-	journal_param = "SeriesKey"
-	date_range_param = "AfterYear"
-	# order options
-	order_values = {"relevant": "relevancy", "recent": "Earliest", "old": ""}
-	# join is for terms in search query
-	join = '"+"'
-	max_query_results = 2000
-	articles_path = "/doi/"
-	prepend = "https://onlinelibrary.wiley.com"
-	extra_key = " "
-	articles_path_length = 3
-
-	async def load(self):
-		if await super().load():
-			return True
-
-		headers, cookies = await self._get_cloudflare_headers()
-
-		self.client.headers.update(headers)
-		valid_cookie_domains = {
-			".onlinelibrary.wiley.com",
-			".scienceconnect.io",
-			".wiley.com",
-			"onlinelibrary.wiley.com",
-			"wiley.scienceconnect.io",
-		}
-		for cookie in cookies:
-			if cookie["domain"] not in valid_cookie_domains:
-				continue
-
-			self.client.cookies.set(
-				name=cookie["name"],
-				value=cookie["value"],
-				domain=cookie["domain"],
-				path=cookie["path"],
-				secure=cookie["secure"],
-			)
-		self.logger.info(f"Loaded {self.name()}.")
-		return False
-
-	async def _get_cloudflare_headers(self, attempts: int = 3) -> tuple[dict[str, str], list[Cookie]]:
-		url = self.domain
-
-		async def predicate(resp: Response):
-			self.logger.info(f"[{resp.status}] {resp.url=}")
-			return resp.url == url and resp.status < 300
-
-		async with Stealth().use_async(async_playwright()) as p:
-			browser = await p.chromium.launch()
-			page = await browser.new_page()
-
-			for attempt in range(attempts):
-				try:
-					async with page.expect_response(predicate, timeout=60_000) as resp2:
-						await page.goto(url)
-
-					response = await resp2.value
-					headers = dict(filter(lambda header: "cf" in header[0].lower(), response.headers.items()))
-					cookies = await page.context.cookies()
-					return headers, cookies
-				except playwright_errors.TimeoutError as e:
-					if attempt + 1 == attempts:
-						raise
-					else:
-						self.logger.warning(f"[{attempt+1:,}/{attempts:,}] {url} could not connect within a minute. Trying again.", exc_info=e)
-
-	async def get(self, url: str, params: Optional[dict[str, Any]] = None, *args, **kwargs) -> StaticHtml:
-		# await super().get(url, params)
-		response = await self.client.get(url, params=params)
-		if response.status_code == 403:
-			if (ray_header := response.headers.get("Cf-Ray")) is None:
-				response.raise_for_status()
-
-			ray_header, _ = ray_header.split("-")
-			challenge_response = await self.client.get(f"https://onlinelibrary.wiley.com/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1?ray={ray_header}",
-												 headers={"Referer": "https://onlinelibrary.wiley.com/?__cf_chl_rt_tk=dEE_5DgrP1N1taMnWjjwf9j5uKm5JfxRWfnjgj6v_Ws-1786984108-1.0.1.1-CLoH6.aaCeL6K3bvZE2dOxJJEQdA6Qba6mUfWHeVS9c"})
-			challenge_response.raise_for_status()
-
-			response = await self.client.get(url, params=params)
-			response.raise_for_status()
-
-		return StaticHtml(BeautifulSoup(response.text, "html.parser"))
-
-	def get_search_params(self, terms: tuple[str]) -> dict[str, str | int]:
-		"""Generate the URL parameters for the search in the necessary order"""
-		params = {}
-		for i, term in enumerate(terms, start=1):
-			params[f"field{i}"] = "AllField"
-			params[f"text{i}"] = term
-
-		params["publication"] = ""
-		params["Ppub"] = ""
-
-		if self.open:
-			params["ConceptID"] = 15941
-
-		return params
-
-	async def get_additional_url_arguments(self, html: StaticHtml):
-		return [""], {""}, [""]
-
-	async def old_get_additional_url_arguments(self, html: StaticHtml):
-		current_year = datetime.now().year
-		journal_list = html.soup.select_one("#Published in").parent.next_sibling
-		journal_link_tags = journal_list.select("a[href]")
-		journal_link_tags_exh = journal_list.find_all("option", value=True)
-
-		journal_codes = [jlt.attrs["href"].split("=")[-1] for jlt in journal_link_tags]
-
-		if self.order == "exhaustive":
-			num_years = 100
-			orderings = list(self.order_values.values())
-			journal_codes = journal_codes + [
-				jlte.attrs["value"].split("=")[-1] for jlte in journal_link_tags_exh
-			]
-		else:
-			num_years = 25
-			orderings = [self.order_values[self.order]]
-		# the wiley search engine uses 2 different phrases to delineate
-		# start and stop year AfterYear=YYYY&BeforeYear=YYYY
-		years = [f"{year}&BeforeYear={year}" for year in range(current_year - num_years, current_year)]
-
-		years = [["", ""]] + years
-		return years, journal_codes, orderings
-
-	async def get_page_info(self, html: StaticHtml):
-		totalResults = await html.select_one("span.result__count").get_text()
-		totalResults = int(totalResults.replace(",", ""))
-
-		articles_per_page = len(await html.select("li.clearfix.separator.search__item.bulkDownloadWrapper"))
-
-		totalPages = math.ceil(float(totalResults / articles_per_page)) - 1
-		page = 1
-		return page, totalPages, totalResults
-
-	async def is_link_to_open_article(self, article: StaticHtml):
-		"""Wiley allows filtering for search. Therefore, if self.open is True, all results will be open."""
-		return len(await article.select("div.doi-access")) > 0
-
-	async def turn_page(self, html: StaticHtml, url, page_number: int):
-		new_url = f"{url.split('&startPage=')[0]}&startPage={page_number}&pageSize=20"
-		return await self.get(new_url)
-
-	async def get_license(self, html: StaticHtml):
-		open_access = html.select_one("div.doi-access")
-		if open_access and "Open Access" in open_access.text:
-			return True, open_access.text
-		return False, "unknown"
-
-	async def get_authors(self, html: StaticHtml) -> tuple[str]:
-		author_line = html.select_one("div.loa-wrapper.loa-authors.hidden-xs.desktop-authors")
-		authors = await author_line.select("p.author-name")
-
-		authors = [await author.get_text() for author in authors]
-		return tuple(authors)
-
-	async def get_articles_from_search_page(self, html: StaticHtml) -> tuple[StaticHtml]:
-		return await html.select("li.clearfix.separator.search__item.bulkDownloadWrapper")
-
-	async def get_link_for_article(self, article: StaticHtml) -> str:
-		return await article.select("a.publication_title.visitable").get("href")
-
-	async def get_figure_list(self, html: StaticHtml):
-		figure_subtrees = await html.select("figure.figure")
-		return figure_subtrees
-
-	async def get_caption(self, figure_subtree: StaticHtml) -> str:
-		caption_elements = await figure_subtree.select("div.figure__caption.figure__caption-text")
-		return "".join([(await caption.get_html()).strip() for caption in caption_elements])
-
-	async def get_figure_url(self, figure: StaticHtml) -> str:
-		href = await figure.select_one("a[href]").get("href")
-		return self.prepend + href
-
-
-COMPATIBLE_JOURNALS = Literal["ACS", "Nature", "RSC", "Wiley"]

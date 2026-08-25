@@ -237,6 +237,9 @@ class LlamaCPP(OpenAI):
 									logger.info(f"Server side events finished before matching event was sent.")
 								return False
 
+							case "model_status":
+								pass # This event shows up but doesn't have any data passed, so it's easier to acknowledge it and skip it
+
 							case "status_change":
 								try:
 									if data["model"] in {self.id, self.model} and message_filter(data):
@@ -247,7 +250,7 @@ class LlamaCPP(OpenAI):
 
 							case _:
 								if logger is not None:
-									logger.warning(f"Unknown event type \"{data["event"]}\" received from Llama's SSE with message: {data.get("message", "")}")
+									logger.warning(f"Unknown event type \"{data["event"]}\" received from Llama's SSE with message: {data.get("message")}")
 		except httpx2.ReadTimeout as e:
 			if logger is not None:
 				logger.info(f"Did not receive any new server side events in the last {timeout.read:,} seconds.", exc_info=e)

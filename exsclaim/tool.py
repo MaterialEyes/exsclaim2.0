@@ -10,7 +10,7 @@ interchangeable.
 from .caption import LLM, LLMUsage, OptionalSemaphore
 from .config import settings
 from .exceptions import PipelineInterruptionException, JournalScrapeError
-from .journal import JournalFamily
+from .journals import JournalFamily
 from .utilities import initialize_results_dir, PrinterFormatter
 
 from abc import ABC, abstractmethod
@@ -76,7 +76,7 @@ class ExsclaimTool(ABC):
 		return self._search_query
 
 	@search_query.setter
-	def search_query(self, search_query):
+	def search_query(self, search_query: dict[str, Any] | Path):
 		"""initializes search query as instance attribute
 
 		Args:
@@ -88,7 +88,7 @@ class ExsclaimTool(ABC):
 					# Load query file to dict
 					search_query = load(f)
 			except Exception as e:
-				self.logger.exception(f"Search Query must be a pathlib.Path or dictionary, not {search_query.__class__.__name__}.", exc_info=e)
+				self.logger.exception(f"Search Query must be a dictionary or pathlib.Path, not {search_query.__class__.__name__}.", exc_info=e)
 				raise PipelineInterruptionException("Could not validate the search query passed.") from e
 
 		self._search_query = search_query
@@ -162,7 +162,7 @@ class ExsclaimTool(ABC):
 				self._end_timer(t0, f"{self.__class__.__name__}: {_id}", i, num_items)
 		else:
 			pbar = tqdm_asyncio(asyncio.as_completed(tasks), total=num_items,
-			                    desc=f"Scraping articles from {journal_family_name}")
+			                    desc=tqdm_desc)
 			with tqdm_logging_redirect(self.logger):
 				for f in pbar:
 					await f
@@ -221,6 +221,7 @@ class JournalScraper(ExsclaimTool):
 		# Extract figures, captions, and metadata from each article
 		self.display_info(f">>> Extracting figures from: {journal.get_article_name_from_url(article)}")
 		url = journal.domain + article
+
 		try:
 			article_dict = await journal.get_article_figures(url, html_directory)
 
@@ -247,7 +248,6 @@ class JournalScraper(ExsclaimTool):
 
 		# Initialize the subclass object based on the user input
 		search_query = self.search_query
-		journal_family_name = search_query["journal_family"]
 		exsclaim_json = exsclaim_json or dict()
 
 		# List of objects (articles) that have already been separated
@@ -269,8 +269,8 @@ class JournalScraper(ExsclaimTool):
 		self.display_info(f"Running Journal Scraper\n")
 
 		lock = asyncio.Lock()
-		journal = JournalFamily(journal_family_name, search_query,
-								scrape_hidden_articles=search_query.get("scrape_hidden_articles", False))
+		journal = JournalFamily.from_search_query(search_query)
+
 		async with journal:
 			try:
 				extensions = await journal.get_article_extensions()

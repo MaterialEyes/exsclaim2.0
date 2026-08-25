@@ -15,22 +15,19 @@ def layout() -> html.Div:
 		html.Div: Complete HomePage layout
 	"""
 	try:
-		from ...journal import JournalFamily
 		from components.common import create_header_component, create_footer_component
 		from components.query import create_query_component, get_llms
 	except ImportError:
-		from exsclaim.journal import JournalFamily
 		from exsclaim.dashboard.components.common import create_header_component, create_footer_component
 		from exsclaim.dashboard.components.query import create_query_component, get_llms
 
-	journal_families = [name for name, cls in JournalFamily]
 	available_llms, show_api_key, requires_api_key = get_llms()
 	return html.Div([
 		# Header
 		create_header_component(),
 
 		# Query form
-		create_query_component(journal_families, available_llms),
+		create_query_component(available_llms),
 
 		# Footer
 		create_footer_component()

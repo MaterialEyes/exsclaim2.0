@@ -38,7 +38,7 @@ def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool], dict[
 	return available_llms, show_api_key, required_api_key
 
 
-def create_query_component(journal_families, available_llms, debounce=True):
+def create_query_component(available_llms, debounce=True):
 	"""
 	Create the main query form component.
 	
@@ -109,7 +109,7 @@ def create_query_component(journal_families, available_llms, debounce=True):
 
 			# Right column - Advanced inputs
 			dbc.Col(width=6, children=[
-				create_journal_family_component(journal_families),
+				create_journal_family_component(),
 				create_sort_by_component(),
 				create_open_access_component(),
 				create_save_methods_component(),
@@ -234,38 +234,46 @@ def create_input_synonyms_component(debounce=True):
 	], className="mb-3")
 
 
-def create_journal_family_component(journal_families):
+DAGGER = "\u2020"
+
+
+def create_journal_family_component():
 	"""Create journal family dropdown component."""
-	if not len(journal_families):
-		raise ValueError("At least one journal family option is required.")
+	try:
+		from ...journals import JournalFamily, JournalFamilyDynamic
+	except ImportError:
+		from exsclaim.journals import JournalFamily, JournalFamilyDynamic
 
-	options = [{"label": family, "value": family} for family in journal_families]
-	initial_value = None
-	for i, option in enumerate(options):
-		name = option["label"].lower()
-		if name == "acs" or name == "wiley":
-			options[i]["disabled"] = True
-		else:
-			if initial_value is None:
-				initial_value = option["value"]
+	options = [None] * len(JournalFamily)
+	for i, (name, cls) in enumerate(JournalFamily):
+		option = {"label": name, "value": name}
+		if JournalFamilyDynamic in cls.__bases__ or name.lower() == "wiley":
+			option["label"] = html.Div([name, html.Sup(DAGGER)])
 
-	if initial_value is None:
-		raise ValueError("At least one valid journal family option is required.")
+		if name.lower() == "wiley":
+			option["disabled"] = True
+
+		options[i] = option
+
+	initial_value = "Nature"
 
 	return html.Div([
 		dbc.Label(
 			"Journal Family *",
 			html_for="journal-family",
 		),
-		dbc.Select( # TODO: MIght be able to use dcc.DropDown using Dash==4.0.0
+		dcc.Dropdown(
 			id="journal-family",
 			options=options,
 			value=initial_value,
 			className="form-control",
-			valid=True,
-			invalid=False,
 			persistence=True,
-			persistence_type="local"
+			persistence_type="local",
+		),
+		html.P(
+			f"{DAGGER} The selected Journal Family's website is protected by CloudFlare, so there is a higher chance of information not being retrieved for this run.",
+			id="journal-family-warning",
+			hidden=True
 		)
 	], className="mb-3")
 
@@ -553,8 +561,30 @@ def valid_search_term(search_term: Optional[str]) -> tuple[bool, bool, bool]:
 		return False, True, True
 
 	valid_name = bool(search_term.strip())
-
 	return valid_name, not valid_name, not valid_name
+
+
+@callback(
+	Output("journal-family-warning", "hidden"),
+	Input("journal-family", "value"),
+	State("journal-family", "options"),
+)
+def show_journal_warning(journal_family: str, options) -> bool:
+	option = next(filter(lambda option: option["value"] == journal_family, options), None)
+	if option is None:
+		return False
+
+	if isinstance(option["label"], str):
+		return True
+
+	children = option["label"]["props"].get("children", ())
+	for child in children:
+		if isinstance(child, str):
+			continue
+		if child.get("props", dict()).get("children") == DAGGER:
+			return False
+
+	return DAGGER not in option["label"]
 
 
 @callback(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..journal import JournalFamily
+from ..journals import JournalFamily
 from ..caption import LLM
 from ..config import ExsclaimSettings
 from ..notifications import NTFY, Email, Webhook, QueryNotifications
@@ -19,8 +19,8 @@ from sqlmodel import text, SQLModel, Field, DateTime
 from typing import Annotated, Literal, Optional, Any, Self
 from uuid import UUID
 
-__all__ = ["BaseModel", "NTFY", "Query", "ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
-		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Results", "User", "get_guest_uuid",
+__all__ = ["BaseModel", "NTFY", "Email", "Webhook", "Query", "ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale",
+		   "SubfigureLabel", "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Results", "User", "get_guest_uuid",
 		   "gen_uuid7", "PasswordReset", "generate_salt", "cryptographic_hash", "ExsclaimJSONResponse", "Output", "Banner",
 		   "QueryTools", "PreviousRunFilters"]
 

@@ -1,3 +1,11 @@
+# Version 2.5.2
+## Dashboard
+- The UI alerts users when they're selecting a journal family that has to contend with CloudFlare.
+
+### Journal
+- Updated ACS, RSC, and Wiley.
+- Moved all of the JournalFamily components to the `exsclaim.journals` submodule.
+
 # Version 2.5.1
 ## API
 - Switched the session-based cookies to JWTs.

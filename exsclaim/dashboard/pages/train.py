@@ -46,7 +46,7 @@ def get_data_table():
 	except httpx2.ConnectError:
 		# This typically occurs on startup when the Dashboard is ready before the API
 		import time
-		time.sleep(5)
+		time.sleep(10)
 		response = client.get("/classification_codes")
 
 	if response.is_success:
