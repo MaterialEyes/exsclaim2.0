@@ -1,14 +1,13 @@
 from ...config import ui_settings, orcid_settings
 from ...db import get_db_session
-from ..models import User, PasswordReset, Results, cryptographic_hash, generate_salt, get_guest_uuid, \
-	ExsclaimJSONResponse as JSONResponse
+from ..models import User, PasswordReset, cryptographic_hash, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
 
 from datetime import datetime as dt, timezone as tz, timedelta as td
-from fastapi import APIRouter, Form, status, Depends, HTTPException, Body, Cookie
+from fastapi import APIRouter, status, Depends, HTTPException, Body, Cookie
 from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
 from httpx2 import AsyncClient
 from starlette.requests import Request
-from starlette.responses import Response, HTMLResponse, RedirectResponse, PlainTextResponse
+from starlette.responses import Response, HTMLResponse, RedirectResponse
 from pydantic import EmailStr, BaseModel
 from sqlalchemy import text, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -180,7 +179,7 @@ async def get_active_user_from_authorization_header(token: AccessTokenHeader) ->
 	return user
 
 
-async def get_active_user_from_cookie(request: Request, cookie: AccessTokenCookie) -> User:
+async def get_active_user_from_cookie(cookie: AccessTokenCookie) -> User:
 	user = await _extract_access_token(cookie)
 	if isinstance(user, HTTPException):
 		raise user
@@ -370,7 +369,7 @@ async def login_with_orcid(request: Request, code: str):
 
 
 @router.post("/refresh", tags=[TAG])
-async def refresh(request: Request, refresh_token: str = Cookie()):
+async def refresh(refresh_token: str = Cookie()):
 	try:
 		payload = jwt.decode(refresh_token, PUBLIC_KEY, algorithms=[ALGORITHM])
 	except jwt.ExpiredSignatureError:
@@ -462,7 +461,7 @@ async def send_reset_request_email(request: Request, session: AsyncSession, emai
 
 
 @router.post("/reset_password", tags=[TAG])
-async def reset_password(request: Request, token: str = None, email: EmailStr = None) -> Response:
+async def reset_password(request: Request, token: Optional[str] = None, email: Optional[EmailStr] = None) -> Response:
 	if email is None:
 		return Response("No email provided.", status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, media_type="text/plain")
 
@@ -482,10 +481,16 @@ async def reset_password(request: Request, token: str = None, email: EmailStr = 
 	return HTMLResponse(f"", status_code=status.HTTP_202_ACCEPTED) # TODO: Create the password reset form, and have a hidden field with some token for security when the form is posted.
 
 
-@router.get("/name", include_in_schema=False)
-async def get_username(request: Request, user: CurrentUser) -> JSONResponse:
-	session: AsyncSession = request.state.session
+@router.get("/id", tags=[TAG])
+async def get_user_id(user: CurrentUser) -> JSONResponse:
+	not_logged_in = {"id": "Not Logged In."}
+	if user is None or user.id == get_guest_uuid():
+		return JSONResponse(not_logged_in, status_code=status.HTTP_202_ACCEPTED)
+	return JSONResponse({"id": user.id}, status_code=status.HTTP_200_OK)
 
+
+@router.get("/name", include_in_schema=False)
+async def get_username(user: CurrentUser) -> JSONResponse:
 	not_logged_in = {"username": "Not Logged In."}
 	if user is None or user.id == get_guest_uuid():
 		return JSONResponse(not_logged_in, status_code=status.HTTP_202_ACCEPTED)
@@ -521,7 +526,7 @@ async def update_username(request: Request, user: ActiveUser, username: str = Bo
 
 
 @router.api_route("/remaining_access", methods=["GET", "HEAD"], include_in_schema=False)
-async def check_access_token_remaining_time(request: Request, token: AccessTokenCookie) -> User:
+async def check_access_token_remaining_time(token: AccessTokenCookie) -> JSONResponse:
 	if token is None:
 		return JSONResponse(dict(detail="Not logged in."), status_code=status.HTTP_400_BAD_REQUEST)
 
@@ -562,9 +567,9 @@ async def delete_user(request: Request, user: ActiveUser) -> JSONResponse:
 						status_code=status.HTTP_200_OK)
 
 
-@router.api_route("/get_jwt_public_key", methods=["GET", "HEAD"], tags=[TAG])
-async def get_public_key(request: Request):
-	return PlainTextResponse(PUBLIC_KEY, status_code=status.HTTP_200_OK)
+# @router.api_route("/get_jwt_public_key", methods=["GET", "HEAD"], tags=[TAG])
+# async def get_public_key(request: Request):
+# 	return PlainTextResponse(PUBLIC_KEY, status_code=status.HTTP_200_OK)
 
 
 @router.post("/merge_accounts", tags=[TAG], description="Merges an ORCID account with an account created using email and password")
@@ -584,14 +589,14 @@ async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUs
 	try:
 		async with get_db_session() as session:
 			# Move the owner ID for all runs from the orcid account where it was originally the email account
-			response = await session.execute(text("UPDATE results.results SET user_id = :orcid_user WHERE user_id = :email_user"),
+			await session.execute(text("UPDATE results.results SET user_id = :orcid_user WHERE user_id = :email_user"),
 								  dict(orcid_user=orcid_user.id, email_user=email_user.id))
 
 			# Delete any JTIs for the email account
-			response = await session.execute(text("DELETE FROM users.jtis WHERE id = :email_user"), email_params)
+			await session.execute(text("DELETE FROM users.jtis WHERE id = :email_user"), email_params)
 
 			# Move all of the information from the email user to the orcid user, keeping the creation timestamp as whichever account was created first
-			response = await session.execute(text("""UPDATE users.users
+			await session.execute(text("""UPDATE users.users
 										  SET
 											  salt=:salt,
 											  password_hash=:password_hash,
@@ -605,14 +610,14 @@ async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUs
 								  ))
 
 			# Delete the email account
-			response = await session.execute(text("DELETE FROM users.users WHERE id = :email_user"), email_params)
+			await session.execute(text("DELETE FROM users.users WHERE id = :email_user"), email_params)
 
 			# Add the email to the ORCID account (Couldn't do this before because emails have to be unique)
-			response = await session.execute(text("""UPDATE users.users SET email=:email WHERE id = :orcid_user"""),
-					  dict(
-						  email=email_user.email,
-						  orcid_user=orcid_user.id,
-					  ))
+			await session.execute(text("""UPDATE users.users SET email=:email WHERE id = :orcid_user"""),
+								  dict(
+									  email=email_user.email,
+									  orcid_user=orcid_user.id,
+								  ))
 
 			await session.commit()
 	except (sql_exc.SQLAlchemyError, asyncpg.exceptions.PostgresError) as e:

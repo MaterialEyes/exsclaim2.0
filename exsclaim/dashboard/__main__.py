@@ -10,10 +10,12 @@ from .components.query import get_llms
 
 import dash
 import dash_bootstrap_components as dbc
+import flask
 import logging
 
+from datetime import datetime as dt, timezone as tz
 from dash import Dash, html, dcc
-from flask import Flask, send_from_directory, redirect
+from textwrap import dedent
 from pathlib import Path
 
 
@@ -22,7 +24,7 @@ __all__ = ["app", "server"]
 
 logger, app = None, None
 title = "EXSCLAIM Dashboard"
-server = Flask(title, static_folder="assets")
+server = flask.Flask(title, static_folder="assets")
 server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
 
 
@@ -37,7 +39,6 @@ def create_logger(settings) -> logging.Logger:
 
 	handlers = (printer_handler, file_handler)
 	logging.basicConfig(level=logging.INFO, force=True, handlers=[printer_handler])
-						# handlers=handlers,
 
 	logger = logging.getLogger("exsclaim.dashboard")
 	for handler in handlers:
@@ -48,6 +49,25 @@ def create_logger(settings) -> logging.Logger:
 def error_handler(exception: Exception) -> None:
 	print(f"ERROR: {exception}")
 	logger.exception("An error occurred in Dash", exc_info=exception)
+
+
+def create_sitemap() -> str:
+	host = ui_settings.DASHBOARD_URL
+	last_mod = dt.now(tz.utc).strftime("%Y-%m-%dT%H:%M:%S.%f%z")
+
+	def format_xml(page) -> Optional[str]:
+		path = page["relative_path"].replace("/none", "/*")
+
+		return dedent(f"""\
+			<url>
+				<loc>{host}{path}</loc>
+				<lastmod>{last_mod}</lastmod>
+			</url>
+		""")
+
+	routes = map(lambda page: format_xml(page), dash.page_registry.values())
+	sitemap = f'<urlset xmlns="https://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="https://www.w3.org/1999/xhtml">\n{''.join(routes)}</urlset>'
+	return sitemap
 
 
 def get_app() -> Dash:
@@ -114,37 +134,94 @@ def get_app() -> Dash:
 				public_fastapi_url=public_fastapi_url
 			)),
 		dcc.Location(id="url", refresh=False),
-		# html.Div([
-		# 	dcc.Link(page["name"], href=page["relative_path"]) for page in dash.page_registry.values()
-		# ]),
 		dash.page_container
 	])
+	server.sitemap = create_sitemap()
 	return app
 
 
 @server.route("/terms-of-service")
 def terms_of_service():
-	return send_from_directory("assets", "terms_of_service.html")
+	return flask.send_from_directory("assets", "terms_of_service.html")
 
 
 @server.route("/privacy-policy")
 def privacy_policy():
-	return send_from_directory("assets", "privacy_policy.html")
+	return flask.send_from_directory("assets", "privacy_policy.html")
 
 
 @server.route("/favicon.ico")
 def favicon_ico():
-	return send_from_directory("assets", "favicon.ico")
+	return flask.send_from_directory("assets", "favicon.ico")
 
 
 @server.route("/favicon.png")
 def favicon_png():
-	return send_from_directory("assets", "favicon.png")
+	return flask.send_from_directory("assets", "favicon.png")
 
 
 @server.route("/logout")
 def logout():
-	return redirect(f"{ui_settings.PUBLIC_API_URL}/user/logout")
+	return flask.redirect(f"{ui_settings.PUBLIC_API_URL}/user/logout")
+
+
+@server.route("/robots.txt")
+def robots():
+	robots = dedent(f"""\
+		User-Agent: *
+		Content-signal: search=yes, ai-train=no, use=reference
+		Allow: /
+		
+		User-Agent: Amazonbot
+		Disallow: /
+		
+		User-agent: Applebot-Extended
+		Disallow: /
+		
+		User-agent: Bytespider
+		Disallow: /
+		
+		User-agent: CCBot
+		Disallow: /
+		
+		User-Agent: ClaudeBot
+		Disallow: /
+		
+		User-Agent: Google-Extended
+		Disallow: /
+		
+		User-Agent: GPTBot
+		Disallow: /
+		
+		Allow: /login
+		
+		Allow: /signup
+		
+		Allow: /terms-of-service
+		
+		Allow: /privacy-policy
+		
+		Disallow: /results/*
+		
+		Disallow: /train
+		
+		Disallow: /previous
+		
+		Disallow: /logout
+		
+		Sitemap: {ui_settings.DASHBOARD_URL}/sitemap.xml
+	""")
+	return flask.Response(robots, status=200, mimetype="text/plain")
+
+
+@server.route("/sitemap.xml")
+def sitemap():
+	if hasattr(server, "sitemap"):
+		sitemap = server.sitemap
+	else:
+		sitemap = create_sitemap()
+		server.sitemap = sitemap
+	return flask.Response(sitemap, status=200, mimetype="text/xml")
 
 
 def main():

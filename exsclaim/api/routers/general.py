@@ -214,7 +214,7 @@ async def healthcheck(request: Request) -> Response:
 	return response
 
 
-@router.api_route("/sitemap.xml", methods=["GET", "HEAD"])
+@router.api_route("/sitemap.xml", methods=["GET"], include_in_schema=False)
 def sitemap(request: Request) -> Response:
 	if (sitemap := request.app.sitemap) is None:
 		last_mod = dt.now(tz.utc).strftime("%Y-%m-%dT%H:%M:%S.%f%z")
@@ -239,33 +239,76 @@ def sitemap(request: Request) -> Response:
 	return Response(sitemap, media_type="text/xml", status_code=status.HTTP_200_OK)
 
 
-@router.api_route("/robots.txt", methods=["GET", "HEAD"])
+@router.api_route("/robots.txt", methods=["GET"], include_in_schema=False)
 def robots(request: Request) -> Response:
 	robots_message = dedent(f"""\
-			User-agent: *
+			User-Agent: *
+			Content-signal: search=yes, ai-train=no, use=reference
 			Allow: /
+			
+			User-Agent: Amazonbot
+			Disallow: /
+			
+			User-agent: Applebot-Extended
+			Disallow: /
+			
+			User-agent: Bytespider
+			Disallow: /
+			
+			User-agent: CCBot
+			Disallow: /
+			
+			User-Agent: ClaudeBot
+			Disallow: /
+			
+			User-Agent: Google-Extended
+			Disallow: /
+			
+			User-Agent: GPTBot
+			Disallow: /
+			
 			Allow: /robots.txt
+			
 			Allow: /sitemap.xml
+			
 			Allow: /classification_codes
+			
 			Allow: /compression_types
+			
 			Allow: /query
+			
 			Allow: /openapi.json
+			
+			Allow: /openapi.yaml
+			
 			Allow: /docs
+			
 			Allow: /redoc
-			Allow: /user/previous_runs
+			
+			Disallow: /user/previous_runs
+			
 			Disallow: /healthcheck
-			Disallow: /assets/*
+			
+			Disallow: /banner
+			
+			Disallow: /checkpoints
+			
 			Disallow: /results/*
+			
 			Disallow: /status/*
+			
 			Disallow: /user/*
+			
 			Disallow: /swagger-dark-ui.css
+			
 			Disallow: /swagger-dark-ui.css.map
+			
 			Sitemap: {get_host_from_request(request)}/sitemap.xml
 		""")
 	return Response(robots_message, media_type="text/plain", status_code=status.HTTP_200_OK)
 
 
-@router.api_route("/banner", methods=["GET", "HEAD"])
+@router.api_route("/banner", methods=["GET", "HEAD"], include_in_schema=False)
 async def get_banner_text(request: Request, last_seen_banner: Optional[UUID] = None) -> Response:
 	session: AsyncSession = request.state.session
 	results = await session.execute(select(Banner).order_by(Banner.created.desc()).limit(1))
