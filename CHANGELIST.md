@@ -1,4 +1,7 @@
 # Version 2.5.2
+- Update the OpenAPI specifications.
+  - The specifications are available in JSON and YAML formatting at `/openapi.{json,yaml}` on the API.
+
 ## Dashboard
 - The UI alerts users when they're selecting a journal family that has to contend with CloudFlare.
 

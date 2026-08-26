@@ -4,7 +4,7 @@ Converted from React HomePage.js component.
 """
 from dash import html, register_page
 
-register_page(__name__, path="/")
+register_page(__name__, path="/", description="Home page for Extraction, Separation, and Caption-based natural Language Annotation of Images from scientific figures (EXSCLAIM) dashboard.")
 
 
 def layout() -> html.Div:

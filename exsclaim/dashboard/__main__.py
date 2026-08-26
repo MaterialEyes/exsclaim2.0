@@ -1,10 +1,10 @@
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 try:
 	from ..config import ui_settings
-	from ..caption import LLMMeta
-	from ..journal import JournalFamily
 	from ..utilities import PrinterFormatter, ExsclaimFormatter
 except ImportError:
-	from exsclaim import LLMMeta, JournalFamily, PrinterFormatter, ExsclaimFormatter, ui_settings
+	from exsclaim import PrinterFormatter, ExsclaimFormatter, ui_settings
 
 from .components.query import get_llms
 
@@ -14,6 +14,7 @@ import logging
 
 from dash import Dash, html, dcc
 from flask import Flask, send_from_directory, redirect
+from pathlib import Path
 
 
 __all__ = ["app", "server"]
@@ -22,6 +23,7 @@ __all__ = ["app", "server"]
 logger, app = None, None
 title = "EXSCLAIM Dashboard"
 server = Flask(title, static_folder="assets")
+server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
 
 
 def create_logger(settings) -> logging.Logger:
@@ -45,24 +47,44 @@ def create_logger(settings) -> logging.Logger:
 
 def error_handler(exception: Exception) -> None:
 	print(f"ERROR: {exception}")
-	logger.exception(str(exception), exc_info=exception)
+	logger.exception("An error occurred in Dash", exc_info=exception)
 
 
 def get_app() -> Dash:
 	global logger, app
 
 	logger = create_logger(ui_settings)
-	app = Dash(title, title=title, on_error=error_handler, suppress_callback_exceptions=not ui_settings.DEBUG, compress=True,
-			   external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME], use_pages=True,
-			   external_scripts=["https://cdn.plot.ly/plotly-3.5.1.min.js"],
-			   meta_tags=[
-				   {"property": "og:type", "content": "website"},
-				   {"property": "og:url", "content": ui_settings.DOMAIN},
-				   {"property": "og:title", "content": "EXSCLAIM Dashboard"},
-				   {"property": "og:description", "content": ""},
-				   {"property": "og:image", "content": f"{ui_settings.DOMAIN}/banner"},
-			   ],
-			   health_endpoint="/healthcheck", server=server)
+	meta_tags = [
+		{"property": "og:url", "content": ui_settings.DOMAIN},
+	]
+
+	logo_path = Path(__file__).parent / "assets" / "logo.png"
+	if logo_path.is_file():
+		import cv2
+		image = cv2.imread(logo_path)
+		if image is not None:
+			height, width, _ = image.shape
+			meta_tags.extend([
+				{"property": "og:image", "content": f"{ui_settings.DASHBOARD_URL}/assets/logo.png"},
+				{"property": "og:image:width", "content": str(width)},
+				{"property": "og:image:height", "content": str(height)},
+			])
+
+	app = Dash(
+		title,
+		title=title,
+		on_error=error_handler,
+		suppress_callback_exceptions=not ui_settings.DEBUG,
+		compress=False,
+		external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME],
+		use_pages=True,
+		external_scripts=["https://cdn.plot.ly/plotly-3.5.1.min.js"],
+		meta_tags=meta_tags,
+		health_endpoint="/healthcheck",
+		server=server,
+		show_undo_redo=True,
+	)
+
 	available_llms, show_api_key, required_api_key = get_llms()
 
 	fastapi_url = ui_settings.FAST_API_URL
@@ -111,8 +133,13 @@ def privacy_policy():
 
 
 @server.route("/favicon.ico")
-def favicon():
+def favicon_ico():
 	return send_from_directory("assets", "favicon.ico")
+
+
+@server.route("/favicon.png")
+def favicon_png():
+	return send_from_directory("assets", "favicon.png")
 
 
 @server.route("/logout")

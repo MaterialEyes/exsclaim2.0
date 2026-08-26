@@ -6,5 +6,5 @@ except ImportError:
 import dash
 
 
-dash.register_page(__name__, path="/signup", title="EXSCLAIM Sign Up")
+dash.register_page(__name__, path="/signup", title="EXSCLAIM Sign Up", description="Create an account with EXSCLAIM.")
 layout = create_login_page_layout(FormMode.SIGNUP)

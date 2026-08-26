@@ -205,7 +205,6 @@ class UISettings(ExsclaimSettings):
 
 	FAST_API_URL: str = Field(
 		default="http://localhost:8000",
-		# default=getenv("EXSCLAIM_FAST_API_URL", "http://localhost:8000").rstrip('/'),
 		description="The URL that a user inside the docker network would use to access the API i.e. from another service within Docker Compose.",
 		examples=["http://localhost:8000", "http://python:8000"],
 	)

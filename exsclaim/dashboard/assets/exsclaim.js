@@ -576,22 +576,30 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 		check_credentials: async function(n_clicks, data, interval){
 			console.log("Check credentials was called.");
+			const current_url = window.location.href;
+			if(current_url.endsWith("/login") || current_url.endsWith("/signup")){
+				return true; // Don't need to worry about checking credentials when on these pages
+			}
+
 			const response = await api_fetch(data.public_fastapi_url, "/user/remaining_access", {
 				credentials: "include"
 			});
-			const json = await response.json();
+			if(response === undefined || response === null){
+				return true;
+			}
 
+			const json = await response.json();
 			switch (response.status) {
 				case 200: // Access token is still usable
 					// Checks if the token expires 2 minutes before the next time this is called
 					const remaining = json.remaining * 1000;
 					if(remaining <= interval){
-						this.renew_credentials(data);
+						await this.renew_credentials(data);
 					}
 					throw window.dash_clientside.PreventUpdate;
 				case 400: // Not logged in
 				case 406: // Token has expired, need to renew immediately
-					this.renew_credentials(data);
+					await this.renew_credentials(data);
 					throw window.dash_clientside.PreventUpdate;
 				case 401:
 				default:

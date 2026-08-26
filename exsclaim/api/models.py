@@ -9,15 +9,16 @@ from .json_models import *
 
 from datetime import datetime as dt, timezone as tz
 from enum import StrEnum
-from fastapi import Path
 from fastapi.responses import JSONResponse
 from orjson import dumps
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from sqlalchemy import Enum as SAEnum, Column, ForeignKeyConstraint, CheckConstraint, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlmodel import text, SQLModel, Field, DateTime
-from typing import Annotated, Literal, Optional, Any, Self
+from typing import Literal, Optional, Any, Self
 from uuid import UUID
+
+import pydantic
 
 __all__ = ["BaseModel", "NTFY", "Email", "Webhook", "Query", "ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale",
 		   "SubfigureLabel", "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Results", "User", "get_guest_uuid",
@@ -319,10 +320,10 @@ class Banner(SQLModel, table=True):
 
 
 class QueryTools(BaseModel):
-	journal_scraper: Annotated[bool, Path(title="If the JournalScraper should be run.")] = True
-	caption_distributor: Annotated[bool, Path(title="If the CaptionDistributor should be run.")] = True
-	figure_separator: Annotated[bool, Path(title="If the FigureSeparator should be run.")] = True
-	pdf_scraper: Annotated[bool, Path(title="If the PDFScraper should be run.")] = False
+	journal_scraper: bool = pydantic.Field(default=True, description="If the JournalScraper should be run.")
+	caption_distributor: bool = pydantic.Field(default=True, description="If the CaptionDistributor should be run.")
+	figure_separator: bool = pydantic.Field(default=True, description="If the FigureSeparator should be run.")
+	pdf_scraper: bool = pydantic.Field(default=False, description="If the PDFScraper should be run.")
 
 	@field_validator("pdf_scraper", mode="before")
 	@classmethod
@@ -343,35 +344,69 @@ class QueryTools(BaseModel):
 
 
 class Query(BaseModel):
-	name: str = Field(
+	name: str = pydantic.Field(
 		description="The name of the folder for this run.",
-		regex=r"^[\w_-]+$"
+		pattern=r"^[\w_ -]+$"
 	)
-	journal_family: Annotated[str, Path(title="The Journal Family that EXSCLAIM should look through.")] = "Nature"
+	
+	journal_family: str = pydantic.Field(
+		default="Nature",
+		description="The Journal Family that EXSCLAIM should look through."
+	)
 
-	maximum_scraped: Annotated[int, Path(title="The maximum number of articles that EXSCLAIM should scrape. Maximum does not specify how many articles will be scraped before the process ends, only what the upper limit is.", ge=1)] = 5
+	maximum_scraped: int = pydantic.Field(
+		default=5,
+		description="The maximum number of articles that EXSCLAIM should scrape. Maximum does not specify how many articles will be scraped before the process ends, only what the upper limit is.",
+		ge=1
+	)
 
-	sortby: Annotated[Literal["relevant", "recent"], Path(title="How the search feature should sort the articles, by the relevancy or the recent publish date.")] = "relevant"
+	sortby: Literal["relevant", "recent"] = pydantic.Field(
+		default="relevant",
+		description="How the search feature should sort the articles, by the relevancy or the recent publish date."
+	)
 
-	term: Annotated[str, Path(title="The term or phrase that you want searched.")]
+	term: str = pydantic.Field(
+		description="The term or phrase that you want searched."
+	)
 
-	synonyms: Annotated[list[str], Path(title="Any synonyms that you're term might be related to.", default_factory=list)]
+	synonyms: list[str] = pydantic.Field(
+		default_factory=list,
+		description="Any synonyms that you're term might be related to."
+	)
 
-	save_format: Annotated[list[Literal["subfigures", "visualization", "boxes", "postgres", "csv", "mongo"]],
-		Path(title="How the results should be saved.")] = ["boxes", "postgres"]
+	save_format: list[Literal["subfigures", "visualization", "boxes", "postgres", "csv"]] = pydantic.Field(
+		default=["boxes", "postgres"],
+		description="How the results should be saved."
+	)
 
-	open: Annotated[bool, Path(title="Determines if EXSCLAIM only uses open-access articles (True).")] = False
+	open: bool = pydantic.Field(
+		default=False,
+		description="Determines if EXSCLAIM only uses open-access articles (True) or any article that it can see (False)."
+	)
 
-	llm: Annotated[str,	Path(title="The Large Language Model (LLM) that is used to separate captions and generate keywords for articles and figures.")] = "llama3.2"
+	llm: str = pydantic.Field(
+		default="llama3.2",
+		description="The Large Language Model (LLM) that is used to separate captions and generate keywords for articles and figures."
+	)
 
-	pdf_path: Annotated[Optional[str], Path(title="The local path towards the directory holding the pdfs")] = None
+	pdf_path: Optional[str] = pydantic.Field(
+		default=None,
+		description="The local path towards the directory holding pdf files."
+	)
 
-	model_key: Annotated[Optional[str], Path(title="The API key that might be needed depending on the specified llm.")] = None
+	model_key: Optional[str] = pydantic.Field(
+		default=None,
+		description="The API key that might be needed depending on the specified llm."
+	)
 
-	notifications: QueryNotifications = Field(description="A list of notification objects that are used when the pipeline finishes.")
+	notifications: QueryNotifications = pydantic.Field(
+		description="A list of notification objects that are used when the pipeline finishes."
+	)
 
-	tools: Annotated[QueryTools, Path(description="A list of EXSCLAIM tools to run in the pipeline.",
-	default_factory=QueryTools)]
+	tools: QueryTools = pydantic.Field(
+		default_factory=QueryTools,
+		description="A list of EXSCLAIM tools to run in the pipeline.",
+	)
 
 	@field_validator("llm", mode="before")
 	@classmethod
@@ -415,23 +450,56 @@ class ExsclaimJSONResponse(JSONResponse):
 
 
 class PreviousRunFilters(BaseModel):
-	status: Annotated[list[Status], Path(description="Look for runs with this status type.", default_factory=list)]
+	status: list[Status] = pydantic.Field(
+		default_factory=list,
+		description="Look for runs with this status type."
+	)
 
-	name: Annotated[Optional[str], Path(description="Look for runs named this.")] = None
+	name: Optional[str] = pydantic.Field(
+		default=None,
+		description="Look for runs with this name."
+	)
 
-	term: Annotated[Optional[str], Path(description="Look for runs searching for this term.")] = None
+	term: Optional[str] = pydantic.Field(
+		default=None,
+		description="Look for runs searching for this term."
+	)
 
-	min_articles: Annotated[Optional[int], Path(description="Look for runs with at least this many articles found.", ge=0)] = None
+	min_articles: Optional[int] = pydantic.Field(
+		default=None,
+		description="Look for runs with at least this many articles found.",
+		ge=0
+	)
 
-	max_articles: Annotated[Optional[int], Path(description="Look for runs with at most this many articles found.", ge=0)] = None
+	max_articles: Optional[int] = pydantic.Field(
+		default=None,
+		description="Look for runs with at most this many articles found.",
+		ge=0
+	)
 
-	min_figures: Annotated[Optional[int], Path(description="Look for runs with at least this many figures.", ge=0)] = None
+	min_figures: Optional[int] = pydantic.Field(
+		default=None,
+		description="Look for runs with at least this many figures.",
+		ge=0
+	)
 
-	max_figures: Annotated[Optional[int], Path(description="Look for runs with at most this many figures.", ge=0)] = None
+	max_figures: Optional[int] = pydantic.Field(
+		default=None,
+		description="Look for runs with at most this many figures.",
+		ge=0
+	)
 
-	min_scraped: Annotated[Optional[int], Path(description="Look for runs that scraped at least this many articles.", ge=0)] = None
+	min_scraped: Optional[int] = pydantic.Field(
+		default=None,
+		description="Look for runs that scraped at least this many articles.",
+		ge=0
+	)
 
-	max_scraped: Annotated[Optional[int], Path(description="Look for runs that scraped at most this many articles.", ge=0)] = None
+	max_scraped: Optional[int] = pydantic.Field(
+		default=None,
+		description="Look for runs that scraped at most this many articles.",
+		ge=0
+	)
 
 	@model_validator(mode="after")
 	def check_filters(self) -> Self:

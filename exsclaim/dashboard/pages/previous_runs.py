@@ -8,7 +8,7 @@ except ImportError:
 	from exsclaim.dashboard.components.common import create_header_component, create_footer_component
 
 
-register_page(__name__, path="/previous", title="Previous Runs")
+register_page(__name__, path="/previous", title="Previous Runs", description="Previous runs of the EXSCLAIM pipeline.")
 
 
 def create_runs_component():

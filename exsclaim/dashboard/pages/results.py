@@ -13,7 +13,7 @@ except ImportError:
 	from exsclaim.dashboard.components.common import create_header_component, create_footer_component
 	from exsclaim.dashboard.components.layout import create_layout_component
 
-register_page(__name__, path_template="/results/<result_id>", title="Results")
+register_page(__name__, path_template="/results/<result_id>", title="Results", description="Results from the EXSCLAIM Pipeline for a given result id..")
 
 
 def layout(result_id: Optional[UUID] = None):

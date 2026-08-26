@@ -13,7 +13,7 @@ import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import numpy as np
 
-register_page(__name__, path="/train", title="Training")
+register_page(__name__, path="/train", title="Training", description="Use previous EXSCLAIM runs to create training data.")
 
 
 # https://dash.plotly.com/annotations
