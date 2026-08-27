@@ -83,9 +83,11 @@ async def get_db_session(logger: Optional[logging.Logger] = None) -> AsyncGenera
 		try:
 			yield session
 		except sql_exc.SQLAlchemyError as e:
+			await session.rollback()
 			if logger is not None:
 				logger.critical("An error occurred with a database transaction.", exc_info=e)
-			await session.rollback()
+			else:
+				raise e
 
 
 class Database:

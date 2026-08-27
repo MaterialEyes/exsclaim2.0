@@ -1,5 +1,6 @@
 from ..models import *
 from ...config import ui_settings
+from ...db import get_db_session
 
 import exsclaim
 import httpx2
@@ -190,10 +191,10 @@ async def get_dark_css() -> Response:
 async def healthcheck(request: Request) -> Response:
 	logger: logging.Logger = request.state.logger
 	try:
-		session: AsyncSession = request.state.session
-		await session.execute(select(Results))
-		response = Response(f"EXSCLAIM! version {exsclaim.__version__} is running fine.",
-							status_code=status.HTTP_200_OK, media_type="text/plain")
+		async with get_db_session() as session:
+			await session.execute(select(Results))
+			response = Response(f"EXSCLAIM! version {exsclaim.__version__} is running fine.",
+								status_code=status.HTTP_200_OK, media_type="text/plain")
 	except OSError as e:
 		logger.exception(f"An error occurred trying to connect to the database during a healthcheck: {e}")
 		response = Response("The API is running but cannot connect to the database.",
@@ -309,11 +310,10 @@ def robots(request: Request) -> Response:
 
 
 @router.api_route("/banner", methods=["GET", "HEAD"], include_in_schema=False)
-async def get_banner_text(request: Request, last_seen_banner: Optional[UUID] = None) -> Response:
-	session: AsyncSession = request.state.session
-	results = await session.execute(select(Banner).order_by(Banner.created.desc()).limit(1))
-
-	banner: Banner = results.scalar_one_or_none()
+async def get_banner_text(last_seen_banner: Optional[UUID] = None) -> Response:
+	async with get_db_session() as session:
+		results = await session.execute(select(Banner).order_by(Banner.created.desc()).limit(1))
+		banner: Banner = results.scalar_one_or_none()
 
 	if banner is None or banner.id == last_seen_banner:
 		return HTMLResponse(status_code=status.HTTP_204_NO_CONTENT)

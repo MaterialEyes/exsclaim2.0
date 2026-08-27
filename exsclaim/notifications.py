@@ -5,13 +5,11 @@ from datetime import datetime as dt, timezone as tz, timedelta as td, tzinfo
 from email.message import EmailMessage
 from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, GetCoreSchemaHandler, \
 	field_serializer, WithJsonSchema, Field
-from pydantic_core import CoreSchema
 from smtplib import SMTP, SMTP_SSL
-from typing import Annotated, Collection, Generator, Optional, Type, Self
+from typing import Annotated, Generator, Optional, Type, Self
 from uuid import UUID
 
 import asyncio
-import fastapi
 import httpx2
 import logging
 import re
@@ -85,13 +83,15 @@ class Notifications(BaseModel, ABC):
 
 		return {notifier.json_name(): notifier for notifier in get_subclasses(Notifications)}
 
-	def _get_results_link(self, results_id: Optional[UUID]) -> Optional[str]:
+	@staticmethod
+	def _get_results_link(results_id: Optional[UUID]) -> Optional[str]:
 		if ui_settings.DASHBOARD_URL is None or results_id is None:
 			return None
 
 		return f"{ui_settings.DASHBOARD_URL}/results/{results_id}"
 
-	def _get_logs_link(self, results_id: Optional[UUID]) -> Optional[str]:
+	@staticmethod
+	def _get_logs_link(results_id: Optional[UUID]) -> Optional[str]:
 		if ui_settings.PUBLIC_API_URL is None or results_id is None:
 			return None
 
@@ -102,23 +102,29 @@ class NTFY(Notifications):
 	"""A base model representing the necessary info to send an NTFY notification."""
 	model_config = ConfigDict(arbitrary_types_allowed=True)
 
-	url: Annotated[str, fastapi.Path(
-		title="The url to the NTFY server, with the topic included (e.g. {create_link('https://ntfy.sh/exsclaim')})")]
+	url: str = Field(
+		description=f"The url to the NTFY server, with the topic included (e.g. {create_link('https://ntfy.sh/exsclaim')})")
 
-	access_token: Annotated[Optional[str], Path(
-		title="The access token fastapi.that may be needed to send the NTFY notification as stated in {create_link('https://docs.ntfy.sh/publish/#access-tokens')}")] = None
+	access_token: Optional[str] = Field(
+		default=None,
+		description=f"The access token fastapi.that may be needed to send the NTFY notification as stated in {create_link('https://docs.ntfy.sh/publish/#access-tokens')}"
+	)
 
-	priority: Annotated[int, fastapi.Path(
-		title="The priority of the message as stated in {create_link('https://docs.ntfy.sh/publish/#message-priority')}.",
-		ge=1, le=5)] = 3
+	priority: int = Field(
+		title=f"The priority of the message as stated in {create_link('https://docs.ntfy.sh/publish/#message-priority')}.",
+		default=3,
+		ge=1,
+		le=5
+	)
 
-	timezone: Annotated[TZInfo, fastapi.Path(
+	timezone: TZInfo = Field(
+		default=zoneinfo.ZoneInfo("localtime"),
 		title="A timezone used to send the relative time to NTFY since NTFY's client cannot parse it directly.",
-	)] = zoneinfo.ZoneInfo("localtime")
+	)
 
 	@field_validator("timezone", mode="before")
 	@classmethod
-	def get_timezone(cls, value: Optional[str]) -> TZInfo:
+	def get_timezone(cls, value: Optional[str | float | int]) -> TZInfo:
 		if value is None:
 			return tz.utc
 
@@ -157,8 +163,6 @@ class NTFY(Notifications):
 		return dt.now(value).utcoffset().total_seconds() / 3600
 
 	async def notify(self, notification: Notification, logger: logging.Logger):
-		from json import dumps
-
 		headers = {
 			"Markdown": "yes",
 			"Title": f"EXSCLAIM: `{notification.name}` Notification",
@@ -207,7 +211,7 @@ class Email(Notifications, RootModel[list[EmailStr]]):
 			logger.warning("Email credentials were not provided by the pipeline's maintainer, so emails cannot be sent.")
 			return
 
-		messages: list[EmailMessage] = [EmailMessage() for email in emails]
+		messages: list[EmailMessage] = [EmailMessage() for _ in emails]
 		for i, (email, msg) in enumerate(zip(emails, messages)):
 			msg["Subject"] = f"EXSCLAIM Run {notification.name} ({notification.run_id})"
 			msg["From"] = email_settings.ACCOUNT
@@ -368,7 +372,20 @@ class Discord(Webhook):
 		timestamp = f"<t:{timestamp}:f>"
 
 		if isinstance(notification, InterruptionNotification):
+			logs_link = self._get_logs_link(notification.run_id)
 			description = f"Results for **{notification.name}** were stopped by the user at {timestamp}.",
+			data = {
+				"content": None,
+				"embeds": [{
+					"title": f"{notification.name}: Pipeline Stopped",
+					"description": description,
+					"url": logs_link,
+					"color": 16711680,
+					"timestamp": iso_timestamp
+				}],
+				"attachments": []
+			}
+
 		elif isinstance(notification, ErrorNotification):
 			logs_link = self._get_logs_link(notification.run_id)
 			if logs_link is None:
@@ -417,6 +434,7 @@ class Discord(Webhook):
 				raise CouldNotNotifyException(
 					f"[{response.status_code}] The status code that the webhook responded with "
 					f"did not match what was expected: {response.text}.") from e
+		return response
 
 	@model_validator(mode="after")
 	def is_valid_notifier(self) -> Self:

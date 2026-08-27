@@ -14,6 +14,7 @@ import cv2
 import logging
 import numpy as np
 import re
+import shutil
 
 from csv import writer
 from enum import Flag, auto
@@ -22,7 +23,6 @@ from json import load, dump
 from os.path import isfile, splitext
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from shutil import rmtree
 from sqlalchemy.exc import SQLAlchemyError
 from textwrap import wrap, dedent
 from typing import Any, Callable, Optional
@@ -69,35 +69,17 @@ class SaveMethods(Flag):
 		return reduce(or_, filter(lambda x: x is not None, map(get_values, lst)))
 
 
-def chmod(path:Path, permissions=None, output: Callable[[PermissionError], None] = print):
-	if permissions is None:
-		permissions = path.stat().st_mode
-	else:
-		try:
-			path.chmod(permissions)
-		except PermissionError as e:
-			output(e)
-
-	for directory, _, files in path.walk():
-		directory.chmod(permissions)
-		for file in files:
-			new_path = directory / file
-			new_path.chmod(permissions)
-
-
 class Pipeline:
-	"""Defines the exsclaim! pipeline"""
+	"""Defines the EXSCLAIM! pipeline"""
 
 	def __init__(self, query_path):
 		"""initialize a Pipeline to run on query path and save to exsclaim path
 
 		Args:
 			query_path (dict or path to json): An EXSCLAIM user query JSON
+			base_run_id (uuid.UUID or None): The ID of a previous EXSCLAIM run whose results should be copied to this run before it starts
 		"""
 		# Load Query on which Pipeline will run
-		if "test" == query_path:
-			query_path = Path(__file__).resolve().parent / "tests" / "data" / "nature_test.json"
-
 		if isinstance(query_path, dict):
 			self.query_dict = query_path
 			self.query_path = ""
@@ -109,12 +91,13 @@ class Pipeline:
 				self.query_dict = load(f)
 
 		# Set up file structure
-		base_results_dir = paths.initialize_results_dir(self.query_dict.get("results_dir"))
-		self.query_dict.setdefault("run_id", str(gen_uuid7()))
-		run_id = self.query_dict["run_id"]
+		self.run_id = self.query_dict.setdefault("run_id", str(gen_uuid7()))
 
-		self.results_directory = base_results_dir / self.query_dict["name"]
-		self.results_directory.mkdir(exist_ok=True)
+		self.results_directory = paths.initialize_results_dir(self.query_dict)
+		self.results_directory.mkdir(parents=True, exist_ok=True)
+
+		if (base_run_id := self.query_dict.get("base_run_id")) is not None:
+			self.copy_results_from_run(base_run_id)
 
 		# region Set up logging
 		print_handler = logging.StreamHandler()
@@ -132,12 +115,12 @@ class Pipeline:
 				handler.setLevel(logging.INFO)
 				handlers.append(handler)
 
-		logger_name = f"{self.query_dict["name"]}_{run_id}" # __main__
+		logger_name = f"{self.query_dict["name"]}_{self.run_id}" # __main__
 		self.logger = logging.getLogger(logger_name)
 		for handler in handlers:
 			self.logger.addHandler(handler)
 
-		self.logger.info(f"Results will be located in: `{self.results_directory}` with run id {self.query_dict['run_id']}.")
+		self.logger.info(f"Results will be located in: `{self.results_directory}` with run id {self.run_id}.")
 		# endregion
 
 		# region Check for an existing exsclaim json
@@ -164,7 +147,7 @@ class Pipeline:
 		self.logger.info(info)
 
 	async def run(self, tools: list[type[ExsclaimTool]] = None, journal_scraper=True, pdf_scraper=True,
-				  caption_distributor=True, figure_separator=True, run_id: Optional[UUID] = None) -> dict:
+				  caption_distributor=True, figure_separator=True) -> dict:
 		"""Run EXSCLAIM pipeline on Pipeline instance's query path
 
 		Args:
@@ -226,6 +209,7 @@ class Pipeline:
 		"""))
 		exsclaim_dict = self.exsclaim_dict
 		query_dict = self.query_dict
+		run_id = self.run_id
 		notification = f"EXSCLAIM! query{f' `{run_id}`' if run_id is not None else ''} failed without a notification."
 
 		try:
@@ -344,6 +328,27 @@ class Pipeline:
 										  exc_info=e)
 
 		return self.exsclaim_dict
+
+	def copy_results_from_run(self, base_run_id: UUID):
+		import os
+		import tarfile
+
+		results_file = settings.RESULTS_PATH / f"{base_run_id}.tar.gz"
+		if not results_file.is_file():
+			raise FileNotFoundError(f"Could not find the results for {base_run_id}.")
+
+		if not tarfile.is_tarfile(results_file):
+			raise tarfile.ReadError(f"Could not read the compressed results for {base_run_id}.")
+
+		with tarfile.open(results_file, "r:gz") as tar:
+			members = tar.getmembers()
+			base_folder = members[0].name
+			tar.extractall(path=self.results_directory, members=members[1:])
+
+		base_folder = self.results_directory / base_folder
+		for file in os.listdir(base_folder):
+			shutil.move(base_folder / file, self.results_directory / file)
+		os.rmdir(base_folder)
 
 	@staticmethod
 	def assign_captions(figure: dict) -> tuple[list[dict], dict]:
@@ -829,7 +834,7 @@ class Pipeline:
 			self.logger.warning(f"Almost removed {settings.RESULTS_PATH=} when removing results directory {parent=}.")
 			return
 
-		rmtree(parent)
+		shutil.rmtree(parent)
 		if parent.is_dir():
 			left_over_files = tuple(results_directory.rglob("*"))
 			self.logger.warning(f"Removed results directory after compression, but {len(left_over_files):,} files were found in it afterwards.")

@@ -105,16 +105,16 @@ async def _extract_access_token(token: Optional[str]) -> User | HTTPException:
 
 	try:
 		payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
+	except jwt.ExpiredSignatureError:
+		return HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail=f"Credentials are expired.",
+			headers={"WWW-Authenticate": "Bearer"},
+		)
 	except jwt.InvalidTokenError as e:
 		return HTTPException(
 			status_code=status.HTTP_401_UNAUTHORIZED,
 			detail=f"Could not validate credentials: {e}",
-			headers={"WWW-Authenticate": "Bearer"},
-		)
-	except jwt.ExpiredSignatureError as e:
-		return HTTPException(
-			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail=f"Credentials are expired.",
 			headers={"WWW-Authenticate": "Bearer"},
 		)
 
@@ -269,15 +269,15 @@ def is_valid_username(username: str) -> bool:
 
 
 @router.post("/create_user", tags=[TAG])
-async def create_user(request: Request, info: LoginInfo):
-	session: AsyncSession = request.state.session
-
+async def create_user(info: LoginInfo):
 	email = info.email.strip().lower()
 	username = info.username.strip()
 	password = info.password.strip()
 
-	results = await session.execute(select(User).where(User.email == email))
-	existing_user: Optional[User] = results.scalar_one_or_none()
+	async with get_db_session() as session:
+		results = await session.execute(select(User).where(User.email == email))
+		existing_user: Optional[User] = results.scalar_one_or_none()
+
 	if existing_user:
 		return Response("Account with email already exists.", status_code=status.HTTP_409_CONFLICT, media_type="text/plain")
 
@@ -289,8 +289,9 @@ async def create_user(request: Request, info: LoginInfo):
 
 	user = User(name=username, email=email, salt=salt, password_hash=password_hash)
 
-	session.add(user)
-	await session.commit()
+	async with get_db_session() as session:
+		session.add(user)
+		await session.commit()
 
 	response = JSONResponse({"detail": f"Account created for {email}."}, status_code=status.HTTP_201_CREATED)
 	response = await create_access_token_for_cookie(user, response)
@@ -353,14 +354,14 @@ async def login_with_orcid(request: Request, code: str):
 
 		json = response.json()
 
-	session: AsyncSession = request.state.session
-	results = await session.execute(select(User).where(User.orcid == json["orcid"]))
-	actual_user: Optional[User] = results.scalar_one_or_none()
-	if actual_user is None:
-		# Create user
-		actual_user = User(name=json["name"], orcid=json["orcid"])
-		session.add(actual_user)
-		await session.commit()
+	async with get_db_session() as session:
+		results = await session.execute(select(User).where(User.orcid == json["orcid"]))
+		actual_user: Optional[User] = results.scalar_one_or_none()
+		if actual_user is None:
+			# Create user
+			actual_user = User(name=json["name"], orcid=json["orcid"])
+			session.add(actual_user)
+			await session.commit()
 
 	response = RedirectResponse(ui_settings.DASHBOARD_URL)
 	response = await create_access_token_for_cookie(actual_user, response)
@@ -465,15 +466,15 @@ async def reset_password(request: Request, token: Optional[str] = None, email: O
 	if email is None:
 		return Response("No email provided.", status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, media_type="text/plain")
 
-	db = request.state.session
 	email = email.strip().lower()
 
-	if token is None:
-		# Email the user a URL to get to the reset page.
-		return await send_reset_request_email(request, db, email)
+	async with get_db_session() as db:
+		if token is None:
+			# Email the user a URL to get to the reset page.
+			return await send_reset_request_email(request, db, email)
 
-	results = await db.execute(select(PasswordReset).where(PasswordReset.token == token))
-	reset_obj: PasswordReset = results.scalar_one_or_none()
+		results = await db.execute(select(PasswordReset).where(PasswordReset.token == token))
+		reset_obj: PasswordReset = results.scalar_one_or_none()
 
 	if (reset_obj is None) or (reset_obj.email != email) or (dt.now(tz.utc) - reset_obj.created > td(hours=1)):
 		return Response("The email/token pair was invalid.", status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, media_type="text/plain")
@@ -486,7 +487,7 @@ async def get_user_id(user: CurrentUser) -> JSONResponse:
 	not_logged_in = {"id": "Not Logged In."}
 	if user is None or user.id == get_guest_uuid():
 		return JSONResponse(not_logged_in, status_code=status.HTTP_202_ACCEPTED)
-	return JSONResponse({"id": user.id}, status_code=status.HTTP_200_OK)
+	return JSONResponse({"id": str(user.id)}, status_code=status.HTTP_200_OK)
 
 
 @router.get("/name", include_in_schema=False)
@@ -532,10 +533,10 @@ async def check_access_token_remaining_time(token: AccessTokenCookie) -> JSONRes
 
 	try:
 		payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
+	except jwt.ExpiredSignatureError:
+		return JSONResponse({"detail": "Token has already expired."}, status_code=status.HTTP_406_NOT_ACCEPTABLE)
 	except jwt.InvalidTokenError as e:
 		return JSONResponse({"detail": f"Invalid token given: {e}."}, status_code=status.HTTP_401_UNAUTHORIZED)
-	except jwt.ExpiredSignatureError as e:
-		return JSONResponse({"detail": "Token has already expired."}, status_code=status.HTTP_406_NOT_ACCEPTABLE)
 
 	expiration = payload.get("exp")
 	if expiration is None:

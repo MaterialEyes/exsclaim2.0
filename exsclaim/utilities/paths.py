@@ -2,30 +2,26 @@
 
 from ..config import settings
 from pathlib import Path
+from typing import Any
 
 
 __all__ = ["initialize_results_dir"]
 
 
-def initialize_results_dir(results_dir:str = None) -> Path:
-    """Determine where to save results for a pipeline run
+def initialize_results_dir(query_dict: dict[str, Any]) -> Path:
+	"""Determine where to save results for a pipeline run
 
-    The output directory will be resolved in this order:
-        1. if results_dir is provided, results will be to results_dir/query_name
-        2. results will be saved to exsclaim_repo_root/output/query_name
+	Args:
+		query_dict (dict[str, Any]): The query dictionary used for the run, which holds the run's name and optional id.
+	Returns:
+		results_dir (pathlib.Path): Full path to output directory
+	Modifies:
+		Creates results_dir if it doesn't exist.
+	"""
+	if (run_id := query_dict.get("run_id")) is not None:
+		results_dir = settings.RESULTS_PATH / str(run_id) / self.query_dict["name"]
+	else:
+		results_dir = settings.RESULTS_PATH / self.query_dict["name"]
 
-    Note: On Docker, providing a results_dir may not work as intended,
-        as the results will be saved in the docker container. You will
-        need to set up a volume mapping your desired results directory
-        to the output path in the docker container.
-
-    Args:
-        results_dir (str): path to desired results directory, default None.
-    Returns:
-        results_dir (pathlib.Path): Full path to output directory
-    Modifies:
-        Creates results_dir if it doesn't exist.
-    """
-    results_dir = Path(results_dir).resolve() if results_dir is not None else settings.RESULTS_PATH
-    results_dir.mkdir(parents=True, exist_ok=True)
-    return results_dir
+	results_dir.mkdir(parents=True, exist_ok=True)
+	return results_dir

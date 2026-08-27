@@ -126,7 +126,6 @@ def get_middleware(settings, logger: logging.Logger) -> tuple[Middleware, ...]:
 		Middleware(PreflightCacheMiddleware),
 		Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts),
 		Middleware(GZipMiddleware, minimum_size=1_000),
-		Middleware(SQLAlchemyMiddleware, logger=logger),
 	)
 
 

@@ -4,6 +4,7 @@ Converted from React Query.js component.
 """
 
 import dash_bootstrap_components as dbc
+import httpx2
 
 from dash import html, dcc, callback, Output, Input, State, clientside_callback, ClientsideFunction
 from dash.exceptions import PreventUpdate
@@ -43,7 +44,6 @@ def create_query_component(available_llms, debounce=True):
 	Create the main query form component.
 	
 	Args:
-		journal_families (list): List of available journal families
 		available_llms (dict[str, dict[str, str | bool]]): List of available LLM models
 
 	Returns:
@@ -105,6 +105,7 @@ def create_query_component(available_llms, debounce=True):
 				create_num_articles_component(debounce=debounce),
 				create_input_term_component(debounce=debounce),
 				create_input_synonyms_component(debounce=debounce),
+				create_inheritance_component(),
 			]),
 
 			# Right column - Advanced inputs
@@ -234,6 +235,44 @@ def create_input_synonyms_component(debounce=True):
 	], className="mb-3")
 
 
+def create_inheritance_component():
+	return html.Div([
+		dbc.Label(
+			"Extend Results From:",
+			html_for="base-run-id"
+		),
+		dcc.Dropdown(
+			id="base-run-id",
+			placeholder="Add results from run...",
+			className="form-control",
+			multi=False,
+		)
+	])
+
+
+@callback(
+	Output("base-run-id", "options"),
+	Output("base-run-id", "value"),
+	State("exsclaim-store", "data")
+)
+async def load_previous_runs(data):
+	try:
+		async with httpx2.AsyncClient(base_url=data["fast_api_url"], timeout=30) as client:
+			response = await client.get("/previous_runs?return_values=id&return_values=name")
+			runs = response.json()
+	except httpx2.HTTPError as e:
+		print(f"{e=}", flush=True)
+		return [], None
+
+	options = [None] * (len(runs) + 1)
+	options[0] = {"value": None, "label": "-"}
+
+	for i, run in enumerate(runs, start=1):
+		options[i] = {"value": str(run["id"]), "label": f"{run['name']} ({run['id']})"}
+
+	return options, None
+
+
 DAGGER = "\u2020"
 
 
@@ -308,11 +347,6 @@ def create_open_access_component():
 
 def create_model_component(available_llms, debounce=True):
 	"""Create model selection component."""
-	# options = [
-	# 	{"label": llm["display_name"], "value": llm["model_name"]}
-	# 	for llm in available_llms
-	# ]
-
 	options = []
 	for i, (provider, llms) in enumerate(available_llms.items()):
 		options.append(dict(value=provider, label=provider, disabled=True))
@@ -625,6 +659,7 @@ clientside_callback(
 		State("sort-by", "value"),
 		State("input-term", "value"),
 		State("input-synonyms", "value"),
+		State("base-run-id", "value"),
 		State("open-access", "value"),
 		State("model-select", "value"),
 		State("model-key", "value"),

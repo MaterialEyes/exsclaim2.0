@@ -1,17 +1,18 @@
 from .pipeline import Pipeline, PipelineInterruptionException
-
 try:
 	from . import __version__
 except ImportError:
 	__version__ = None
+
 from argparse import ArgumentParser
 from atexit import register
-from json import load
 from os import PathLike
 from os.path import isfile
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
+
+import json
 
 
 @register
@@ -28,7 +29,7 @@ def on_terminate():
 
 async def run_pipeline(query=None, verbose: bool = False, compress: Optional[str] = None, compress_location: Optional[str] = None,
 					   journal_scraper: bool = False, pdf_scraper: bool = False, caption_distributor: bool = False,
-					   figure_separator: bool = False, run_id: Optional[UUID] = None, **kwargs):
+					   figure_separator: bool = False):
 	if query is None:
 		raise ValueError("The search query is required.")
 
@@ -39,7 +40,7 @@ async def run_pipeline(query=None, verbose: bool = False, compress: Optional[str
 		raise ValueError(f"The search query file \"{path}\" does not exist.")
 
 	with open(path, "r") as f:
-		search_query = load(f)
+		search_query = json.load(f)
 
 	if verbose:
 		if not search_query.get("logging", None):
@@ -51,7 +52,7 @@ async def run_pipeline(query=None, verbose: bool = False, compress: Optional[str
 	pipeline = Pipeline(search_query)
 	try:
 		await pipeline.run(caption_distributor=caption_distributor, pdf_scraper=pdf_scraper,
-						   journal_scraper=journal_scraper, figure_separator=figure_separator, run_id=run_id)
+						   journal_scraper=journal_scraper, figure_separator=figure_separator)
 		exit_code = 0
 	except PipelineInterruptionException as e:
 		pipeline.logger.exception("The pipeline could not successfully finish running.", exc_info=e)
@@ -64,14 +65,14 @@ async def run_pipeline(query=None, verbose: bool = False, compress: Optional[str
 	return exit_code
 
 
-async def ui(dashboard_configuration: PathLike[str] = None, api_configuration: PathLike[str] = None, blocking: bool = False,
-			 pid_folder: Optional[Path] = None):
-	from signal import signal, SIGINT, SIGTERM, SIGQUIT
+async def ui(dashboard_configuration: Optional[PathLike[str]] = None, api_configuration: Optional[PathLike[str]] = None,
+			 blocking: bool = False, pid_folder: Optional[Path] = None):
+	import signal
 	from subprocess import Popen
 
 	exsclaim_dir = Path(__file__).parent.resolve()
 
-	def get_configuration(configuration: PathLike[str], folder: str) -> str:
+	def get_configuration(configuration: Optional[PathLike[str]], folder: str) -> str:
 		configuration = configuration or (exsclaim_dir / folder / "config.py")
 
 		if not isfile(configuration):
@@ -108,8 +109,8 @@ async def ui(dashboard_configuration: PathLike[str] = None, api_configuration: P
 		api.kill()
 		return 0
 
-	for sig in {SIGINT, SIGTERM, SIGQUIT}:
-		signal(sig, signal_handler)
+	for sig in {signal.SIGINT, signal.SIGTERM, signal.SIGQUIT}:
+		signal.signal(sig, signal_handler)
 
 	api.wait()
 	dashboard.wait()

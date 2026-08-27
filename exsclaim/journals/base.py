@@ -383,7 +383,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		self.logger: logger.Logger = kwargs.get("logger", logging.getLogger(__name__))
 
 		# Set up file structure
-		base_results_dir = paths.initialize_results_dir(search_query.get("results_dir", None))
+		base_results_dir = paths.initialize_results_dir(search_query)
 		self.results_directory = base_results_dir / self.search_query["name"]
 		figures_directory = self.results_directory / "figures"
 		figures_directory.mkdir(exist_ok=True, parents=True)

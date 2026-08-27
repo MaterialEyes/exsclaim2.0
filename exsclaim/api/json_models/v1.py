@@ -7,10 +7,10 @@ __all__ = ["OutputV1", "migrate_v0_to_v1"]
 
 
 class GeometryV1(BaseModel):
-	x0: Annotated[int, Field(...)]
-	y0: Annotated[int, Field(...)]
-	x1: Annotated[int, Field(...)]
-	y1: Annotated[int, Field(...)]
+	x0: int = Field(description="The left boundary of the image.")
+	y0: int = Field(description="The upper boundary of the image.")
+	x1: int = Field(description="The right boundary of the image.")
+	y1: int = Field(description="The bottom boundary of the image.")
 
 
 ArticleV1 = ArticleV0[GeometryV1]
@@ -18,10 +18,7 @@ ArticleV1 = ArticleV0[GeometryV1]
 
 class OutputV1(BaseModel):
 	version: Literal["1.0"] = "1.0"
-	results: Annotated[
-		dict[str, ArticleV1],
-		Field(...)
-	]
+	results: dict[str, ArticleV1] = Field(...)
 
 
 def get_coords_from_list(new_list: list[GeometryV0]) -> GeometryV1:

@@ -21,7 +21,7 @@ from uuid import UUID
 import ipaddress as ip
 import re
 
-__all__ = ["RequestLoggerMiddleware", "PreflightCacheMiddleware", "SQLAlchemyMiddleware"]
+__all__ = ["RequestLoggerMiddleware", "PreflightCacheMiddleware"]
 
 
 request_id_ctx = ContextVar("request_id")
@@ -138,15 +138,20 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 					return response
 
 			self.logger.info(f"{format_response(request_id, request, address)} ({response.status_code}) in {self.get_log_time(diff)}.")
-
 			return response
+		except SQLAlchemyError as e:
+			self.logger.exception(f"{format_response(request_id_ctx.get(), request)} Database Error occurred.", exc_info=e)
+			return JSONResponse(dict(detail="Internal Database Error.", request_id=request.state.id),
+									status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+									media_type="text/plain", headers={"X-Request-Id": request_id_ctx.get()})
 		except BaseException as e:
 			end_time = perf_counter()
 			diff = end_time - start_time
 
-			self.logger.exception(f"{format_response(request_id_ctx, request, address)} Time to error: {self.get_log_time(diff)}. Unhandled error: {e}.")
-			return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=f"Internal Server Error. Please try again later. Request ID: {request_id}.",
-			                media_type="text/plain", headers={"X-Request-Id": request_id})
+			self.logger.exception(f"{format_response(request_id_ctx.get(), request, address)} Time to error: {self.get_log_time(diff)}. Unhandled error: {e}.")
+			return JSONResponse(dict(detail="Internal Server Error.", request_id=request.state.id),
+								status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+								media_type="text/plain", headers={"X-Request-Id": request_id})
 		finally:
 			for handler in self.logger.handlers:
 				handler.flush()
@@ -168,30 +173,6 @@ class PreflightCacheMiddleware(BaseHTTPMiddleware):
 				response.headers[header] += ", Sec-Ch-Prefers-Color-Scheme"
 			else:
 				response.headers[header] = "Sec-Ch-Prefers-Color-Scheme"
-
-		return response
-
-
-class SQLAlchemyMiddleware(BaseHTTPMiddleware):
-	def __init__(self, app: ASGIApp, logger, dispatch=None):
-		super().__init__(app, dispatch)
-		self.logger = logger
-		self.session_factory = sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=False)
-
-	async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-		session: AsyncSession = self.session_factory()
-		request.state.session = session
-		try:
-			response = await call_next(request)
-			await session.commit()
-		except SQLAlchemyError as e:
-			response = JSONResponse(dict(detail="Internal database error detected.", request_id=request.state.id),
-								status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-								media_type="text/plain", headers={"X-Request-Id": request_id_ctx.get()})
-			await session.rollback()
-			self.logger.exception(f"{format_response(request_id_ctx.get(), request)} Database Error occurred: {e}.")
-		finally:
-			await session.close()
 
 		return response
 

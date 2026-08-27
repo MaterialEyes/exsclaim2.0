@@ -94,7 +94,7 @@ class ExsclaimTool(ABC):
 		self._search_query = search_query
 
 		# Set up file structure
-		self.results_directory = initialize_results_dir(self.search_query.get("results_dir", None)) / self.search_query["name"]
+		self.results_directory = initialize_results_dir(self.search_query)
 
 	def _appendJSON(self, exsclaim_json:dict, exsclaim_filename: PathLike[str] = None, data: Iterable[str] = None,
 					filename: str | PathLike[str] = None):

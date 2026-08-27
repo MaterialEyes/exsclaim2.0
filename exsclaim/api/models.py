@@ -15,7 +15,7 @@ from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from sqlalchemy import Enum as SAEnum, Column, ForeignKeyConstraint, CheckConstraint, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlmodel import text, SQLModel, Field, DateTime
-from typing import Literal, Optional, Any, Self
+from typing import Any, Literal, Optional, Self
 from uuid import UUID
 
 import pydantic
@@ -408,6 +408,11 @@ class Query(BaseModel):
 		description="A list of EXSCLAIM tools to run in the pipeline.",
 	)
 
+	base_run_id: Optional[UUID] = pydantic.Field(
+		default=None,
+		description="The id of the EXSCLAIM run that this run will inherit the results from."
+	)
+
 	@field_validator("llm", mode="before")
 	@classmethod
 	def validate_llm(cls, llm: str) -> str:
@@ -501,6 +506,22 @@ class PreviousRunFilters(BaseModel):
 		ge=0
 	)
 
+	return_values: list[Literal["id", "status", "name", "term", "start_time", "end_time", "run_time", "max_articles", "num_articles", "num_figures", "*"]] \
+		= pydantic.Field(
+		default=["*"],
+		description="Only these columns will be returned."
+	)
+
+	@field_validator("return_values", mode="after")
+	@classmethod
+	def check_return_values(cls, return_values: list[str]) -> list[str]:
+		if len(return_values) == 0:
+			raise ValueError("At least one column must be returned.")
+
+		if "*" in return_values and len(return_values) != 1:
+			raise ValueError("Individual columns can not be specified when '*' is given. Only send ['*'] or remove it.")
+		return return_values
+
 	@model_validator(mode="after")
 	def check_filters(self) -> Self:
 		pairs = (
@@ -522,9 +543,9 @@ class PreviousRunFilters(BaseModel):
 		filters = [None] * (8 + len(Status))
 		i = 0
 
-		def set_filter(f: str, name: str, value):
+		def set_filter(_filter: str, name: str, value):
 			nonlocal i
-			filters[i] = f
+			filters[i] = _filter
 			params[name] = value
 			i += 1
 
@@ -555,5 +576,9 @@ class PreviousRunFilters(BaseModel):
 		if self.max_scraped is not None:
 			set_filter("r.max_articles <= :max_scraped", "max_scraped", self.max_scraped)
 
-		filters = [f for f in filters if f is not None]
+		filters: list[str] = [f for f in filters if f is not None]
 		return filters, params
+
+	@property
+	def selection(self) -> str:
+		return ", ".join(map(lambda value: f"r.{value}", self.return_values))

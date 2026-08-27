@@ -524,9 +524,32 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			return [valid, !valid];
 		},
 
+		check_password_signup: function(password, second_password){
+			const passwords_match = second_password === password;
+			const password_valid = this.check_password(password);
+
+			const return_values = [password_valid[0], password_valid[1], passwords_match, !passwords_match];
+
+			const li = document.getElementById("password_match");
+			if(li === undefined || li === null) { return return_values; }
+			li.className = `li-password ${passwords_match ? 'password-passed' : 'password-failed'}`;
+
+			return return_values;
+		},
+
 		check_email: function(email){
 			let email_component = document.getElementById("email");
 			const valid = email_component.validity.valid;
+
+			return [valid, !valid];
+		},
+
+		check_username: function(username){
+			const should_have_username = window.location.href.endsWith("/signup");
+			let valid = true;
+			if(should_have_username && (username === undefined || username === null)) {
+				valid = false;
+			}
 
 			return [valid, !valid];
 		},
@@ -732,9 +755,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 	},
 
 	query: {
-		submit_query: async function(n_clicks, stored_data, output_name, journal_family, num_articles,
-									 sort_by, term, synonyms, open_access, model, model_key, save_formats, ntfy_link,
-									 ntfy_priority) {
+		submit_query: async function(n_clicks, stored_data, output_name, journal_family, num_articles, sort_by, term,
+									 synonyms, base_run_id, open_access, model, model_key, save_formats,
+									 ntfy_link, ntfy_priority) {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 
 			// Validated required fields
@@ -762,6 +785,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 				notifications: {
 					ntfy: []
 				},
+				base_run_id: getDefault(base_run_id, null)
 			};
 
 			if(ntfy_link !== null && ntfy_link !== undefined){
