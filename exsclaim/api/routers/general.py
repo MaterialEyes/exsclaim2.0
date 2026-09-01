@@ -12,6 +12,7 @@ from fastapi import APIRouter, status
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.responses import JSONResponse
 from hashlib import sha256
+from sqlalchemy import select
 from starlette.requests import Request
 from starlette.responses import Response, HTMLResponse
 from starlette.routing import BaseRoute

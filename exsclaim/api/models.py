@@ -189,8 +189,7 @@ class User(SQLModel, table=True):
 class PasswordReset(SQLModel, table=True):
 	__tablename__ = "password_reset"
 	__table_args__ = (
-		ForeignKeyConstraint(["email"], ["users.users.email"],
-							 ondelete="CASCADE", onupdate="CASCADE"),
+		ForeignKeyConstraint(["email"], ["users.users.email"], ondelete="CASCADE", onupdate="CASCADE"),
 		dict(schema="users")
 	)
 
@@ -209,14 +208,13 @@ class PasswordReset(SQLModel, table=True):
 		)
 	)
 
-	token: str = Field(primary_key=True) # TODO: Cryptographically create a token to prove that the link sent to the email belongs to this email.
+	token: str = Field(primary_key=True)
 
 
 class Results(SQLModel, table=True):
 	__tablename__ = "results"
 	__table_args__ = (
-		ForeignKeyConstraint(["user_id"], ["users.users.id"],
-							 ondelete="CASCADE", onupdate="CASCADE"),
+		ForeignKeyConstraint(["user_id"], ["users.users.id"], ondelete="CASCADE", onupdate="CASCADE"),
 		# Index("ix_results_results_user_id", "user_id"),
 		Index("ix_results_results_user_id_start_time", "user_id", "start_time"),
 		dict(schema="results")

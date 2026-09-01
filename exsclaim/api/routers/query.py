@@ -1,6 +1,6 @@
 from ...config import settings
 from ...db import get_db_session
-from ..models import *
+from ..models import Results, User, ExsclaimJSONResponse, Status, get_guest_uuid, ClassificationCodes, PreviousRunFilters
 from .users import ActiveUser, CurrentUser
 
 import fastapi
@@ -200,8 +200,12 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			...  # TODO: Sanitize these user inputs
 
 		async with get_db_session() as session:
-			await session.execute(insert(Results).values(id=uuid, user_id=user.id, search_query=db_json,
-													  extension=SaveExtensions.TAR))
+			await session.execute(insert(Results).values(
+				id=uuid,
+				user_id=user.id,
+				search_query=db_json,
+				extension=SaveExtensions.TAR)
+			)
 			await session.commit()
 
 		if send_json:
@@ -232,138 +236,138 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 
 
 @router.api_route("/status/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
-		 responses={
-			 200: {
-				 "description": "Status Found for ID.",
-				 "content": {
-					 "application/json": {
-						 "schema": {
-							 "type": "object",
-							 "properties": {
-								 "results_status": {
-									 "type": "string",
-								 },
-								 "start_time": {
-									 "type": "string",
-									 "format": "date-time"
-								 },
-								 "end_time": {
-									 "type": "string",
-									 "format": "date-time"
-								 },
-								 "run_time": {
-									 "type": "number",
-									 "format": "float"
-								 },
-							 }
-						 },
-						 "example": {
-							 "results_status": "Finished.",
-							 "start_time": "2024-07-15T13:00:12.712358+00:00",
-							 "end_time": "2024-07-15T13:06:58.928669+00:00",
-							 "run_time": 3641.92811
-						 }
-					 }
-				 }
-			 },
-			 404: {
-				 "description": "ID Not Found.",
-				 "content": {
-					 "application/json": {
-						 "schema": {
-							 "type": "object",
-							 "properties": {
-								 "results_status": {
-									 "type": "string"
-								 },
-								 "message": {
-									 "type": "string"
-								 }
-							 }
-						 },
-						 "example": {
-							 "results_status": "Finished",
-							 "message": f"There is no query recorded in our database with id: \"{_EXAMPLE_UUID}\".",
-						 }
-					 }
-				 }
-			 },
-			 422: {
-				 "description": "Improper UUID Format for ID.",
-				 "content": {
-					 "application/json": {
-						 "schema": {
-							 "type": "object",
-							 "properties": {
-								 "results_status": {
-									 "type": "null"
-								 },
-								 "message": {
-									 "type": "string"
-								 }
-							 }
-						 },
-						 "example": {
-							 "results_status": None,
-							 "message": f"\"{_EXAMPLE_UUID}\"is not a valid UUID.",
-						 }
-					 }
-				 }
-			 },
-			 500: {
-				 "description": "Unknown Internal Server Error.",
-				 "content": {
-					 "application/json": {
-						 "schema": {
-							 "type": "object",
-							 "properties": {
-								 "results_status": {
-									 "type": "string"
-								 },
-								 "start_time": {
-									 "type": "string"
-								 },
-								 "end_time": {
-									 "type": "string"
-								 },
-								 "run_time": {
-									 "type": "number",
-									 "format": "float"
-								 },
-							 }
-						 },
-						 "example": {
-							 "results_status": "Closed due to an error.",
-							 "start_time": "2024-07-15T13:00:12.712358+00:00",
-							 "end_time": "2024-07-15T13:06:58.928669+00:00",
-							 "run_time": 3641.92811
-						 }
-					 }
-				 }
-			 },
-			 210: {
-				 "description": "Internal Database Error.",
-				 "content": {
-					 "application/json": {
-						 "schema": {
-							 "type": "object",
-							 "properties": {
-								 "results_status": {
-									 "type": "string"
-								 },
-								 "message": {
-									 "type": "string"
-								 }
-							 }
-						 },
-						 "example": {
-							 "results_status": "Unknown",
-							 "message": "An unknown error has occurred within the database. Please try again later.",
-						 }
-					 }
-				 }
-			 },
-		 })
+		responses={
+			200: {
+				"description": "Status Found for ID.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"type": "object",
+							"properties": {
+								"results_status": {
+									"type": "string",
+								},
+								"start_time": {
+									"type": "string",
+									"format": "date-time"
+								},
+								"end_time": {
+									"type": "string",
+									"format": "date-time"
+								},
+								"run_time": {
+									"type": "number",
+									"format": "float"
+								},
+							}
+						},
+						"example": {
+							"results_status": "Finished.",
+							"start_time": "2024-07-15T13:00:12.712358+00:00",
+							"end_time": "2024-07-15T13:06:58.928669+00:00",
+							"run_time": 3641.92811
+						}
+					}
+				}
+			},
+			404: {
+				"description": "ID Not Found.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"type": "object",
+							"properties": {
+								"results_status": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								}
+							}
+						},
+						"example": {
+							"results_status": "Finished",
+							"message": f"There is no query recorded in our database with id: \"{_EXAMPLE_UUID}\".",
+						}
+					}
+				}
+			},
+			422: {
+				"description": "Improper UUID Format for ID.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"type": "object",
+							"properties": {
+								"results_status": {
+									"type": "null"
+								},
+								"message": {
+									"type": "string"
+								}
+							}
+						},
+						"example": {
+							"results_status": None,
+							"message": f"\"{_EXAMPLE_UUID}\"is not a valid UUID.",
+						}
+					}
+				}
+			},
+			500: {
+				"description": "Unknown Internal Server Error.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"type": "object",
+							"properties": {
+								"results_status": {
+									"type": "string"
+								},
+								"start_time": {
+									"type": "string"
+								},
+								"end_time": {
+									"type": "string"
+								},
+								"run_time": {
+									"type": "number",
+									"format": "float"
+								},
+							}
+						},
+						"example": {
+							"results_status": "Closed due to an error.",
+							"start_time": "2024-07-15T13:00:12.712358+00:00",
+							"end_time": "2024-07-15T13:06:58.928669+00:00",
+							"run_time": 3641.92811
+						}
+					}
+				}
+			},
+			210: {
+				"description": "Internal Database Error.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"type": "object",
+							"properties": {
+								"results_status": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								}
+							}
+						},
+						"example": {
+							"results_status": "Unknown",
+							"message": "An unknown error has occurred within the database. Please try again later.",
+						}
+					}
+				}
+			},
+		})
 async def status_def(request: Request, result_id: UUID, user: CurrentUser):
 	logger: logging.Logger = request.state.logger
 	async with get_db_session() as session:
@@ -392,7 +396,7 @@ async def status_def(request: Request, result_id: UUID, user: CurrentUser):
 		case _:
 			logger.exception(f"Unknown results_status {results_status} when checking results_status of {result_id}.")
 			return ExsclaimJSONResponse(dict(message="An unknown results_status was saved in our database. Try again later."),
-								  status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="application/json")
+						 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="application/json")
 
 	json = dict(
 		status=f"{results_status}.",
@@ -454,75 +458,74 @@ async def stop_run(result_id: UUID, user: CurrentUser):
 	}, status_code=status.HTTP_200_OK)
 
 
-@router.api_route("/results/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
-                  responses={
-					  200: {
-						  "description": "Results Compressed and Included.",
-						  "content": {
-							  "application/octet-stream": {
-								  "schema": {
-									  "type": "string"
-								  },
-								  "example": ""
-							  }
-						  }
-					  },
-					  202: {
-						  "description": "Query Currently Running.",
-						  "content": {
-							  "text/plain": {
-								  "schema": {
-									  "type": "string",
-								  },
-								  "example": "The results are still being compiled.",
-							  }
-						  }
-					  },
-					  404: {
-						  "description": "ID Not Found.",
-						  "content": {
-							  "text/plain": {
-								  "schema": {
-									  "type": "string"
-								  },
-								  "example": f"There is no query recorded in our database with id: \"{_EXAMPLE_UUID}\"."
-							  }
-						  }
-					  },
-					  422: {
-						  "description": "Improper UUID Format for ID or Improper Compression Value.",
-						  "content": {
-							  "text/plain": {
-								  "schema": {
-									  "type": "string",
-								  },
-								  "example": "unknown archive format 'gztar21'",
-							  }
-						  }
-					  },
-					  501: {
-						  "description": "Internal Database Error.",
-						  "content": {
-							  "text/plain": {
-								  "schema": {
-									  "type": "string",
-								  },
-								  "example": f"The database has an unknown status for id \"{_EXAMPLE_UUID}\" and cannot send the results at this time."
-							  }
-						  }
-					  },
-					  503: {
-						  "description": "Error caused the query to not finish which results in no results.",
-						  "content": {
-							  "text/plain": {
-								  "schema": {
-									  "type": "string",
-								  },
-								  "example": "The results could not be compiled due to an error. Please submit your query again."
-							  }
-						  }
-					  },
-				  })
+@router.api_route("/results/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"], responses={
+	200: {
+		"description": "Results Compressed and Included.",
+		"content": {
+			"application/octet-stream": {
+				"schema": {
+					"type": "string"
+				},
+				"example": ""
+			}
+		}
+	},
+	202: {
+		"description": "Query Currently Running.",
+		"content": {
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": "The results are still being compiled.",
+			}
+		}
+	},
+	404: {
+		"description": "ID Not Found.",
+		"content": {
+			"text/plain": {
+				"schema": {
+					"type": "string"
+				},
+				"example": f"There is no query recorded in our database with id: \"{_EXAMPLE_UUID}\"."
+			}
+		}
+	},
+	422: {
+		"description": "Improper UUID Format for ID or Improper Compression Value.",
+		"content": {
+			"text/plain": {
+				"schema": {
+				"type": "string",
+			},
+			"example": "unknown archive format 'gztar21'",
+			}
+		}
+	},
+	501: {
+		"description": "Internal Database Error.",
+		"content": {
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": f"The database has an unknown status for id \"{_EXAMPLE_UUID}\" and cannot send the results at this time."
+			}
+		}
+	},
+	503: {
+		"description": "Error caused the query to not finish which results in no results.",
+		"content": {
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": "The results could not be compiled due to an error. Please submit your query again."
+			}
+		}
+	},
+})
 async def download(request: Request, result_id: UUID, user: CurrentUser, compression: str = "default",
                    filename: Literal["name", "id"] = "id", tmp_dir_name: str = Depends(get_temp_dir)) -> Response:
 	async with get_db_session() as session:
@@ -559,10 +562,10 @@ async def download(request: Request, result_id: UUID, user: CurrentUser, compres
 			return Response("The results are still being compiled.", status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
 		case Status.STOPPED:
 			return Response("The results were closed by user or admin intervention.",
-			                status_code=status.HTTP_200_OK, media_type="text/plain")
+	               status_code=status.HTTP_200_OK, media_type="text/plain")
 		case Status.ERROR:
 			return Response("The results could not be compiled due to an error. Please submit your query again.",
-			                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
+	               status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
 		case Status.FINISHED:
 			...
 		case _:
@@ -633,10 +636,10 @@ async def download_logs(request: Request, result_id: UUID, user: CurrentUser):
 
 	name = result.search_query["name"]
 	if result.start_time < STARTED_BACKING_UP_LOGS:
-		missing_logs = Response(f"Results for runs started before July 8, 2026 weren't ensured to be saved.",
+		missing_logs = Response("Results for runs started before July 8, 2026 weren't ensured to be saved.",
 								status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 	else:
-		missing_logs = Response(f"Could not find the saved results in our server, even though they should have been saved.",
+		missing_logs = Response("Could not find the saved results in our server, even though they should have been saved.",
 								status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
 	if result.status == Status.RUNNING:
@@ -688,80 +691,79 @@ async def publicize_result(result_id: UUID, user: ActiveUser, publicize: bool = 
 	return Response("Publicization status updated.", status_code=status.HTTP_200_OK, media_type="text/plain")
 
 
-@router.api_route("/compression_types", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
-		 responses={
-			 200: {
-				 "description": "Possible Compression Algorithms/Extensions",
-				 "content": {
-					 "application/json": {
-						 "schema": {
-							 "type": "object",
-							 "properties": {
-								 "compression_types": {
-									 "type": "object"
-								 }
-							 }
-						 },
-						 "example": {
-							 "compression_types": ["tar", "gztar", "zip", "bztar", "xztar"],
-						 }
-					 },
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": '["tar","gztar","zip","bztar","xztar"]'
-					 }
-				 }
-			 },
-			 202: {
-				 "description": "The given compression type is allowed.",
-				 "content": {
-					 "application/json": {
-						 "schema": {
-							 "type": "object",
-							 "properties": {
-								 "allowed": {
-									 "type": "boolean"
-								 }
-							 }
-						 },
-						 "example": {
-							 "allowed": True,
-						 }
-					 },
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": "zip is an allowed value."
-					 }
-				 }
-			 },
-			 404: {
-				 "description": "The given compression type is not allowed.",
-				 "content": {
-					 "application/json": {
-						 "schema": {
-							 "type": "object",
-							 "properties": {
-								 "allowed": {
-									 "type": "boolean"
-								 }
-							 }
-						 },
-						 "example": {
-							 "allowed": False,
-						 }
-					 },
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": "zip is NOT an allowed value."
-					 }
-				 }
-			 }
+@router.api_route("/compression_types", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"], responses={
+	200: {
+		"description": "Possible Compression Algorithms/Extensions",
+		"content": {
+			"application/json": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"compression_types": {
+							"type": "object"
+						}
+					}
+				},
+				"example": {
+					"compression_types": ["tar", "gztar", "zip", "bztar", "xztar"],
+				}
+			},
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": '["tar","gztar","zip","bztar","xztar"]'
+			}
+		}
+	},
+	202: {
+		"description": "The given compression type is allowed.",
+		"content": {
+			"application/json": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"allowed": {
+							"type": "boolean"
+						}
+					}
+				},
+				"example": {
+					"allowed": True,
+				}
+			},
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": "zip is an allowed value."
+			}
+		}
+	},
+	404: {
+		"description": "The given compression type is not allowed.",
+		"content": {
+			"application/json": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"allowed": {
+							"type": "boolean"
+						}
+					}
+				},
+				"example": {
+					"allowed": False,
+				}
+			},
+			"text/plain": {
+				"schema": {
+					"type": "string",
+				},
+				"example": "zip is NOT an allowed value."
+			}
+		}
+	}
 		 })
 async def get_possible_compressions(request: Request, compression_type: Optional[str] = None) -> Response:
 	send_json = request.headers.get("accept", "") == "application/json"
@@ -771,7 +773,7 @@ async def get_possible_compressions(request: Request, compression_type: Optional
 		compression_types = list(compression_types)
 		if send_json:
 			return ExsclaimJSONResponse({"compression_types": compression_types}, status_code=status.HTTP_200_OK,
-								  media_type="application/json")
+										media_type="application/json")
 		return Response(str(compression_types), status_code=status.HTTP_200_OK, media_type="text/plain")
 
 	allowed = compression_type in compression_types

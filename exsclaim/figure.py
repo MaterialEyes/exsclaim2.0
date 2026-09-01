@@ -450,14 +450,14 @@ class FigureSeparator(ExsclaimTool):
 			x2 = int(min(max(x2, 0), width))
 			y2 = int(min(max(y2, 0), height))
 
-			dx = x2 - x1	# Change in x coordinates (width)
-			dy = y2 - y1	# Change in y coordinates (height)
+			dx = x2 - x1  # Change in x coordinates (width)
+			dy = y2 - y1  # Change in y coordinates (height)
 
 			if dx <= 5 or dy <= 5:
 				continue
 
 			# Get the label
-			label = self.subfigure_bbox.names[cls_id]		# This will be 'a', 'b', 'c', etc.
+			label = self.subfigure_bbox.names[cls_id]  # This will be 'a', 'b', 'c', etc.
 
 			# Add to binary mask for visualization if small enough
 			if dx < 64 and dy < 64:

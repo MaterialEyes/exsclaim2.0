@@ -53,7 +53,7 @@ async def test_article_2(http_server: str, default_search_query: dict[str, Any],
 	authors = set(map(lambda author: Author(name=unidecode(author.name), orcid=author.orcid), article_json["authors"]))
 	known_authors = [
 		Author(name="Valentina Krylova"),
-		Author(name="Mindaugas Andrulevicius") # Mindaugas Andrulevičius
+		Author(name="Mindaugas Andrulevicius")  # Mindaugas Andrulevičius
 	]
 	for author in known_authors:
 		assert author in authors, f"{author} is missing from the article JSON."

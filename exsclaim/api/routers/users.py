@@ -108,7 +108,7 @@ async def _extract_access_token(token: Optional[str]) -> User | HTTPException:
 	except jwt.ExpiredSignatureError:
 		return HTTPException(
 			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail=f"Credentials are expired.",
+			detail="Credentials are expired.",
 			headers={"WWW-Authenticate": "Bearer"},
 		)
 	except jwt.InvalidTokenError as e:
