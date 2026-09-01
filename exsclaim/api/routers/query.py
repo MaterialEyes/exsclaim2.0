@@ -1,6 +1,6 @@
 from ...config import settings
 from ...db import get_db_session
-from ..models import Results, User, ExsclaimJSONResponse, Status, get_guest_uuid, ClassificationCodes, PreviousRunFilters
+from ..models import Results, User, ExsclaimJSONResponse, Status, get_guest_uuid, ClassificationCodes, PreviousRunFilters, QueryTools, Query, gen_uuid7, SaveExtensions
 from .users import ActiveUser, CurrentUser
 
 import fastapi
@@ -184,6 +184,8 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			"base_run_id": str(search_query.base_run_id) if search_query is not None else None,
 		}
 
+		results_dir = settings.RESULTS_PATH / str_uuid
+		results_dir.mkdir(exist_ok=True, parents=True)
 		logger = request.app.logger
 		with open(results_dir / "search_query.json", "w") as f:
 			dump(exsclaim_input, f, indent='\t')
