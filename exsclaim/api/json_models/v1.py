@@ -1,4 +1,4 @@
-from typing import Annotated, Literal
+from typing import Literal
 from pydantic import BaseModel, Field
 
 from .v0 import ArticleV0, GeometryV0, MasterImageV0, SubfigureLabelV0, OutputV0

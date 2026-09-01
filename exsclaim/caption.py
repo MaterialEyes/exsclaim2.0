@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from .exceptions import ExsclaimToolException
-import numpy as np
 
 from abc import ABC, abstractmethod, ABCMeta
 from asyncio import Semaphore
@@ -15,6 +14,9 @@ from pydantic_core import ValidationError
 from re import sub
 from textwrap import dedent
 from typing import Literal, Iterable, Type, Optional, Any, TypeVar, Self, Collection, NamedTuple
+from uuid import UUID
+
+import numpy as np
 
 
 __all__ = ["ChatMessage", "LLMOptions", "LLMMeta", "LLMUsage", "LLM", "CaptionEntry", "Captions", "Keywords", "ResponseBase", "OptionalSemaphore"]
@@ -278,7 +280,7 @@ class LLM(ABC, metaclass=LLMMeta):
 		return llm, model_key
 
 	@classmethod
-	def from_search_query(cls, search_query: dict, run_id: Optional["uuid.UUID"] = None):
+	def from_search_query(cls, search_query: dict, run_id: Optional[UUID] = None):
 		llm, model_key = cls.get_info_from_search_query(search_query)
 		return cls(llm, model_key, run_id=run_id)
 

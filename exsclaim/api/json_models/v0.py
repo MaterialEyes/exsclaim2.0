@@ -3,7 +3,7 @@ from pydantic import BaseModel, RootModel, Field
 from typing import Any, TypeVar, Generic
 
 
-__all__ = ["Output", "OutputV0", "OutputV1"]
+__all__ = ["OutputV0"]
 
 
 class GeometryV0(BaseModel):

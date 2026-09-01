@@ -404,7 +404,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		self._name_patterns = name_patterns
 		self.open = search_query.get("open", False)
 		self.order = search_query.get("sortby", "relevant")
-		self.logger: logger.Logger = kwargs.get("logger", logging.getLogger(__name__))
+		self.logger: logging.Logger = kwargs.get("logger", logging.getLogger(__name__))
 
 		# Set up file structure
 		self.results_directory = paths.initialize_results_dir(search_query)
