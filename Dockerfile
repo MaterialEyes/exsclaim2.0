@@ -66,7 +66,7 @@ RUN --mount=type=cache,target=/tmp/pip \
     mkdir -p /home/$UNAME/.cache/torch; \
     chown -R $UID:$GID /home/$UNAME/.cache
 
-COPY --parents ./exsclaim ./LICENSE ./Makefile ./MANIFEST.in ./pyproject.toml ./README.md ./setup.py ./
+COPY --parents ./exsclaim ./LICENSE ./Makefile ./MANIFEST.in ./pyproject.toml ./README.md ./setup.py ./requirements-test.txt ./
 COPY --chown=$UID:$GID docker-entrypoint docker-healthcheck /usr/local/bin/
 COPY --chown=$UID:$GID query ./query
 

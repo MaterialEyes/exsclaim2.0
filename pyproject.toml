@@ -32,7 +32,8 @@ classifiers = [
 requires-python = ">=3.13.2"
 dynamic = [
     "dependencies",
-    "version"
+    "version",
+    "optional-dependencies"
 ]
 
 [project.urls]
@@ -46,21 +47,6 @@ Changelog = "https://github.com/MaterialEyes/exsclaim2.0/blob/dev/CHANGELIST.md"
 [project.scripts]
 exsclaim = "exsclaim.__main__:main"
 
-[project.optional-dependencies]
-ollama = [
-    "ollama~=0.6.2"
-]
-
-test = [
-    "Faker==40.36.0",
-    "pytest-asyncio==1.4.0",
-    "deepdiff==8.6.2",
-    "unidecode==1.4.0",
-    "pytest-asyncio==1.4.0",
-    "pytest_postgresql==8.1.0",
-    "pytest-env==1.7.0"
-]
-
 [build-system]
 requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
@@ -73,3 +59,5 @@ include-package-data = true
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
 version = { attr = "exsclaim.version.version" }
+optional-dependencies.test = { file = ["requirements-test.txt"] }
+

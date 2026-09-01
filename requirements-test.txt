@@ -1,0 +1,6 @@
+Faker==40.36.0
+pytest-asyncio==1.4.0
+deepdiff==8.6.2
+unidecode==1.4.0
+pytest-asyncio==1.4.0
+pytest-env==1.7.0
