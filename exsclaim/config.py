@@ -39,7 +39,14 @@ class ExsclaimSettings(BaseSettings):
 	model_config = SettingsConfigDict(
 		env_prefix="EXSCLAIM_",
 		env_nested_delimiter="__",
-		secrets_dir=("/run/secrets/", "/var/run")
+		secrets_dir=("/run/secrets/", "/var/run"),
+		secrets_dir_missing="ok"
+	)
+
+	PATH: Path = Field(
+		default=Path.home().resolve() / ".exsclaim",
+		description="The base directory where EXSCLAIM should write information to",
+		examples=["~/.exsclaim", "/exsclaim"]
 	)
 
 	ALLOW_PDF_PATHS: bool = Field(
@@ -48,8 +55,8 @@ class ExsclaimSettings(BaseSettings):
 		examples=[],
 	)
 
-	CHECKPOINTS_PATH: Path = Field(
-		default=Path("/exsclaim/checkpoints"),
+	CHECKPOINTS_PATH: Optional[Path] = Field(
+		default=None,
 		description="The directory where the checkpoint files for the FigureSeparator should be stored.",
 		examples=["~/.exsclaim/checkpoints", "/exsclaim/checkpoints"],
 	)
@@ -78,8 +85,8 @@ class ExsclaimSettings(BaseSettings):
 		description="If playwright should run headless (default, no visible screen) or headed (requires X server to show the pages)."
 	)
 
-	LOGS_PATH: Path = Field(
-		default=Path("/exsclaim/logs"),
+	LOGS_PATH: Optional[Path] = Field(
+		default=None,
 		description="The directory where the log files should be stored.",
 		examples=["~/.exsclaim/logs", "/var/logs/exsclaim", "/exsclaim/logs"],
 	)
@@ -90,8 +97,8 @@ class ExsclaimSettings(BaseSettings):
 		examples=["http://localhost:11434", "http://ollama:11434"],
 	)
 
-	RESULTS_PATH: Path = Field(
-		default=Path.home().resolve() / ".exsclaim",
+	RESULTS_PATH: Optional[Path] = Field(
+		default=None,
 		description="The directory where the results from the pipeline should be stored.",
 		examples=["~/.exsclaim/results", "/exsclaim/results"],
 	)
@@ -135,8 +142,7 @@ class ExsclaimSettings(BaseSettings):
 
 		raise ValueError(f"Unknown boolean-coercion type: {type(value).__name__} with value {value}.")
 
-	@field_validator("CHECKPOINTS_PATH", "LOGS_PATH", "RESULTS_PATH", "UNDETECTED_SUBFIGURES_PATH", "UNCLASSIFIED_SUBFIGURES_PATH",
-					 "UNSCRAPED_HTML_PATH", mode="after")
+	@field_validator("UNDETECTED_SUBFIGURES_PATH", "UNCLASSIFIED_SUBFIGURES_PATH", "UNSCRAPED_HTML_PATH", mode="after")
 	@classmethod
 	def validate_paths(cls, path: Optional[Path]) -> Optional[Path]:
 		if path is None:
@@ -148,6 +154,24 @@ class ExsclaimSettings(BaseSettings):
 			path.mkdir(parents=True, exist_ok=True)
 
 		return path
+
+	@model_validator(mode="after")
+	def set_derived_paths(self):
+		self.PATH.mkdir(parents=True, exist_ok=True)
+
+		if self.LOGS_PATH is None:
+			self.LOGS_PATH = self.PATH / "logs"
+			self.LOGS_PATH.mkdir(exist_ok=True)
+
+		if self.RESULTS_PATH is None:
+			self.RESULTS_PATH = self.PATH / "results"
+			self.RESULTS_PATH.mkdir(exist_ok=True)
+
+		if self.CHECKPOINTS_PATH is None:
+			self.CHECKPOINTS_PATH = self.PATH / "checkpoints"
+			self.CHECKPOINTS_PATH.mkdir(exist_ok=True)
+
+		return self
 
 
 class ORCIDSettings(BaseSettings):

@@ -13,8 +13,22 @@ permissions:
     contents: read
 
 jobs:
-    build:
+    test:
         runs-on: ubuntu-latest
+        services:
+            postgres:
+                image: postgres:18
+                env:
+                    POSTGRES_USER: postgres
+                    POSTGRES_PASSWORD: postgres1!
+                    POSTGRES_DB: exsclaim-test
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd pg_isready
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
         steps:
             - uses: actions/checkout@v6
             - name: Set up Python 3.14
@@ -34,5 +48,11 @@ jobs:
                   # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
                   flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
             - name: Test with pytest
+              env:
+                  POSTGRES_USER: postgres
+                  POSTGRES_DB: exsclaim-test
+                  POSTGRES_PASSWORD: postgres1!
+                  POSTGRES_HOST: localhost
+                  POSTGRES_PORT: 5432
               run: |
                   pytest tests

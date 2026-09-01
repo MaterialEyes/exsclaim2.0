@@ -19,7 +19,11 @@ __all__ = ["async_engine", "Database", "get_db_session"]
 
 class PostgresSettings(BaseSettings):
 	"""Gets access to the environment variables for the PostgreSQL database."""
-	model_config = SettingsConfigDict(env_prefix="POSTGRES_", secrets_dir=("/run/secrets/", "/var/run"))
+	model_config = SettingsConfigDict(
+		env_prefix="POSTGRES_",
+		secrets_dir=("/run/secrets/", "/var/run"),
+		secrets_dir_missing="ok"
+	)
 
 	USER: str = Field(
 		default="exsclaim"
