@@ -78,8 +78,8 @@ async_engine = create_async_engine(
 
 
 @asynccontextmanager
-async def get_db_session(logger: Optional[logging.Logger] = None) -> AsyncGenerator[AsyncSession, None]:
-	async with AsyncSession(async_engine) as session:
+async def get_db_session(logger: Optional[logging.Logger] = None, **kwargs) -> AsyncGenerator[AsyncSession, None]:
+	async with AsyncSession(async_engine, **kwargs) as session:
 		try:
 			yield session
 		except sql_exc.SQLAlchemyError as e:

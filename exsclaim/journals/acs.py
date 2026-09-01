@@ -1,9 +1,10 @@
-from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX
+from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX, Author, ORCID_REGEX
 from ..exceptions import JournalScrapeError
 
 import math
 import re
 
+from contextlib import suppress
 from bs4 import BeautifulSoup
 from playwright.async_api import Response
 from playwright._impl import _errors as playwright_errors
@@ -151,16 +152,30 @@ class ACS(JournalFamilyDynamic):
 	async def get_title(self, html: DynamicHtml, url: str) -> str:
 		elements = await html.select("h1.wi-article-title.article-title-main")
 		if len(elements) > 0:
-			return (await elements[0].get_surface_text()).strip()
+			title = await elements[0].get_surface_text(logger=self.logger)
+			return title.replace("\n", " ").replace("\t", "").replace("  ", " ").strip()
 
 		title = await super().get_title(html, url)
 		self.logger.warning(f"Could not find title for {url}.")
 		return title
 
-	async def get_authors(self, html: DynamicHtml) -> tuple[str]:
-		authors = await html.select("a.linked-name.js-linked-name.stats-author-info-trigger")
-		author_list = [await author.get_text() for author in authors]
-		return tuple(author_list)
+	async def get_authors(self, html: DynamicHtml) -> tuple[Author]:
+		authors_list = await html.select("div.al-author-name")
+		authors = [None] * len(authors_list)
+
+		for i, author in enumerate(authors_list):
+			name = await author.select_one("a.linked-name.js-linked-name.stats-author-info-trigger").get_text()
+			orcid = None
+			with suppress(playwright_errors.TimeoutError):
+				href = await author.select_one("a[id*='contrib-orcid']").get("href", timeout=500) # 0.5 seconds
+				if href is not None:
+					match = ORCID_REGEX.search(href)
+					if match is not None:
+						orcid = match.group(1)
+
+			authors[i] = Author(name=name.strip(), orcid=orcid)
+
+		return tuple(authors)
 
 	async def get_figure_list(self, html: DynamicHtml) -> tuple[DynamicHtml]:
 		return await html.select("div.fig.fig-section")

@@ -53,9 +53,12 @@ ollama = [
 
 test = [
     "Faker==40.36.0",
-    "httpx2==2.9.1",
     "pytest-asyncio==1.4.0",
-    "deepdiff==8.6.2"
+    "deepdiff==8.6.2",
+    "unidecode==1.4.0",
+    "pytest-asyncio==1.4.0",
+    "pytest_postgresql==8.1.0",
+    "pytest-env==1.7.0"
 ]
 
 [build-system]

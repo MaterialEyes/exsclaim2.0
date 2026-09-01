@@ -1,10 +1,6 @@
-import ipaddress
-import logging
-
 from .models import gen_uuid7
-from ..db import async_engine, get_db_session
+from ..db import get_db_session
 
-from asyncio import wait_for, TimeoutError as AsyncTimeoutError
 from contextvars import ContextVar
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette import status
@@ -13,12 +9,12 @@ from starlette.responses import Response, StreamingResponse, JSONResponse
 from starlette.types import ASGIApp
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio.session import AsyncSession
-from sqlalchemy.orm import sessionmaker
 from time import perf_counter
+from typing import AsyncGenerator
 from uuid import UUID
 
-import ipaddress as ip
+import ipaddress
+import logging
 import re
 
 __all__ = ["RequestLoggerMiddleware", "PreflightCacheMiddleware"]
@@ -32,7 +28,7 @@ BLOCKED_PATHS = [
 ]
 
 
-def format_response(_id, request: Request, ip: Optional[ip._BaseAddress] = None) -> str:
+def format_response(_id, request: Request, ip: Optional[ipaddress._BaseAddress] = None) -> str:
 	if ip is None:
 		ip = request.headers.get('X-Forwarded-For', None)
 		if ip is None:
@@ -75,7 +71,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 		if immediately_stop_request:
 			return Response(status_code=status.HTTP_404_NOT_FOUND)
 		else:
-			async def send_infinite_zeroes() -> bytes:
+			async def send_infinite_zeroes() -> AsyncGenerator[bytes, None]:
 				while not await request.is_disconnected():
 					yield b"000"
 
@@ -85,7 +81,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 		start_time = perf_counter()
 
 		try:
-			address = ip.ip_address(request.headers.get('X-Forwarded-For', request.client.host))
+			address = ipaddress.ip_address(request.headers.get('X-Forwarded-For', request.client.host))
 		except ValueError as e:
 			self.logger.error(f"Could not extract an IP address for {request.client.host}, so the attempt was blocked.", exc_info=e)
 			return Response(status_code=status.HTTP_404_NOT_FOUND)
@@ -175,16 +171,3 @@ class PreflightCacheMiddleware(BaseHTTPMiddleware):
 				response.headers[header] = "Sec-Ch-Prefers-Color-Scheme"
 
 		return response
-
-
-# TODO: Finish implementing the timeout middleware
-class TimeoutMiddleware(BaseHTTPMiddleware):
-	def __init__(self, app:ASGIApp, timeout: int = 60, dispatch=None):
-		super().__init__(app, dispatch)
-		self.timeout = timeout
-
-	async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-		try:
-			return await wait_for(call_next(request), self.timeout)
-		except AsyncTimeoutError:
-			return Response("Timeout waiting for response.", status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")

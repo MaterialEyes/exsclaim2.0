@@ -4,7 +4,7 @@ from ..journals import JournalFamily
 from ..caption import LLM
 from ..config import ExsclaimSettings
 from ..notifications import NTFY, Email, Webhook, QueryNotifications
-from ..db.models import ExsclaimSQLModel, Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes
+from ..db.models import ExsclaimSQLModel, Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes, ORCID_REGEX
 from .json_models import *
 
 from datetime import datetime as dt, timezone as tz
@@ -80,6 +80,9 @@ class User(SQLModel, table=True):
 		dict(schema="users")
 	)
 
+	def __repr__(self) -> str:
+		return f"User(id={self.id}, name={self.name})"
+
 	def __eq__(self, other) -> bool:
 		if isinstance(other, UUID):
 			return self.id == other
@@ -117,7 +120,7 @@ class User(SQLModel, table=True):
 		unique=True,
 		title="The ORCID id associated with the user's login.",
 		nullable=True,
-		regex=r"\d{4}-\d{4}-\d{4}-\d{4}"
+		pattern=ORCID_REGEX
 	)
 
 	created: dt = Field(

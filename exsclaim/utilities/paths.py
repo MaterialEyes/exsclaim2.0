@@ -18,10 +18,12 @@ def initialize_results_dir(query_dict: dict[str, Any]) -> Path:
 	Modifies:
 		Creates results_dir if it doesn't exist.
 	"""
-	if (run_id := query_dict.get("run_id")) is not None:
-		results_dir = settings.RESULTS_PATH / str(run_id) / self.query_dict["name"]
+	if (results_dir := query_dict.get("results_dir")) is not None:
+		results_dir = Path(results_dir)
+	elif (run_id := query_dict.get("run_id")) is not None:
+		results_dir = settings.RESULTS_PATH / str(run_id) / query_dict["name"]
 	else:
-		results_dir = settings.RESULTS_PATH / self.query_dict["name"]
+		results_dir = settings.RESULTS_PATH / query_dict["name"]
 
 	results_dir.mkdir(parents=True, exist_ok=True)
 	return results_dir

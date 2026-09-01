@@ -1,4 +1,4 @@
-from .base import JournalFamilyStatic, StaticHtml
+from .base import JournalFamilyStatic, StaticHtml, ORCID_REGEX, Author
 
 import json
 import re
@@ -122,8 +122,14 @@ class Nature(JournalFamilyStatic):
 
 		return current_page, total_pages, total_results
 
+	async def get_articles_from_search_page(self, html: StaticHtml) -> tuple[StaticHtml]:
+		return await html.select("li.app-article-list-row__item")
+
+	async def get_link_for_article(self, article: StaticHtml) -> str:
+		return await article.select_one("a.c-card__link.u-link-inherit").get("href")
+
 	async def is_link_to_open_article(self, article: StaticHtml) -> bool:
-		return len(await article.select("c-meta__item c-meta__item--block-at-lg")) > 0
+		return len(await article.select("span.c-meta__item.c-meta__item--block-at-lg[data-test='open-access']")) > 0
 
 	async def get_license(self, html: StaticHtml) -> tuple[bool, str]:
 		data_layer = html.select_one("script[data-test='dataLayer']")
@@ -148,34 +154,49 @@ class Nature(JournalFamilyStatic):
 	async def get_title(self, html: StaticHtml, url: str) -> str:
 		elements = await html.select("h1.c-article-title")
 		if len(elements) > 0:
-			return await elements[0].get_surface_text()
+			title = await elements[0].get_surface_text(logger=self.logger)
+			return title.strip()
 
 		title = await super().get_title(html, url)
 		self.logger.warning(f"Could not find title for {url}.")
 		return title
 
-	async def get_authors(self, html: StaticHtml) -> tuple[str]:
+	async def get_authors(self, html: StaticHtml) -> tuple[Author]:
 		if isinstance(html, str):
 			html = await self.get(html)
 			close_html = True
 		else:
 			close_html = False
-		locators = await html.select("a[data-test=\"author-name\"]")
+		locators = await html.select("li.c-article-author-list__item")
 
 		authors = [None] * len(locators)
 		for i, author in enumerate(locators):
-			text = await author.get_text()
-			authors[i] = text.strip().replace("\n", '')
+			text = await author.select_one("a[data-test=\"author-name\"]").get_text()
+			orcid_tag = author.select_one("a.js-orcid[href]")
+			if orcid_tag is None:
+				orcid = None
+			else:
+				match = ORCID_REGEX.search(await orcid_tag.get("href"))
+				if match is not None:
+					orcid = match.group(1)
+				else:
+					orcid = None
+
+			authors[i] = Author(name=text.strip().replace("\n", ''), orcid=orcid)
 
 		if close_html:
 			await html.close()
 		return tuple(authors)
 
-	async def get_articles_from_search_page(self, html: StaticHtml) -> tuple[StaticHtml]:
-		return await html.select("li.app-article-list-row__item")
-
-	async def get_link_for_article(self, article: StaticHtml) -> str:
-		return await article.select_one("a.c-card__link.u-link-inherit").get("href")
+	async def get_figure_list(self, html: StaticHtml) -> tuple[StaticHtml]:
+		"""
+		Returns list of figures in the given url
+		Args:
+			html: a JournalHtml object representing the page
+		Returns:
+			A list of all figures in the article as BeautifulSoup Tag objects
+		"""
+		return await html.select("div.c-article-section__figure.js-c-reading-companion-figures-item > figure")
 
 	async def get_figure_url(self, figure: StaticHtml) -> str:
 		image_tag = figure.select_one("img")

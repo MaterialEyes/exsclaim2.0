@@ -289,7 +289,7 @@ async def create_user(info: LoginInfo):
 
 	user = User(name=username, email=email, salt=salt, password_hash=password_hash)
 
-	async with get_db_session() as session:
+	async with get_db_session(expire_on_commit=False) as session:
 		session.add(user)
 		await session.commit()
 

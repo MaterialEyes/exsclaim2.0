@@ -502,8 +502,7 @@ class Pipeline:
 				for inset_id, inset_image in enumerate(master_image.get("inset_images", ())):
 					inset_root_name = directory / "inset"
 					write(figure, inset_root_name, inset_image, figure_extension,
-						  lambda _class: [figure_root_name,
-										  master_image['subfigure_label']['text'],
+						  lambda _class: [figure_root_name, master_image['subfigure_label']['text'],
 										  f"ins{inset_id}", _class])
 
 		self.display_info(">>> SUCCESS!\n")

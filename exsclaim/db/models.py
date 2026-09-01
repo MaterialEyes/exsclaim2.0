@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 from sqlalchemy import Column, String, ARRAY, ForeignKeyConstraint
-from sqlmodel import Field, SQLModel
+from sqlmodel import SQLModel
 from typing import Optional
 from uuid import UUID
 
+import pydantic
+import re
+import sqlmodel
 
-__all__ = ["ExsclaimSQLModel", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel", "ScaleLabel",
-		   "ClassificationCodes"]
+
+__all__ = ["ExsclaimSQLModel", "Author", "ORCID_REGEX", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
+		   "ScaleLabel", "ClassificationCodes"]
 
 
 class ExsclaimSQLModel(SQLModel):
-	run_id: UUID = Field(
+	run_id: UUID = sqlmodel.Field(
 		primary_key=True,
 		nullable=False,
 		description="The unique run ID that this article is attached to.",
@@ -21,14 +25,14 @@ class ExsclaimSQLModel(SQLModel):
 class ClassificationCodes(SQLModel, table=True):
 	__tablename__ = "classification_codes"
 
-	code: str = Field(
+	code: str = sqlmodel.Field(
 		primary_key=True,
 		min_length=2,
 		max_length=2,
 		nullable=False,
 		description="The abbreviation of the classification code.",
 	)
-	name: str = Field(
+	name: str = sqlmodel.Field(
 		nullable=False,
 		max_length=12,
 		description="The name of the classification code.",
@@ -38,6 +42,38 @@ class ClassificationCodes(SQLModel, table=True):
 		return hash(f"{self.code}:{self.name}")
 
 
+ORCID_REGEX = re.compile(r"([\dX]{4}-[\dX]{4}-[\dX]{4}-[\dX]{4})")
+
+
+class Author(pydantic.BaseModel):
+	name: str = pydantic.Field(description="The name of the author.")
+
+	orcid: Optional[str] = pydantic.Field(
+		default=None,
+		description="The author's ORCID iD, if available.",
+		pattern=ORCID_REGEX
+	)
+
+	def __repr__(self) -> str:
+		if self.orcid is None:
+			return f"Author({self.name})"
+		return f"Author({self.name}, orcid={self.orcid})"
+
+	def __hash__(self) -> int:
+		if self.orcid is not None:
+			return hash(self.orcid)
+		return hash(self.name)
+
+	def __eq__(self, other, /) -> bool:
+		if isinstance(other, str):
+			return self.name == other
+		elif not isinstance(other, self.__class__):
+			return False
+		if other.orcid is not None:
+			return self.orcid == other.orcid
+		return self.name == other.name
+
+
 class Article(ExsclaimSQLModel, table=True):
 	__tablename__ = "article"
 	__table_args__ = (
@@ -45,37 +81,37 @@ class Article(ExsclaimSQLModel, table=True):
 		dict(schema="results")
 	)
 
-	id: str = Field(
+	id: str = sqlmodel.Field(
 		primary_key=True,
 		max_length=32,
 		nullable=False,
 		description="The id of the article. Typically, its the url path without the domain name."
 	)
-	title: str = Field(
+	title: str = sqlmodel.Field(
 		nullable=False,
 		description="The description of the article."
 	)
-	url: str = Field(
+	url: str = sqlmodel.Field(
 		max_length=200,
 		nullable=False,
 		description="The url to reach the article."
 	)
-	license: Optional[str] = Field(
+	license: Optional[str] = sqlmodel.Field(
 		default=None,
 		nullable=True,
 		max_length=200,
 		description="The article's license url."
 	)
-	open: bool = Field(
+	open: bool = sqlmodel.Field(
 		default=False,
 		description="If the article is open access."
 	)
-	authors: list[str] = Field(
+	authors: list[str] = sqlmodel.Field(
 		default=None,
 		description="The authors of the article.",
 		sa_column=Column(ARRAY(String))
 	)
-	abstract: Optional[str] = Field(
+	abstract: Optional[str] = sqlmodel.Field(
 		default=None,
 		description="The abstract for the article."
 	)
@@ -89,27 +125,27 @@ class Figure(ExsclaimSQLModel, table=True):
 		dict(schema="results")
 	)
 
-	id: str = Field(
+	id: str = sqlmodel.Field(
 		max_length=40,
 		primary_key=True,
 		nullable=False,
 		description="The id of the figure. Typically, its the id of the article that the figure came from followed by the images number within the article."
 	)
-	caption: str = Field(
+	caption: str = sqlmodel.Field(
 		nullable=False,
 		description="The caption of the figure."
 	)
-	url: str = Field(
+	url: str = sqlmodel.Field(
 		max_length=200,
 		nullable=False,
 		description="The url to reach the raw figure."
 	)
-	figure_path: str = Field(
+	figure_path: str = sqlmodel.Field(
 		max_length=100,
 		nullable=False,
 		description="The path to the figure in the results directory."
 	)
-	article_id: str = Field(
+	article_id: str = sqlmodel.Field(
 		nullable=False,
 		max_length=32
 	)
@@ -123,25 +159,25 @@ class Subfigure(ExsclaimSQLModel, table=True):
 		dict(schema="results")
 	)
 
-	id: str = Field(
+	id: str = sqlmodel.Field(
 		max_length=44,
 		nullable=False,
 		primary_key=True,
 		description="The id of the figure. Typically, its the id of the article that the figure came from followed by the images number within the article."
 	)
-	classification_code: str = Field(
+	classification_code: str = sqlmodel.Field(
 		max_length=2,
 		foreign_key="classification_codes.code",
 		description="The classification code.",
 		nullable=False
 	)
-	classification_confidence: Optional[float] = Field(
+	classification_confidence: Optional[float] = sqlmodel.Field(
 		ge=0,
 		le=1,
 		description="The confidence of the subfigure's classification.",
 		nullable=True
 	)
-	confidence: Optional[float] = Field(
+	confidence: Optional[float] = sqlmodel.Field(
 		ge=0,
 		le=1,
 		description="The confidence of the subfigure's bounding box.",
@@ -158,12 +194,12 @@ class Subfigure(ExsclaimSQLModel, table=True):
 	caption: Optional[str]
 	caption_input_tokens: Optional[int]
 	caption_output_tokens: Optional[int]
-	keywords: Optional[list[str]] = Field(
+	keywords: Optional[list[str]] = sqlmodel.Field(
 		default=None,
 		description="The keywords related to the subfigure.",
 		sa_column=Column(ARRAY(String))
 	)
-	figure_id: str = Field(
+	figure_id: str = sqlmodel.Field(
 		nullable=False,
 		max_length=40
 	)
@@ -177,7 +213,7 @@ class Scale(ExsclaimSQLModel, table=True):
 		dict(schema="results")
 	)
 
-	id: str = Field(
+	id: str = sqlmodel.Field(
 		max_length=48,
 		nullable=False,
 		primary_key=True,
@@ -187,19 +223,19 @@ class Scale(ExsclaimSQLModel, table=True):
 	y1: int
 	x2: int
 	y2: int
-	length: Optional[int] = Field(
+	length: Optional[int] = sqlmodel.Field(
 		default=None,
 		nullable=True,
 	)
-	label_line_distance: Optional[float] = Field(
+	label_line_distance: Optional[float] = sqlmodel.Field(
 		default=None,
 		nullable=True,
 	)
-	confidence: Optional[float] = Field(
+	confidence: Optional[float] = sqlmodel.Field(
 		default=None,
 		nullable=True,
 	)
-	subfigure_id: str = Field(
+	subfigure_id: str = sqlmodel.Field(
 		nullable=False,
 		max_length=44
 	)
@@ -213,7 +249,7 @@ class SubfigureLabel(ExsclaimSQLModel, table=True):
 		dict(schema="results")
 	)
 
-	text: str = Field(
+	text: str = sqlmodel.Field(
 		max_length=15,
 		nullable=False,
 	)
@@ -221,15 +257,15 @@ class SubfigureLabel(ExsclaimSQLModel, table=True):
 	y1: int
 	x2: int
 	y2: int
-	label_confidence: Optional[float] = Field(
+	label_confidence: Optional[float] = sqlmodel.Field(
 		default=None,
 		nullable=True,
 	)
-	box_confidence: Optional[float] = Field(
+	box_confidence: Optional[float] = sqlmodel.Field(
 		default=None,
 		nullable=True,
 	)
-	subfigure_id: str = Field(
+	subfigure_id: str = sqlmodel.Field(
 		nullable=False,
 		primary_key=True,
 		max_length=44
@@ -244,7 +280,7 @@ class ScaleLabel(ExsclaimSQLModel, table=True):
 		dict(schema="results")
 	)
 
-	text: str = Field(
+	text: str = sqlmodel.Field(
 		max_length=15,
 		nullable=False,
 	)
@@ -252,19 +288,19 @@ class ScaleLabel(ExsclaimSQLModel, table=True):
 	y1: int
 	x2: int
 	y2: int
-	label_confidence: Optional[float] = Field(
+	label_confidence: Optional[float] = sqlmodel.Field(
 		default=None,
 		nullable=True,
 	)
-	box_confidence: Optional[float] = Field(
+	box_confidence: Optional[float] = sqlmodel.Field(
 		default=None,
 		nullable=True,
 	)
-	nm: Optional[float] = Field(
+	nm: Optional[float] = sqlmodel.Field(
 		default=None,
 		nullable=True,
 	)
-	scale_bar_id: str = Field(
+	scale_bar_id: str = sqlmodel.Field(
 		nullable=False,
 		primary_key=True,
 		max_length=48

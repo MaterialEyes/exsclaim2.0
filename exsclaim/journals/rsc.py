@@ -1,4 +1,4 @@
-from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX
+from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX, ORCID_REGEX, Author
 from ..exceptions import JournalScrapeError
 
 import math
@@ -104,18 +104,31 @@ class RSC(JournalFamilyDynamic):
 	async def get_title(self, html: DynamicHtml, url: str) -> str:
 		elements = await html.select("h1.wi-article-title.article-title-main")
 		if len(elements) > 0:
-			return await elements[0].get_surface_text()
+			title = await elements[0].get_surface_text(logger=self.logger)
+			return title.strip()
 
 		title = await super().get_title(html, url)
 		self.logger.warning(f"Could not find title for {url}.")
 		return title
 
-	async def get_authors(self, html: DynamicHtml) -> tuple[str]:
+	async def get_authors(self, html: DynamicHtml) -> tuple[Author]:
 		authors = []
 		for author in await html.select("div.al-author-name"):
-			author = await author.select_one("div.name-role-wrap").get_text()
-			author = author.strip().split("\n")[0]
-			authors.append(author)
+			name = await author.select_one("div.name-role-wrap").get_text()
+			name = name.strip().split("\n")[0]
+
+			orcid_tag = author.select_one("a.al-orcid-url[href]")
+			try:
+				href = await orcid_tag.get("href", timeout=500) # 0.5 seconds
+				match = ORCID_REGEX.search(href)
+				if match is not None:
+					orcid = match.group(1)
+				else:
+					orcid = None
+			except playwright_errors.TimeoutError:
+				orcid = None
+
+			authors.append(Author(name=name, orcid=orcid))
 
 		return tuple(authors)
 

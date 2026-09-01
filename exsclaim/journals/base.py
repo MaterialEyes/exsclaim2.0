@@ -1,8 +1,10 @@
 from ..config import settings
+from ..db import Author, ORCID_REGEX
 from ..exceptions import JournalScrapeError
 from ..utilities import paths
 
 import asyncio
+import bs4
 import cairosvg
 import curl_cffi
 import httpx2
@@ -19,14 +21,17 @@ from pathlib import Path
 from playwright.async_api import BrowserContext, Locator, async_playwright, Response, PlaywrightContextManager, Page
 from playwright._impl import _errors as playwright_errors
 from playwright_stealth import Stealth
-from typing import Any, Awaitable, Callable, Iterable, Literal, Optional, Self, Sequence, Type, overload
+from typing import Any, Awaitable, Callable, Collection, Iterable, Literal, Optional, Self, Sequence, Type, overload
 
 __all__ = ["JournalFamily", "JournalMeta", "JournalHtml", "StaticHtml", "DynamicHtml", "JournalFamilyStatic", "JournalFamilyDynamic",
-		   "URLParams", "DOI_REGEX", "ResponseFunction", "default_predicate"]
+		   "URLParams", "DOI_REGEX", "ORCID_REGEX", "ResponseFunction", "default_predicate"]
 
 URLParams = dict[str, Any]
+
 DOI_REGEX = r"(10\.\d{4,9})/([-.;()/:\w%]+)"
+
 ResponseFunction = str | re.Pattern[str] | Callable[[Response], bool | Awaitable[bool]]
+
 HTTPS_START = re.compile("https?://.+")
 
 
@@ -61,7 +66,7 @@ class JournalHtml(ABC):
 		"""Select all HTML elements that match the given CSS selector."""
 
 	@abstractmethod
-	def select_one(self, selector: str) -> "JournalHtml":
+	def select_one(self, selector: str) -> Optional["JournalHtml"]:
 		"""Select the first (or only) HTML element that matches the given CSS selector"""
 
 	@abstractmethod
@@ -69,7 +74,7 @@ class JournalHtml(ABC):
 		"""Gets the internal text within an element."""
 
 	@abstractmethod
-	async def get_surface_text(self) -> str:
+	async def get_surface_text(self, allowed_tags: Collection[str] = ("sub", "sup", "i", "b", "em"), logger: Optional[logging.Logger] = None) -> str:
 		"""Returns the HTML text of the element's surface, not including any internal tags that aren't purely formatting."""
 
 	@abstractmethod
@@ -119,14 +124,30 @@ class StaticHtml(JournalHtml):
 	async def select(self, selector: str) -> tuple["StaticHtml"]:
 		return tuple((StaticHtml(html) for html in self.soup.select(selector)))
 
-	def select_one(self, selector: str) -> "StaticHtml":
-		return StaticHtml(self.soup.select_one(selector))
+	def select_one(self, selector: str) -> Optional["StaticHtml"]:
+		first = self.soup.select_one(selector)
+		if first is None:
+			return None
+		return StaticHtml(first)
 
 	async def get_text(self) -> str:
 		return self.soup.get_text()
 
-	async def get_surface_text(self) -> str:
-		return await self.get_text()
+	async def get_surface_text(self, allowed_tags: Collection[str] = ("sub", "sup", "i", "b", "em"), logger: Optional[logging.Logger] = None) -> str:
+		allowed_tags = set(allowed_tags)
+		text = ""
+		for child in self.soup.children:
+			if isinstance(child, bs4.NavigableString):
+				text += child
+			elif isinstance(child, bs4.Tag):
+				tag = child.name
+				if tag in allowed_tags:
+					text += str(child)
+			else:
+				if logger is not None:
+					logger.warning(f"Unknown type found when stitching together surface level text: {type(child).__name__}.")
+
+		return text
 
 	async def get_html(self) -> str:
 		return str(self.soup)
@@ -194,8 +215,11 @@ class DynamicHtml(JournalHtml):
 	async def get_text(self) -> str:
 		return await self.locator.inner_text()
 
-	async def get_surface_text(self) -> str:
-		return await self.get_text()
+	async def get_surface_text(self, allowed_tags: Collection[str] = ("sub", "sup", "i", "b", "em"), logger: Optional[logging.Logger] = None) -> str:
+		soup = BeautifulSoup(await self.locator.inner_html(), "html.parser")
+		if logger is not None:
+			logger.info(f"{soup=}")
+		return await StaticHtml(soup).get_surface_text(allowed_tags, logger)
 
 	async def get_html(self) -> str:
 		return await self.locator.inner_html()
@@ -203,8 +227,8 @@ class DynamicHtml(JournalHtml):
 	async def get_inner_contents(self) -> Optional[str]:
 		return await self.locator.text_content()
 
-	async def get(self, attribute: str) -> str:
-		return await self.locator.get_attribute(attribute)
+	async def get(self, attribute: str, timeout = None) -> str:
+		return await self.locator.get_attribute(attribute, timeout=timeout)
 
 	async def prettify(self) -> str:
 		page = self.locator.page
@@ -383,8 +407,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		self.logger: logger.Logger = kwargs.get("logger", logging.getLogger(__name__))
 
 		# Set up file structure
-		base_results_dir = paths.initialize_results_dir(search_query)
-		self.results_directory = base_results_dir / self.search_query["name"]
+		self.results_directory = paths.initialize_results_dir(search_query)
 		figures_directory = self.results_directory / "figures"
 		figures_directory.mkdir(exist_ok=True, parents=True)
 
@@ -419,7 +442,8 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		except playwright_errors.TimeoutError:
 			return
 
-		if len(ray_ids) == 0:
+		num_ray_ids = len(ray_ids)
+		if num_ray_ids == 0:
 			return
 
 		try:
@@ -427,7 +451,8 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		except playwright_errors.TimeoutError as e:
 			frame = page.frame(url=re.compile(".*cloudflare.*"))
 			if frame is None:
-				raise e
+				frame_names = ", ".join(map(lambda frame: repr(frame.name), page.frames))
+				raise playwright_errors.Error(f"Could not find the cloudflare frame when {num_ray_ids:,} {'were' if len(page.frames) != 1 else 'was'} found. Frames: {frame_names}") from e
 			try:
 				await frame.locator("input[type=checkbox]").click(force=True, timeout=7_500)
 			except playwright_errors.TimeoutError:
@@ -545,7 +570,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		return False, "unknown"
 
 	@abstractmethod
-	async def get_authors(self, html: T) -> tuple[str]:
+	async def get_authors(self, html: T) -> tuple[Author]:
 		"""Retrieve list of authors from search results
 
 		:param JournalHtml html: A soup object representing the article page.
@@ -617,7 +642,14 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 				if not content_type.startswith("image/"):
 					retry += 1
 					if retry == retries:
-						html = await response.aread()
+						try:
+							if isinstance(response, httpx2.Response):
+								html = await response.aread()
+							elif isinstance(response, curl_cffi.Response):
+								html = await response.acontent()
+						except AttributeError as e:
+							self.logger.exception(f"An issue occurred when trying to get the image stream for {image_url}.\n{type(response)=}\n{dir(response)=}", exc_info=e)
+							raise
 						raise JournalScrapeError(f"The image url did not return image information, instead the content is of type {content_type}.", response.status_code,
 												 headers=response.headers, url=image_url, html=html)
 
@@ -824,7 +856,8 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 			case _:
 				raise NotImplementedError("JournalScraper can only convert svg graphics to png images at the moment.")
 
-	async def get_article_figures(self, url: str, html_directory: Path, save_html: bool = True, svg_extension: str = "png") -> dict:
+	async def get_article_figures(self, url: str, html_directory: Optional[Path] = None, save_html: bool = True,
+								  svg_extension: str = "png") -> dict:
 		"""Get all figures from an article.
 		:param str url: The url to the journal article.
 		:param pathlib.Path html_directory: The path where any HTML files should be written.
@@ -832,6 +865,9 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		:param str svg_extension: The extension that SVG images should be converted to. Default is "png".
 		:returns: A dictionary of figure_jsons from an article
 		"""
+		if save_html and html_directory is None:
+			raise ValueError("The html directory must be given if save_html is True.")
+
 		try:
 			html = await self.get(url)
 		except JournalScrapeError as e:
@@ -854,7 +890,14 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		figure_subtrees = await self.get_figure_list(html)
 
 		self.logger.info(f"Number of subfigures: {len(figure_subtrees):,} for {_id}.")
-		article_json = dict()
+		article_json = {
+			"title": title,
+			"authors": authors,
+			"article_url": url,
+			"license": _license,
+			"open": is_open,
+			"figures": dict()
+		}
 
 		for figure_number, figure_subtree in enumerate(figure_subtrees, start=1):
 			figure_caption = await self.get_caption(figure_subtree)
@@ -863,11 +906,6 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 				continue
 
 			figure_json = {
-				"title": title,
-				"authors": authors,
-				"article_url": url,
-				"license": _license,
-				"open": is_open,
 				"full_caption": figure_caption,
 			}
 
@@ -884,7 +922,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 			else:
 				figure_name = true_figure_name
 
-			figure_path = Path(self.search_query["name"]) / "figures" / figure_name
+			figure_path = self.results_directory / "figures" / figure_name
 			figure_json |= dict(
 				image_url=image_url,
 				figure_name=figure_name,
@@ -903,7 +941,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 				self.logger.error(f"Could not download figure \"{figure_name}\" from {image_url} (HTTP Status Code: {e.status}). Reason: {e.message}")
 				continue
 
-			article_json[figure_name] = figure_json
+			article_json["figures"][figure_name] = figure_json
 
 		await html.close()
 		return article_json

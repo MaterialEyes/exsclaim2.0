@@ -1,4 +1,4 @@
-from .base import JournalFamilyStatic, StaticHtml, default_predicate, DOI_REGEX
+from .base import JournalFamilyStatic, StaticHtml, default_predicate, DOI_REGEX, Author, ORCID_REGEX
 from ..config import settings
 
 import math
@@ -195,18 +195,36 @@ class Wiley(JournalFamilyStatic):
 	async def get_title(self, html: StaticHtml, url: str) -> str:
 		elements = await html.select("h1.citation__title")
 		if len(elements) > 0:
-			return (await elements[0].get_surface_text()).strip()
+			title = await elements[0].get_surface_text(logger=self.logger)
+			return title.strip()
 
 		title = await super().get_title(html, url)
 		self.logger.warning(f"Could not find title for {url}.")
 		return title
 
-	async def get_authors(self, html: StaticHtml) -> tuple[str]:
+	async def get_authors(self, html: StaticHtml) -> tuple[Author]:
 		author_line = html.select_one("div.loa-wrapper.loa-authors.hidden-xs.desktop-authors")
-		authors = await author_line.select("p.author-name")
+		authors = await author_line.select("span.accordion-tabbed__tab-mobile")
 
-		authors = [await author.get_text() for author in authors]
-		return tuple(authors)
+		values = [None] * len(authors)
+		for i, author in enumerate(authors):
+			name = await author.select_one("p.author-name").get_text()
+			orcid = None
+			for orcid_tag in await author.select("a.sm-account__link[href]"):
+				href = await orcid_tag.get("href")
+				if href is None:
+					continue
+
+				match = ORCID_REGEX.search(href)
+				if match is None:
+					continue
+
+				orcid = match.group(1)
+				break
+
+			values[i] = Author(name=name, orcid=orcid)
+
+		return tuple(values)
 
 	async def get_articles_from_search_page(self, html: StaticHtml) -> tuple[StaticHtml]:
 		return await html.select("li.clearfix.separator.search__item.bulkDownloadWrapper")

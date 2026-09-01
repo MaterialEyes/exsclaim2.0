@@ -163,9 +163,6 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 		uuid = gen_uuid7()
 		str_uuid = str(uuid)
 
-		results_dir = settings.RESULTS_PATH / str_uuid
-		results_dir.mkdir(exist_ok=True, parents=True)
-
 		exsclaim_input = {
 			"name": search_query.name if search_query else "exsclaim_results",
 			"run_id": str_uuid,
@@ -183,7 +180,6 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			"open": search_query.open,
 			"save_format": search_query.save_format,
 			"logging": ["exsclaim.log"],
-			"results_dir": str(results_dir),
 			"notifications": search_query.notifications.model_dump(),
 			"base_run_id": str(search_query.base_run_id) if search_query is not None else None,
 		}
