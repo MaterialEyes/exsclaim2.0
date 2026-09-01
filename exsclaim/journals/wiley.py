@@ -18,7 +18,7 @@ __all__ = ["Wiley"]
 @asynccontextmanager
 async def get_temporary_playwright_context():
 	async with Stealth().use_async(async_playwright()) as p:
-		browser = await p.firefox.launch(headless=settings.PLAYWRIGHT_HEADLESS)
+		browser = await p.chromium.launch(headless=settings.PLAYWRIGHT_HEADLESS)
 		context = await browser.new_context()
 		page = await context.new_page()
 
