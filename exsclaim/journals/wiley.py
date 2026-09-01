@@ -5,8 +5,9 @@ import math
 import re
 
 from bs4 import BeautifulSoup
+from datetime import datetime as dt
 from contextlib import asynccontextmanager
-from playwright.async_api import async_playwright, Response
+from playwright.async_api import async_playwright, Cookie, Response
 from playwright._impl import _errors as playwright_errors
 from playwright_stealth import Stealth
 from typing import Any, Optional, Sequence
@@ -137,7 +138,7 @@ class Wiley(JournalFamilyStatic):
 		return [], {}, []
 
 	async def old_get_additional_url_arguments(self, html: StaticHtml):
-		current_year = datetime.now().year
+		current_year = dt.now().year
 		journal_list = html.soup.select_one("#Published in").parent.next_sibling
 		journal_link_tags = journal_list.select("a[href]")
 		journal_link_tags_exh = journal_list.find_all("option", value=True)

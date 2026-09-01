@@ -25,7 +25,7 @@ class FilterAndRemapCocoCategories(object):
         if not self.remap:
             target["annotations"] = anno
             return image, target
-        anno = copy.deepcopy(anno)
+        anno = deepcopy(anno)
         for obj in anno:
             obj["category_id"] = self.categories.index(obj["category_id"])
         target["annotations"] = anno

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from exsclaim import RSC, Author
@@ -116,7 +115,3 @@ async def test_search(http_server: str, default_search_query: dict[str, Any], de
 			urls.add(raw_url)
 
 	assert len(urls) == 18, "Not all URLs were found."
-
-
-if __name__ == "__main__":
-	asyncio.run(main())

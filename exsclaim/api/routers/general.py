@@ -12,8 +12,6 @@ from fastapi import APIRouter, status
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.responses import JSONResponse
 from hashlib import sha256
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 from starlette.responses import Response, HTMLResponse
 from starlette.routing import BaseRoute
@@ -28,7 +26,6 @@ cache = dict()
 
 
 async def get(url: str) -> tuple[Response | bytes, str]:
-	global cache
 	if url in cache:
 		return cache[url]
 

@@ -458,8 +458,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 			except playwright_errors.TimeoutError:
 				pass
 
-	@classmethod
-	async def get_cloudflare_headers(cls, url: str, logger: logging.Logger, context: Optional[BrowserContext] = None,
+	async def get_cloudflare_headers(self, url: str, logger: logging.Logger, context: Optional[BrowserContext] = None,
 									 urls: Sequence[str] = tuple(), timeout: float = 20) -> tuple[dict[str, str], list[dict[str, str]]]:
 		"""
 		Uses playwright to pass Cloudflare's checks, then returns the headers for use with other session types.
@@ -483,7 +482,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		_id = self.get_article_name_from_url(url)
 		async with page.expect_response(lambda resp: default_predicate(logger, resp, url, _id), timeout=timeout * 1000) as response:
 			await page.goto(url)
-			await cls.click_on_cloudflare(page)
+			await self.click_on_cloudflare(page)
 
 		response = await response.value
 		if response.status >= 400:

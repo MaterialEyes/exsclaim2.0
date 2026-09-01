@@ -2,15 +2,16 @@ from .models import gen_uuid7
 from ..db import get_db_session
 
 from contextvars import ContextVar
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette import status
+from starlette.datastructures import URL
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse, JSONResponse
 from starlette.types import ASGIApp
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from time import perf_counter
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 from uuid import UUID
 
 import ipaddress
@@ -58,7 +59,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 		return f"{diff:,.2f}s"
 
 	@staticmethod
-	def path_is_blocked(url: "starlette.datastructures.URL") -> bool:
+	def path_is_blocked(url: URL) -> bool:
 		# TODO: Create a more comprehensive set of banned endpoints
 		for regex in BLOCKED_PATHS:
 			if regex.match(url.path):

@@ -2,11 +2,12 @@ from ..caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
 from ..config import settings
 from ..exceptions import PipelineConfigError
 
-from logging import warning, exception
 from ollama import AsyncClient, Client, ChatResponse, ResponseError
 from pydantic import ValidationError
 from re import compile
 from typing import Any, Type, Self, Collection, Optional
+
+import logging
 
 __all__ = ["Ollama"]
 
@@ -25,7 +26,7 @@ class Ollama(LLM):
 			models = client.list().models
 		except (ConnectionError, ResponseError) as e:
 			if silent_fail:
-				warning(f"Could not connect to Ollama. This may cause issues down the line if Ollama-based LLMs are required.", exc_info=e)
+				logging.warning(f"Could not connect to Ollama. This may cause issues down the line if Ollama-based LLMs are required.", exc_info=e)
 				return tuple()
 			raise e
 
@@ -96,5 +97,5 @@ class Ollama(LLM):
 		try:
 			return response_format.model_validate_json(output_string), usage
 		except ValidationError as e:
-			exception(f"Error validating to type: {response_format}.", exc_info=e)
+			logging.exception(f"Error validating to type: {response_format}.", exc_info=e)
 			raise e

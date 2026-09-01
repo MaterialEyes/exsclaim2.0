@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from typing import Optional
 
-import asyncio
+import httpx2
 import pytest
 import pytest_asyncio
 
@@ -77,7 +77,7 @@ def test_incorrect_llm(client: TestClient):
 	assert response.status_code == 422, response.text
 
 
-def set_cookies(client: TestClient, response: Response):
+def set_cookies(client: TestClient, response: httpx2.Response):
 	raw_cookie_headers = response.headers.get_list("set-cookie")
 	for raw in raw_cookie_headers:
 		name, _, rest = raw.partition("=")
@@ -90,11 +90,11 @@ def set_cookies(client: TestClient, response: Response):
 			client.cookies.set(name, value)
 
 
-def has_cookie(client: TestClient, response: Response, cookie: str) -> bool:
+def has_cookie(client: TestClient, response: httpx2.Response, cookie: str) -> bool:
 	return response.cookies.get(cookie, None) is not None or client.cookies.get(cookie, None) is not None
 
 
-def check_username(response: Response, expected_username: str) -> bool:
+def check_username(response: httpx2.Response, expected_username: str) -> bool:
 	return expected_username == response.json()["username"]
 
 
@@ -199,16 +199,3 @@ async def test_middleware_bans_paths(client: TestClient, db: AsyncSession):
 	except RuntimeError as e:
 		await db.rollback()
 		warn(f"Could not delete 127.0.0.1 from the banned ips table when testing {path}.\n{type(db)=}\n{e=}")
-
-
-async def main():
-	await initialize_test_database()
-	await test_healthcheck()
-	await test_user_methods()
-	# await test_v1_articles()
-	# test_incorrect_journal_family()
-	# test_incorrect_llm()
-
-
-if __name__ == "__main__":
-	asyncio.run(main())

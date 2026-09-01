@@ -1,3 +1,5 @@
+from uuid import UUID
+
 __all__ = ["gen_uuid7"]
 
 

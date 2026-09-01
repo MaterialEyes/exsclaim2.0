@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from exsclaim import Wiley, Author
@@ -124,7 +123,3 @@ async def test_search(http_server: str, default_search_query: dict[str, Any], de
 		urls.add(raw_url)
 
 	assert len(urls) == 20, "Not all URLs were found."
-
-
-if __name__ == "__main__":
-	asyncio.run(main())

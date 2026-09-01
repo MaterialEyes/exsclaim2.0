@@ -38,7 +38,7 @@ class OpenAI(LLM):
 		)
 
 	@staticmethod
-	def check_validity(model: OPEN_AI_LLMS, api_key: str):
+	def check_validity(model: OPEN_AI_LLMs, api_key: str):
 		try:
 			client = openai.OpenAI(api_key=api_key)
 			models = client.models.list().data

@@ -16,6 +16,7 @@ import logging
 from datetime import datetime as dt, timezone as tz
 from dash import Dash, html, dcc
 from textwrap import dedent
+from typing import Optional
 from pathlib import Path
 
 

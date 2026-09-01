@@ -30,7 +30,7 @@ def train_one_epoch(
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ", model_name=model_name)
     metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
-    header = "Epoch: [{}]".format(epoch)
+    header = f"Epoch: [{epoch}]"
 
     for images, targets in metric_logger.log_every(data_loader, print_freq, header):
         images = list(image.to(device) for image in images)
@@ -47,7 +47,7 @@ def train_one_epoch(
         loss_value = losses_reduced.item()
 
         if not math.isfinite(loss_value):
-            print("Loss is {}, stopping training".format(loss_value))
+            print(f"Loss is {loss_value}, stopping training")
             print(loss_dict_reduced)
             sys.exit(1)
 
@@ -64,7 +64,7 @@ def train_one_epoch(
     return metric_logger
 
 
-def get_epoch(model, best_checkpoint):
+def get_epoch(model, optimizer: torch.optim.Optimizer, best_checkpoint):
     cuda = torch.cuda.is_available()
     if cuda:
         checkpoint = torch.load(best_checkpoint)

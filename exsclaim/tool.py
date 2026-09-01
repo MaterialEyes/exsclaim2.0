@@ -19,7 +19,7 @@ from logging import getLogger, StreamHandler
 from os import PathLike
 from pathlib import Path
 from time import time_ns as timer
-from typing import Any, Iterable, Optional, Collection
+from typing import Any, Callable, Collection, Iterable, Optional
 
 import asyncio
 import numpy as np

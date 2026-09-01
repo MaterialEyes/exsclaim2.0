@@ -189,8 +189,8 @@ def train_crnn(
     optimizer = optimizers[optimizer]
     best_checkpoint = get_model(checkpoint_directory, model_name)
     if best_checkpoint is not None:
-        current_epoch = get_epoch(model, best_checkpoint)
-        best_loss = checkpoint["best_loss"]
+        current_epoch = get_epoch(model, optimizer, best_checkpoint)
+        best_loss = best_checkpoint["best_loss"]
     else:
         current_epoch = 0
         best_loss = 999999999999
@@ -207,7 +207,7 @@ def train_crnn(
     }
     lr_scheduler = lr_schedulers[lr_scheduler]
     if best_checkpoint is not None:
-        lr_scheduler.load_state_dict(checkpoint["lr_state_dict"])
+        lr_scheduler.load_state_dict(best_checkpoint["lr_state_dict"])
     # Set loss function, load data and begin training
     loss_functions = {
         "CTC": nn.CTCLoss(blank=21, zero_infinity=True),
