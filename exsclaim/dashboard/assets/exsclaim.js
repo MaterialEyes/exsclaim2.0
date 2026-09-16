@@ -68,6 +68,73 @@ const fetch_status = async (baseUrl, id) => {
 	}
 }
 
+async function* stream_response_lines(response){
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+
+	let buffer = "";
+
+	const decode_options = {stream: true};
+
+	while(true){
+		const { done, value } = await reader.read();
+		if(done){
+			if(buffer.length > 0){
+				yield buffer;
+			}
+			break;
+		}
+
+		buffer += decoder.decode(value, decode_options);
+
+		const lines = buffer.split("\n");
+		for(let i = 0; i < lines.length - 1; i++){
+			yield lines[i];
+		}
+
+		// Keep the last item since it may not be a complete line
+		buffer = lines[lines.length - 1];
+	}
+}
+
+const fetch_results = async (baseUrl, id) => {
+	const response = await api_fetch(baseUrl, `/results/v2/${id}/dashboard?lowest_level=subfigure`, {
+		method: "GET",
+		headers: {
+			"Access-Control-Allow-Origin": "*",
+			"Content-Type": "application/json"
+		},
+		credentials: "include"
+	});
+
+	const articles = [];
+	const figures = [];
+	const subfigures = [];
+	const subfigure_ids = new Set();
+
+	for await (const line of stream_response_lines(response)) {
+		const obj = JSON.parse(line);
+		const type = obj.type;
+		delete obj.type;
+		switch (type) {
+			case "article":
+				articles.push(obj);
+				break;
+			case "figure":
+				figures.push(obj);
+				break;
+			case "subfigure":
+				subfigures.push(obj);
+				subfigure_ids.add(obj.id);
+				break;
+			default:
+				console.error(`Unknown type: ${obj.type}`);
+		}
+	}
+
+	return [articles, figures, subfigures];
+}
+
 /**
  * Loads the articles found during a run.
  * @param baseUrl The URL that points toward the EXSCLAIM API.
@@ -75,7 +142,7 @@ const fetch_status = async (baseUrl, id) => {
  * @returns {Promise<any>}
  */
 const fetch_articles = async (baseUrl, id) => {
-	const response = await api_fetch(baseUrl, `/results/v1/${id}/articles`, {
+	const response = await api_fetch(baseUrl, `/results/v2/${id}/articles`, {
 		method: "GET",
 		headers: {
 			"Access-Control-Allow-Origin": "*",
@@ -100,7 +167,7 @@ const fetch_articles = async (baseUrl, id) => {
  * @returns {Promise<any>}
  */
 const fetch_figures = async (baseUrl, id, num=-1) => {
-	const response = await api_fetch(baseUrl, `/results/v1/${id}/figures?page=${num}`, {
+	const response = await api_fetch(baseUrl, `/results/v2/${id}/figures?page=${num}`, {
 		method: "GET",
 		headers: {
 			"Access-Control-Allow-Origin": "*",
@@ -125,7 +192,7 @@ const fetch_figures = async (baseUrl, id, num=-1) => {
  * @returns {Promise<any>}
  */
 const fetch_subfigures = async (baseUrl, id, num=-1) => {
-	const response = await api_fetch(baseUrl, `/results/v1/${id}/subfigures?page=${num}`, {
+	const response = await api_fetch(baseUrl, `/results/v2/${id}/subfigures?page=${num}`, {
 		method: "GET",
 		headers: {
 			"Access-Control-Allow-Origin": "*",
@@ -312,9 +379,10 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			}
 
 			// Results are ready, fetch all data
-			const articles = await fetch_articles(fast_api_url, result_id);
-			const figures = await fetch_figures(fast_api_url, result_id);
-			const subfigures = await fetch_subfigures(fast_api_url, result_id);
+			const [articles, figures, subfigures] = await fetch_results(fast_api_url, result_id);
+			// const articles = await fetch_articles(fast_api_url, result_id);
+			// const figures = await fetch_figures(fast_api_url, result_id);
+			// const subfigures = await fetch_subfigures(fast_api_url, result_id);
 
 			subfigures.forEach(subfigure => {
 				const figure = figures.filter(figure => subfigure.figure_id === figure.id)[0] ?? null;
@@ -756,8 +824,8 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 	query: {
 		submit_query: async function(n_clicks, stored_data, output_name, journal_family, num_articles, sort_by, term,
-									 synonyms, base_run_id, open_access, model, model_key, save_formats,
-									 ntfy_link, ntfy_priority) {
+									 synonyms, base_run_id, open_access, model, model_key, save_formats, ntfy_link,
+									 ntfy_priority, webhook_url) {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 
 			// Validated required fields
@@ -771,19 +839,28 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 				synonyms_list = synonyms.split("\n").map((s) => s.trim());
 			}
 
+			if(typeof(model_key) === "string"){
+				model_key = model_key.trim();
+				if(model_key.length === 0){
+					model_key = null;
+				}
+			}
+
 			const input_data = {
-				name: getDefault(output_name, ""),
+				name: output_name,
 				journal_family: getDefault(journal_family, "Nature"),
-				maximum_scraped: getDefault(num_articles, 0),
+				maximum_scraped: num_articles,
 				sortby: getDefault(sort_by, "relevant"),
 				term: term.trim(),
 				synonyms: synonyms_list,
 				save_format: save_formats,
 				open_access: getDefault(open_access, false),
 				llm: getDefault(model, "llama3.2"),
-				model_key: getDefault(model_key, null),
+				model_key: model_key,
 				notifications: {
-					ntfy: []
+					ntfy: [],
+					emails: [],
+					webhooks: []
 				},
 				base_run_id: getDefault(base_run_id, null)
 			};
@@ -797,6 +874,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 					priority: ntfy_priority !== null && ntfy_priority >= 1 && ntfy_priority <= 5 ? ntfy_priority : 3,
 					timezone: ntfy_timezone
 				});
+			}
+
+			if(webhook_url !== null && webhook_url !== undefined && webhook_url.length > 0){
+				input_data.notifications.webhooks.push({
+					url: webhook_url,
+				})
 			}
 
 			const api_url = stored_data.public_fastapi_url;
@@ -928,13 +1011,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			const options = [];
 			for(const selected_run of selected_runs){
 				if(!this.figures_per_run.includes(selected_run.id)) { // TODO: Have a set just of run ids to check against
-					let articles = await fetch_articles(api_url, selected_run);
+					let [articles, figures, subfigures] = await fetch_results(api_url, selected_run);
 
-					let figures = await fetch_figures(api_url, selected_run);
-
-					let subfigures = await fetch_subfigures(api_url, selected_run);
-
-					let response = await api_fetch(api_url, `/results/v1/${selected_run}/subfigure_labels`, init);
+					let response = await api_fetch(api_url, `/results/v2/${selected_run}/subfigure_labels`, init);
 					let labels = await response.json();
 
 					let class_codes = await fetch_classification_codes(api_url);

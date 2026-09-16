@@ -1,7 +1,7 @@
 try:
-	from components.login_page import create_login_page_layout, FormMode
+	from components.login_page import FormMode, create_login_page_layout
 except ImportError:
-	from exsclaim.dashboard.components.login_page import create_login_page_layout, FormMode
+	from exsclaim.dashboard.components.login_page import FormMode, create_login_page_layout
 
 import dash
 

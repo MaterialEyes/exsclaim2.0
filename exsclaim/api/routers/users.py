@@ -1,56 +1,32 @@
 from ...config import ui_settings, orcid_settings
-from ...db import get_db_session
-from ..models import User, PasswordReset, cryptographic_hash, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
+from ...db import get_db_session, cryptographic_hash
+from ..models import User, PasswordReset, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
+from ..dependencies.users import LoginInfo, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, ActiveUser, \
+	CurrentUser, CurrentUserId, ActiveUserId, create_access_token, create_refresh_token, extract_access_token, \
+	extract_refresh_token, AccessTokenCookie, RefreshTokenCookie
 
 from datetime import datetime as dt, timezone as tz, timedelta as td
-from fastapi import APIRouter, status, Depends, HTTPException, Body, Cookie
-from fastapi.security import OAuth2PasswordBearer, APIKeyCookie
+from fastapi import APIRouter, status, HTTPException, Body, Cookie
 from httpx2 import AsyncClient
 from starlette.requests import Request
 from starlette.responses import Response, HTMLResponse, RedirectResponse
-from pydantic import EmailStr, BaseModel
+from pydantic import EmailStr
 from sqlalchemy import text, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
-from typing import Annotated, Optional
+from typing import Optional
 from uuid import uuid4, UUID
 
 import asyncpg
-import jwt
 import re
 import sqlalchemy.exc as sql_exc
 
-__all__ = ["router", "CurrentUser", "ActiveUser"]
+__all__ = ["router"]
 
 
 router = APIRouter(prefix="/user")
 TAG = "User Management"
 
-
-class LoginInfo(BaseModel):
-	username: Optional[str] = None
-	email: EmailStr
-	password: str
-
-
-ALGORITHM = "RS256"
-
-if (ui_settings.JWT_PUBLIC_KEY_FILE is not None) and (ui_settings.JWT_PRIVATE_KEY_FILE is not None):
-	with open(ui_settings.JWT_PRIVATE_KEY_FILE, 'rb') as f:
-		PRIVATE_KEY = f.read()
-
-	with open(ui_settings.JWT_PUBLIC_KEY_FILE, 'rb') as f:
-		PUBLIC_KEY = f.read()
-else:
-	from cryptography.hazmat.primitives.asymmetric import rsa
-	from logging import getLogger
-	getLogger("exsclaim.api").warning(f"Could not load secrets for JWT from private={ui_settings.JWT_PRIVATE_KEY_FILE} and public={ui_settings.JWT_PUBLIC_KEY_FILE}, so temporary secrets are being generated instead.")
-	PRIVATE_KEY = rsa.generate_private_key(public_exponent=65_537, key_size=4_096)
-	PUBLIC_KEY = PRIVATE_KEY.public_key()
-
-
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 DOMAIN_REGEX = re.compile("https?://")
 
@@ -63,150 +39,26 @@ def get_api_cookie_domain() -> str:
 	return DOMAIN_REGEX.sub("", ui_settings.PUBLIC_API_URL)
 
 
-async def get_guest_user() -> User:
-	async with get_db_session() as session:
-		results = await session.execute(select(User).where(User.id == get_guest_uuid()))
-		return results.scalar()
-	raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not find guest user.")
-
-
-def create_access_token(user: User) -> str:
-	now = dt.now(tz=tz.utc)
-
-	payload = {
-		"sub": str(user.id),
-		"type": "access",
-		"iat": now,
-		"exp": now + td(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
-	}
-
-	encoded_jwt = jwt.encode(payload, PRIVATE_KEY, algorithm=ALGORITHM)
-	return encoded_jwt
-
-
-def create_refresh_token(user: User, jti: UUID):
-	now = dt.now(tz=tz.utc)
-
-	payload = {
-		"sub": str(user.id),
-		"type": "refresh",
-		"iat": now,
-		"exp": now + td(days=REFRESH_TOKEN_EXPIRE_DAYS),
-		"jti": str(jti)
-	}
-
-	encoded_jwt = jwt.encode(payload, PRIVATE_KEY, algorithm=ALGORITHM)
-	return encoded_jwt
-
-
-async def _extract_access_token(token: Optional[str]) -> User | HTTPException:
-	if token is None:
-		return None
-
-	try:
-		payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
-	except jwt.ExpiredSignatureError:
-		return HTTPException(
-			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail="Credentials are expired.",
-			headers={"WWW-Authenticate": "Bearer"},
-		)
-	except jwt.InvalidTokenError as e:
-		return HTTPException(
-			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail=f"Could not validate credentials: {e}",
-			headers={"WWW-Authenticate": "Bearer"},
-		)
-
-	user_id = payload.get("sub")
-	if user_id is None:
-		return HTTPException(
-			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail="Cannot refresh credentials when no credentials are given.",
-			headers={"WWW-Authenticate": "Bearer"},
-		)
-
-	user_id = UUID(user_id)
-	async with get_db_session() as session:
-		user = await session.execute(select(User).where(User.id == user_id))
-		user = user.scalar()
-
-	return user
-
-
-bearer_regex = re.compile("Bearer (.+)")
-
-
-async def get_current_user_from_authorization_header(request: Request) -> User:
-	auth = request.headers.get("Authorization", "")
-	match = bearer_regex.search(auth)
-	if match is None:
-		return await get_guest_user()
-
-	user = await _extract_access_token(match.group(1))
+async def add_user_jti(user: User | UUID, jti: UUID):
 	if isinstance(user, User):
-		return user
+		user_id = user.id
+	else:
+		user_id = user
 
-	return await get_guest_user()
-
-
-async def get_current_user_from_cookie(request: Request) -> User:
-	cookie = request.cookies.get("access_token")
-
-	if cookie is None:
-		return await get_guest_user()
-
-	user = await _extract_access_token(cookie)
-	if isinstance(user, User):
-		return user
-
-	return await get_guest_user()
-
-
-AccessTokenHeader = Annotated[Optional[str], Depends(OAuth2PasswordBearer(tokenUrl="token"))]
-AccessTokenCookie = Annotated[str, Depends(APIKeyCookie(name="access_token", auto_error=False))]
-
-
-async def get_active_user_from_authorization_header(token: AccessTokenHeader) -> User:
-	user = await _extract_access_token(token)
-	if isinstance(user, HTTPException):
-		raise user
-
-	elif user is None:
-		raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Credentials were not given.",
-		                    headers={"WWW-Authenticate": "Bearer"},)
-
-	return user
-
-
-async def get_active_user_from_cookie(cookie: AccessTokenCookie) -> User:
-	user = await _extract_access_token(cookie)
-	if isinstance(user, HTTPException):
-		raise user
-
-	elif user is None:
-		raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials",
-		                    headers={"WWW-Cookie": "Bearer"},)
-
-	return user
-
-
-CurrentUser = Annotated[User, Depends(get_current_user_from_cookie)]
-ActiveUser = Annotated[User, Depends(get_active_user_from_cookie)]
-
-
-async def add_user_jti(user: User, jti: UUID):
 	async with get_db_session() as session:
-		await session.execute(text("INSERT INTO users.jtis VALUES(:user_id, :jti)"), dict(user_id=user.id, jti=jti))
+		await session.execute(text("INSERT INTO users.jtis VALUES(:user_id, :jti)"), dict(user_id=user_id, jti=jti))
 		await session.commit()
 
 
-async def remove_user_jti(user: User, jti: UUID):
-	async with get_db_session() as session:
-		await session.execute(text("DELETE FROM users.jtis WHERE id = :user_id AND jti = :jti"), dict(user_id=user.id, jti=jti))
-		await session.commit()
+async def remove_user_jti(user: User | UUID, jti: UUID):
+	if isinstance(user, User):
+		user_id = user.id
+	else:
+		user_id = user
 
-	del user.jti
+	async with get_db_session() as session:
+		await session.execute(text("DELETE FROM users.jtis WHERE id = :user_id AND jti = :jti"), dict(user_id=user_id, jti=jti))
+		await session.commit()
 
 
 async def user_has_jti(user: User, jti: UUID) -> bool:
@@ -243,7 +95,7 @@ async def create_access_token_for_cookie(user: User, response: Response) -> Resp
 	return response
 
 
-async def create_refresh_token_for_cookie(user: User, response: Response, include_refresh: bool = True) -> Response:
+async def create_refresh_token_for_cookie(user: User, response: Response) -> Response:
 	new_jti = uuid4()
 	await add_user_jti(user, new_jti)
 	refresh_token = create_refresh_token(user, new_jti)
@@ -371,15 +223,7 @@ async def login_with_orcid(request: Request, code: str):
 
 @router.post("/refresh", tags=[TAG])
 async def refresh(refresh_token: str = Cookie()):
-	try:
-		payload = jwt.decode(refresh_token, PUBLIC_KEY, algorithms=[ALGORITHM])
-	except jwt.ExpiredSignatureError:
-		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token is expired.")
-	except jwt.InvalidTokenError:
-		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token.")
-
-	if payload.get("type") != "refresh":
-		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not a refresh token.")
+	payload = extract_refresh_token(refresh_token)
 
 	user_id = payload.get("sub")
 	if user_id is None:
@@ -406,8 +250,9 @@ async def refresh(refresh_token: str = Cookie()):
 
 
 @router.api_route("/logout", methods=["GET", "HEAD"], tags=[TAG])
-async def logout_user(request: Request, user: ActiveUser) -> Response:
-	await remove_user_jti(user, user.jti)
+async def logout_user(request: Request, user_id: ActiveUserId, cookie: RefreshTokenCookie) -> Response:
+	payload = extract_refresh_token(cookie)
+	await remove_user_jti(user_id, payload["jti"])
 
 	headers = {"Location": referer} if (referer := request.headers.get("Referer")) else dict()
 	response = Response("User logged out successfully.", status_code=status.HTTP_200_OK, media_type="text/plain",
@@ -418,12 +263,11 @@ async def logout_user(request: Request, user: ActiveUser) -> Response:
 
 
 @router.post("/logout_all", tags=[TAG])
-async def logout_all_instances(request: Request, user: ActiveUser) -> Response:
+async def logout_all_instances(user_id: ActiveUserId) -> Response:
 	async with get_db_session() as session:
-		await session.execute(text("DELETE FROM users.jtis WHERE id = :user_id"), dict(user_id=user.id))
+		await session.execute(text("DELETE FROM users.jtis WHERE id = :user_id"), dict(user_id=user_id))
 		await session.commit()
 
-	del user.id
 	response = JSONResponse(dict(detail=
 							 f"All logged in versions of this user can no longer create new access tokens, so they will be logged out within the next {ACCESS_TOKEN_EXPIRE_MINUTES} minutes."),
 						status_code=status.HTTP_200_OK)
@@ -458,7 +302,7 @@ async def send_reset_request_email(request: Request, session: AsyncSession, emai
 
 	# TODO: Send the email
 
-	return Response(f"Unfortunately, we do not have email capabilities set up for this system, so password resets are unavailable at this time.", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="text/plain")
+	return Response("Unfortunately, we do not have email capabilities set up for this system, so password resets are unavailable at this time.", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="text/plain")
 
 
 @router.post("/reset_password", tags=[TAG])
@@ -479,18 +323,18 @@ async def reset_password(request: Request, token: Optional[str] = None, email: O
 	if (reset_obj is None) or (reset_obj.email != email) or (dt.now(tz.utc) - reset_obj.created > td(hours=1)):
 		return Response("The email/token pair was invalid.", status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, media_type="text/plain")
 
-	return HTMLResponse(f"", status_code=status.HTTP_202_ACCEPTED) # TODO: Create the password reset form, and have a hidden field with some token for security when the form is posted.
+	return HTMLResponse("", status_code=status.HTTP_202_ACCEPTED) # TODO: Create the password reset form, and have a hidden field with some token for security when the form is posted.
 
 
 @router.get("/id", tags=[TAG])
-async def get_user_id(user: CurrentUser) -> JSONResponse:
+async def get_user_id(user_id: CurrentUserId) -> JSONResponse:
 	not_logged_in = {"id": "Not Logged In."}
-	if user is None or user.id == get_guest_uuid():
+	if user_id == get_guest_uuid():
 		return JSONResponse(not_logged_in, status_code=status.HTTP_202_ACCEPTED)
-	return JSONResponse({"id": str(user.id)}, status_code=status.HTTP_200_OK)
+	return JSONResponse({"id": str(user_id)}, status_code=status.HTTP_200_OK)
 
 
-@router.get("/name", include_in_schema=False)
+@router.get("/name", tags=[TAG])
 async def get_username(user: CurrentUser) -> JSONResponse:
 	not_logged_in = {"username": "Not Logged In."}
 	if user is None or user.id == get_guest_uuid():
@@ -531,16 +375,12 @@ async def check_access_token_remaining_time(token: AccessTokenCookie) -> JSONRes
 	if token is None:
 		return JSONResponse(dict(detail="Not logged in."), status_code=status.HTTP_400_BAD_REQUEST)
 
-	try:
-		payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
-	except jwt.ExpiredSignatureError:
-		return JSONResponse({"detail": "Token has already expired."}, status_code=status.HTTP_406_NOT_ACCEPTABLE)
-	except jwt.InvalidTokenError as e:
-		return JSONResponse({"detail": f"Invalid token given: {e}."}, status_code=status.HTTP_401_UNAUTHORIZED)
+	payload = extract_access_token(token)
 
 	expiration = payload.get("exp")
 	if expiration is None:
-		return JSONResponse({"detail": "Expiration is somehow missing from the token."}, status_code=status.HTTP_401_UNAUTHORIZED)
+		return JSONResponse({"detail": "Expiration is somehow missing from the token."},
+							status_code=status.HTTP_401_UNAUTHORIZED)
 
 	expiration = dt.fromtimestamp(expiration, tz=tz.utc)
 	diff = expiration - dt.now(tz=tz.utc)
@@ -590,7 +430,7 @@ async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUs
 	try:
 		async with get_db_session() as session:
 			# Move the owner ID for all runs from the orcid account where it was originally the email account
-			await session.execute(text("UPDATE results.results SET user_id = :orcid_user WHERE user_id = :email_user"),
+			await session.execute(text("UPDATE results.runs SET user_id = :orcid_user WHERE user_id = :email_user"),
 								  dict(orcid_user=orcid_user.id, email_user=email_user.id))
 
 			# Delete any JTIs for the email account

@@ -1,25 +1,24 @@
 from .config import settings
-from .figure import FigureSeparator
 from .pdf import PDFScraper
-from .exceptions import *
-from .notifications import *
-from .tool import ExsclaimTool, CaptionDistributor, JournalScraper
+from .exceptions import PipelineInterruptionException, PipelineConfigError
+from .notifications import SuccessNotification, InterruptionNotification, ErrorNotification, QueryNotifications, \
+	CouldNotNotifyException
+from .tool import ExsclaimTool, CaptionDistributor, JournalScraper, ExsclaimEncoder, FigureSeparator
 from .figures.geometry_boxes import convert_geometry_to_coords
 from .utilities import paths, PrinterFormatter, ExsclaimFormatter
-from .utilities.uuid import gen_uuid7
-from .db import Database
+from .db import Database, gen_uuid7
 
 import asyncio
 import cv2
+import enum
+import functools
+import json
 import logging
 import numpy as np
 import re
 import shutil
 
 from csv import writer
-from enum import Flag, auto
-from functools import reduce
-from json import load, dump
 from os.path import isfile, splitext
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
@@ -32,12 +31,12 @@ from uuid import UUID
 __all__ = ["Pipeline", "SaveMethods", "PipelineInterruptionException"]
 
 
-class SaveMethods(Flag):
-	SUBFIGURES = auto()
-	VISUALIZATION = auto()
-	BOXES = auto()
-	POSTGRES = auto()
-	CSV = auto()
+class SaveMethods(enum.Flag):
+	SUBFIGURES = enum.auto()
+	VISUALIZATION = enum.auto()
+	BOXES = enum.auto()
+	POSTGRES = enum.auto()
+	CSV = enum.auto()
 
 	@classmethod
 	def from_str(cls, string: str):
@@ -49,8 +48,7 @@ class SaveMethods(Flag):
 			case "boxes":
 				return cls.BOXES
 			case "postgres":
-				# Postgres requires the csv method to have been run
-				return cls.POSTGRES | cls.CSV
+				return cls.POSTGRES
 			case "csv":
 				return cls.CSV
 			case _:
@@ -66,7 +64,7 @@ class SaveMethods(Flag):
 			except ValueError:
 				return None
 
-		return reduce(or_, filter(lambda x: x is not None, map(get_values, lst)))
+		return functools.reduce(or_, filter(lambda x: x is not None, map(get_values, lst)))
 
 
 class Pipeline:
@@ -88,7 +86,7 @@ class Pipeline:
 			self.query_path = query_path
 			with open(self.query_path) as f:
 				# Load query file to dict
-				self.query_dict = load(f)
+				self.query_dict = json.load(f)
 
 		# Set up file structure
 		self.run_id = self.query_dict.setdefault("run_id", str(gen_uuid7()))
@@ -129,7 +127,7 @@ class Pipeline:
 		if self.exsclaim_path.exists():
 			with open(self.exsclaim_path, "r") as f:
 				# Load configuration file values
-				self.exsclaim_dict = load(f)
+				self.exsclaim_dict = json.load(f)
 		else:
 			self.logger.info("No exsclaim.json file found, starting a new one.")
 			# Keep preset values
@@ -227,7 +225,7 @@ class Pipeline:
 			else:
 				tools: list[ExsclaimTool] = [cls(self.query_dict, logger=self.logger) for cls in tools]
 
-			# Ensure that any save methods that need to load something before hand do it before pipeline runs
+			# Ensure that any save methods that need to load something beforehand do it before pipeline runs
 			save_methods = SaveMethods.from_list(query_dict.get("save_format", []))
 
 			try:
@@ -271,29 +269,31 @@ class Pipeline:
 			self.group_objects()
 
 			# Save results as specified
-			if SaveMethods.CSV in save_methods or SaveMethods.POSTGRES in save_methods:
-				csv_info = self.to_csv()
+			if SaveMethods.CSV in save_methods:
+				self.to_csv()
 
-				if SaveMethods.POSTGRES in save_methods:
-					db = Database()
-					try:
-						await db.upload(csv_info, self.query_dict["run_id"], self.logger)
-					except SQLAlchemyError as e:
-						self.logger.exception("An error occurred while uploading the results to the database, but the pipeline finished running.", exc_info=e)
+			if SaveMethods.POSTGRES in save_methods:
+				db = Database()
+				try:
+					await db.upload(self.exsclaim_dict, self.query_dict["run_id"], self.logger)
+				except SQLAlchemyError as e:
+					self.logger.exception("An error occurred while uploading the results to the database, but the pipeline finished running.", exc_info=e)
 
 			if SaveMethods.SUBFIGURES in save_methods:
 				self.to_file()
 
 			if SaveMethods.BOXES in save_methods:
-				for figure in self.exsclaim_dict:
-					self.draw_bounding_boxes(figure)
+				for article in self.exsclaim_dict.values():
+					for figure, figure_json in article.get("figures", dict()).items():
+						self.draw_bounding_boxes(figure, figure_json)
 
 			if SaveMethods.VISUALIZATION in save_methods:
 				extractions = self.results_directory / "extractions"
 				extractions.mkdir(exist_ok=True)
 
 				async with asyncio.TaskGroup() as tg:
-					tasks = [tg.create_task(self.make_visualization(name, json, extractions)) for name, json in self.exsclaim_dict.items()]
+					for name, figure_json in self.exsclaim_dict.items():
+						tg.create_task(self.make_visualization(name, figure_json, extractions))
 
 			# Creates success messages to be sent to the notifiers
 			notification = SuccessNotification(
@@ -335,7 +335,7 @@ class Pipeline:
 
 		results_file = settings.RESULTS_PATH / f"{base_run_id}.tar.gz"
 		if not results_file.is_file():
-			raise FileNotFoundError(f"Could not find the results for {base_run_id}.")
+			raise FileNotFoundError(f"Could not find the results for {base_run_id!r}.")
 
 		if not tarfile.is_tarfile(results_file):
 			raise tarfile.ReadError(f"Could not read the compressed results for {base_run_id}.")
@@ -413,20 +413,26 @@ class Pipeline:
 		"""Pair captions with subfigures for each figure in exsclaim json"""
 		self.display_info("Matching Image Objects to Caption Text\n")
 		figures = len(self.exsclaim_dict)
-		for counter, figure in enumerate(self.exsclaim_dict, start=1):
-			self.display_info(f">>> ({counter:,} of {figures:,}) Matching objects from figure: {figure}")
 
-			figure_json = self.exsclaim_dict[figure]
-			masters, unassigned = self.assign_captions(figure_json)
+		with open(self.results_directory / "pre-grouped.json", "w") as f:
+			json.dump(self.exsclaim_dict, f, indent='\t', cls=ExsclaimEncoder)
 
-			figure_json |= {
-				"master_images": masters,
-				"unassigned": unassigned
-			}
+		for counter, (article_id, article_json) in enumerate(self.exsclaim_dict.items(), start=1):
+			self.display_info(f">>> ({counter:,} of {figures:,}) Matching objects from figure: {article_id}")
+
+			for figure, figure_json in article_json["figures"].items():
+				# FIXME: The caption token information isn't being saved in masters, caption is missing too
+				masters, unassigned = self.assign_captions(figure_json)
+
+				figure_json |= {
+					"master_images": masters,
+					"unassigned": unassigned
+				}
+				article_json["figures"][figure] = figure_json
 
 		self.display_info(">>> SUCCESS!\n")
 		with open(self.results_directory / "exsclaim.json", "w") as f:
-			dump(self.exsclaim_dict, f, indent='\t')
+			json.dump(self.exsclaim_dict, f, indent='\t', cls=ExsclaimEncoder)
 
 		return self.exsclaim_dict
 
@@ -478,9 +484,9 @@ class Pipeline:
 			# save each master, inset, and dependent image as their own file in a directory according to label
 			figure_dict = self.exsclaim_dict[figure_name]
 			for master_image in figure_dict.get("master_images", []):
-				master_class = master_image['classification'][0:3].lower() if master_image['classification'] is not None else 'uas'
+				#  master_class = master_image['classification'][0:3].lower() if master_image['classification'] is not None else 'uas'
 
-				# create a directory for each master image in <results_dir>/images/<figure_name>/<subfigure_label>
+				#  create a directory for each master image in <results_dir>/images/<figure_name>/<subfigure_label>
 				directory = self.results_directory / "images" / figure_root_name / master_image['subfigure_label']['text']
 				write(figure, master_image, directory, figure_extension,
 					  lambda _class: [figure_root_name, master_image['subfigure_label']['text'], _class],
@@ -608,7 +614,7 @@ class Pipeline:
 			self.logger.error(f"Could not write visualization for {figure_name}.", exc_info=e)
 	# cv2.imwrite(str(extractions / figure_name), labeled_image)
 
-	def draw_bounding_boxes(self, figure_name: str, draw_scale=False, draw_labels=False, draw_subfigures=True):
+	def draw_bounding_boxes(self, figure_name: str, figure_json: dict, draw_scale=False, draw_labels=False, draw_subfigures=True):
 		"""Save figures with bounding boxes drawn
 
 		Args:
@@ -627,7 +633,6 @@ class Pipeline:
 
 		boxes_directory = self.results_directory / "boxes"
 		boxes_directory.mkdir(exist_ok=True)
-		figure_json = self.exsclaim_dict[figure_name]
 		master_images = figure_json.get("master_images", [])
 
 		figures_path = self.results_directory / "figures"
@@ -689,6 +694,9 @@ class Pipeline:
 		csv_dir = self.results_directory / "csv"
 		csv_dir.mkdir(exist_ok=True)
 
+		with open(csv_dir / "backup.json", 'w') as f:
+			json.dump(exsclaim_json, f, cls=ExsclaimEncoder)
+
 		articles = set()
 		subfigures = set()
 		classification_codes = {
@@ -703,6 +711,7 @@ class Pipeline:
 		}
 
 		csv_info = {
+			"author": [],
 			"article": [],
 			"figure": [],
 			"subfigure": [],
@@ -711,97 +720,99 @@ class Pipeline:
 			"scale": []
 		}
 
-		for figure_name, figure_json in exsclaim_json.items():
+		for article_id, article_json in exsclaim_json.items():
 			# create row for unique articles
-			article_id = figure_json["article_name"]
 			if article_id not in articles:
+				authors = article_json.get("authors", ())
+				csv_info["author"].extend([[author.name, author.orcid] for author in authors])
+
 				csv_info["article"].append([
 					article_id,
-					figure_json["title"],
-					figure_json["article_url"],
-					figure_json["license"],
-					figure_json["open"],
-					figure_json.get("authors", []),
-					figure_json.get("abstract", ""),
+					article_json["title"],
+					article_json["article_url"],
+					article_json["license"],
+					article_json["open"],
+					article_json.get("abstract"),
 				])
 				articles.add(article_id)
 
-			base_name = ".".join(figure_name.split(".")[:-1])
-			figure_id = re.sub("_fig", "-fig", base_name)
+			for figure_name, figure_json in article_json["figures"].items():
+				base_name = ".".join(figure_name.split(".")[:-1])
+				figure_id = re.sub("_fig", "-fig", base_name)
 
-			# create row for figure.csv
-			csv_info["figure"].append([
-				figure_id,
-				figure_json["full_caption"],
-				figure_json["image_url"],
-				figure_json["figure_path"],
-				figure_json["article_name"],
-			])
-
-			# loop through subfigures
-			for master_image in figure_json.get("master_images", []):
-				subfigure_label = master_image["subfigure_label"]["text"]
-				subfigure_coords = convert_geometry_to_coords(master_image["geometry"])
-				subfigure_id = f"{figure_id}-{subfigure_label}"
-				if subfigure_id in subfigures:
-					continue
-
-				subfigures.add(subfigure_id)
-				caption = str(master_image.get("caption", ""))
-				if caption == "[]":
-					caption = ""
-				csv_info["subfigure"].append([
-					subfigure_id,
-					classification_codes[master_image["classification"]],
-					master_image.get("classification_confidence", None),
-					master_image.get("confidence", None),
-					master_image.get("height", None),
-					master_image.get("width", None),
-					master_image.get("nm_height", None),
-					master_image.get("nm_width", None),
-					*subfigure_coords,
-					caption,
-					master_image.get("input_tokens"),
-					master_image.get("output_tokens"),
-					master_image.get("keywords", []),
+				# create row for figure.csv
+				csv_info["figure"].append([
 					figure_id,
+					figure_json["full_caption"],
+					figure_json["image_url"],
+					figure_json["figure_path"],
+					figure_json["article_name"],
 				])
 
-				if master_image["subfigure_label"].get("geometry", None):
-					subfigure_label_coords = convert_geometry_to_coords(master_image["subfigure_label"]["geometry"])
-					csv_info["subfigure_label"].append([
-						master_image["subfigure_label"]["text"],
-						*subfigure_label_coords,
-						master_image["subfigure_label"].get("label_confidence", None),
-						master_image["subfigure_label"].get("box_confidence", None),
-						subfigure_id,
-					])
-
-				for i, scale_bar in enumerate(master_image.get("scale_bars", [])):
-					scale_bar_id = f"{subfigure_id}-{i}"
-					scale_bar_coords = convert_geometry_to_coords(scale_bar["geometry"])
-					csv_info["scale"].append([
-						scale_bar_id,
-						*scale_bar_coords,
-						scale_bar.get("length", None),
-						scale_bar.get("label_line_distance", None),
-						scale_bar.get("confidence", None),
-						subfigure_id,
-					])
-
-					if scale_bar.get("label", None) is None:
+				# loop through subfigures
+				for master_image in figure_json.get("master_images", []):
+					subfigure_label = master_image["subfigure_label"]["text"]
+					subfigure_coords = convert_geometry_to_coords(master_image["geometry"])
+					subfigure_id = f"{figure_id}-{subfigure_label}"
+					if subfigure_id in subfigures:
 						continue
 
-					scale_label = scale_bar["label"]
-					scale_label_coords = convert_geometry_to_coords(scale_label["geometry"])
-					csv_info["scale_label"].append([
-						scale_label["text"],
-						*scale_label_coords,
-						scale_label.get("label_confidence", None),
-						scale_label.get("box_confidence", None),
-						scale_label.get("nm", None),
-						scale_bar_id,
+					subfigures.add(subfigure_id)
+					caption = str(master_image.get("caption", ""))
+					if caption == "[]":
+						caption = ""
+					csv_info["subfigure"].append([
+						subfigure_id,
+						classification_codes[master_image["classification"]],
+						master_image.get("classification_confidence", None),
+						master_image.get("confidence", None),
+						master_image.get("height", None),
+						master_image.get("width", None),
+						master_image.get("nm_height", None),
+						master_image.get("nm_width", None),
+						*subfigure_coords,
+						caption,
+						master_image.get("input_tokens"),
+						master_image.get("output_tokens"),
+						master_image.get("keywords", []),
+						figure_id,
 					])
+
+					if master_image["subfigure_label"].get("geometry", None):
+						subfigure_label_coords = convert_geometry_to_coords(master_image["subfigure_label"]["geometry"])
+						csv_info["subfigure_label"].append([
+							master_image["subfigure_label"]["text"],
+							*subfigure_label_coords,
+							master_image["subfigure_label"].get("label_confidence", None),
+							master_image["subfigure_label"].get("box_confidence", None),
+							subfigure_id,
+						])
+
+					for i, scale_bar in enumerate(master_image.get("scale_bars", [])):
+						scale_bar_id = f"{subfigure_id}-{i}"
+						scale_bar_coords = convert_geometry_to_coords(scale_bar["geometry"])
+						csv_info["scale"].append([
+							scale_bar_id,
+							*scale_bar_coords,
+							scale_bar.get("length", None),
+							scale_bar.get("label_line_distance", None),
+							scale_bar.get("confidence", None),
+							subfigure_id,
+						])
+
+						if scale_bar.get("label", None) is None:
+							continue
+
+						scale_label = scale_bar["label"]
+						scale_label_coords = convert_geometry_to_coords(scale_label["geometry"])
+						csv_info["scale_label"].append([
+							scale_label["text"],
+							*scale_label_coords,
+							scale_label.get("label_confidence", None),
+							scale_label.get("box_confidence", None),
+							scale_label.get("nm", None),
+							scale_bar_id,
+						])
 
 		# Save lists of rows to csvs
 		for _type, rows in csv_info.items():

@@ -12,7 +12,7 @@ import torch
 import re
 
 
-__all__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "postprocess_ctc", "run_ctc", "Results"]
+__all__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "postprocess_ctc", "run_ctc", "CTC_Results"]
 
 
 class BeamEntry:
@@ -185,7 +185,7 @@ def ctcBeamSearch(mat: torch.Tensor, classes: str, lm: LanguageModel, beamWidth=
     return last.sort()[:10]
 
 
-Results = Generator[tuple[float, str, float], None, None]
+CTC_Results = Generator[tuple[float, str, float], None, None]
 
 
 # Added by MaterialEyes
@@ -194,7 +194,7 @@ word_split = re.compile(r"([\d\s]+)\s*([a-z\s]+)", re.IGNORECASE)
 word_clean = re.compile(r"\s")
 
 
-def postprocess_ctc(results: torch.Tensor, logger: Optional[logging.Logger] = None) -> Results:
+def postprocess_ctc(results: torch.Tensor, logger: Optional[logging.Logger] = None) -> CTC_Results:
     classes = "0123456789mMcCuUnN .A"
     idx_to_class = classes + "-"
     for result, confidence in results:
@@ -219,7 +219,7 @@ def postprocess_ctc(results: torch.Tensor, logger: Optional[logging.Logger] = No
             yield number, unit, confidence
 
 
-def run_ctc(probs: torch.Tensor, classes: str, logger: Optional[logging.Logger] = None) -> Results:
+def run_ctc(probs: torch.Tensor, classes: str, logger: Optional[logging.Logger] = None) -> CTC_Results:
     current_file = Path(__file__).resolve(strict=True)
     language_model_file = "corpus.txt"
     language_model = LanguageModel(current_file.parent / language_model_file, classes)

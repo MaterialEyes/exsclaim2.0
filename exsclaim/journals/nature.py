@@ -11,7 +11,7 @@ __all__ = ["Nature"]
 class Nature(JournalFamilyStatic):
 	def __init__(self, search_query, **kwargs):
 		name_patterns = (
-			(re.compile(r"/articles/(s\d{5}-\d{3}-\d{5}-\d)"), 1),
+			(re.compile(r"/articles/(s\d{5}-\d{3}-\d{5}-\w)"), 1),
 		)
 
 		super().__init__(search_query, name_patterns=name_patterns, **kwargs)

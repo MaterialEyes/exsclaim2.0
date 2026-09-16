@@ -1,4 +1,4 @@
-from .ds_features import *
+from .ds_features import caption_features, image_features
 
 import datasets
 import huggingface_hub as hf

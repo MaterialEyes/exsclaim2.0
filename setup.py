@@ -25,10 +25,12 @@ class CustomBuildCommand(build_py):
 		git_hash = "None"
 
 		try:
-			p = Popen(["git", "log", "-1", "--format=\"%H\""],
-					  stdout=PIPE,
-					  stderr=PIPE,
-					  cwd=here)# dirname(__file__)
+			p = Popen(
+				["git", "log", "-1", "--format=\"%H\""],
+				stdout=PIPE,
+				stderr=PIPE,
+				cwd=here
+			)# dirname(__file__)
 		except FileNotFoundError:
 			pass
 		else:

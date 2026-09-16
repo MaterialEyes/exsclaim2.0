@@ -2,8 +2,8 @@ import exsclaim
 import logging
 import yaml
 
-from .middleware import *
-from .routers import v1_router, general_router, query_router, users_router
+from .middleware import RequestLoggerMiddleware, PreflightCacheMiddleware
+from .routers import v1_router, v2_router, general_router, query_router, users_router
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -25,6 +25,7 @@ def my_schema():
 	openapi_schema = get_openapi(
 		title="EXSCLAIM API",
 		version=exsclaim.__version__,
+		openapi_version="3.2.0",
 		routes=app.routes,
 	)
 
@@ -148,7 +149,7 @@ def get_app() -> FastAPI:
 	app.openapi = my_schema
 	app.configuration_ini = None
 
-	for router in (general_router, query_router, users_router, v1_router):
+	for router in (general_router, query_router, users_router, v1_router, v2_router):
 		app.include_router(router)
 
 	return app

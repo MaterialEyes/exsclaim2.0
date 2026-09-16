@@ -5,12 +5,11 @@ Converted from React Layout.js component.
 
 import dash_bootstrap_components as dbc
 import httpx2
+import re
 
 from dash import html, dcc, callback, clientside_callback, ClientsideFunction, Output, Input, State, no_update, ALL
 from dash_extensions import Purify
-
 from exsclaim.api import Status
-from re import sub
 from uuid import UUID
 
 
@@ -373,8 +372,9 @@ def update_keywords(keyword_type, data):
 					keywords.extend(article["title"].split(" "))
 
 	# Remove duplicates and create options
-	unique_keywords = sorted(set(map(lambda kw: sub(r"[^a-zA-Z\d_-]", "", kw), keywords)), key=lambda kw: kw.upper())
-	return [{"label": kw, "value": kw} for kw in unique_keywords]
+	kw_regex = re.compile(r"[^\w\d<>_-]", re.I)
+	unique_keywords = sorted({kw_regex.sub("", kw) for kw in keywords}, key=lambda kw: kw.upper())
+	return [{"label": Purify(html=kw), "value": kw} for kw in unique_keywords]
 
 
 @callback(
@@ -445,7 +445,9 @@ async def update_images(data, max_width, max_height):
 						),
 						html.Small(
 							html.A(
-								article.get("title", "Unknown Article"),
+								Purify(
+									html=article.get("title", "Unknown Article")
+								),
 								href=article.get("url", "#"),
 								target="_blank"
 							) if article else "Unknown Article",

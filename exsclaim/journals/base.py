@@ -28,6 +28,7 @@ __all__ = ["JournalFamily", "JournalMeta", "JournalHtml", "StaticHtml", "Dynamic
 
 URLParams = dict[str, Any]
 
+# language=PythonRegExp
 DOI_REGEX = r"(10\.\d{4,9})/([-.;()/:\w%]+)"
 
 ResponseFunction = str | re.Pattern[str] | Callable[[Response], bool | Awaitable[bool]]
@@ -191,7 +192,7 @@ class DynamicHtml(JournalHtml):
 
 	def __init__(self, locator: Locator):
 		if not isinstance(locator, Locator):
-			raise ValueError(f"DynamicHTML objects need to be given a Locator object to work with.")
+			raise ValueError("DynamicHTML objects need to be given a Locator object to work with.")
 		self.locator = locator
 
 	def __del__(self):
@@ -647,7 +648,10 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 							elif isinstance(response, curl_cffi.Response):
 								html = await response.acontent()
 						except AttributeError as e:
-							self.logger.exception(f"An issue occurred when trying to get the image stream for {image_url}.\n{type(response)=}\n{dir(response)=}", exc_info=e)
+							self.logger.exception(
+								f"An issue occurred when trying to get the image stream for {image_url}.\n{type(response)=}\n{dir(response)=}",
+								exc_info=e
+							)
 							raise
 						raise JournalScrapeError(f"The image url did not return image information, instead the content is of type {content_type}.", response.status_code,
 												 headers=response.headers, url=image_url, html=html)
@@ -806,7 +810,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 	def _get_figure_name(article_name: str, figure_idx: int, extension: str = "jpg") -> str:
 		return f"{article_name}_fig{figure_idx}.{extension}"
 
-	def get_article_name_from_url(self, url: str) -> str:
+	def get_article_name_from_url(self, url: str, warn: bool = True) -> str:
 		if url.startswith("/"):
 			url = self.domain + url
 
@@ -814,7 +818,8 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 			if (match := pattern.search(url)) is not None:
 				return match.group(group_number)
 
-		self.logger.info(f"Could not find the article ID for article: {url}.")
+		if warn:
+			self.logger.info(f"Could not find the article ID for article: {url}.")
 		return url.split("/")[-1].split("?")[0]
 
 	async def get_figures(self, figure: T, figure_json: dict, url: str) -> tuple[dict, str]:
@@ -856,7 +861,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 				raise NotImplementedError("JournalScraper can only convert svg graphics to png images at the moment.")
 
 	async def get_article_figures(self, url: str, html_directory: Optional[Path] = None, save_html: bool = True,
-								  svg_extension: str = "png") -> dict:
+								  svg_extension: str = "png") -> dict[str, Any]:
 		"""Get all figures from an article.
 		:param str url: The url to the journal article.
 		:param pathlib.Path html_directory: The path where any HTML files should be written.
@@ -1076,7 +1081,7 @@ class JournalFamilyDynamic(JournalFamily[DynamicHtml], ABC):
 			for response_handler in response_handlers:
 				page.on("response", response_handler)
 
-		_id = self.get_article_name_from_url(url)
+		_id = self.get_article_name_from_url(url, warn=False)
 		predicate = predicate or (lambda resp: default_predicate(self.logger, resp, url, _id))
 
 		for attempt in range(attempts):

@@ -2,7 +2,7 @@ from faker import Faker
 from itertools import pairwise
 from starlette.testclient import TestClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 import httpx2
@@ -39,18 +39,6 @@ async def client():
 	# 	metadata = MetaData()
 	# 	await conn.run_sync(lambda conn: metadata.reflect(bind=conn, resolve_fks=False))
 	# 	await conn.run_sync(metadata.drop_all)
-
-
-@pytest_asyncio.fixture(scope="session")
-async def db():
-	from exsclaim.db.postgres import PostgresSettings
-
-	async_engine = create_async_engine(
-		PostgresSettings().connection_string,
-		echo=False,
-	)
-	async with AsyncSession(async_engine) as session:
-		yield session
 
 
 def test_healthcheck(client: TestClient):

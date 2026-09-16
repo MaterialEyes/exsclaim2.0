@@ -4,7 +4,6 @@ from pathlib import Path
 from PIL import Image
 import torch
 from torch import nn
-from torchvision import transforms
 from torchvision import models, transforms
 
 
