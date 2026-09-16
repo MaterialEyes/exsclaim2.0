@@ -1,13 +1,44 @@
 # Version 2.5.2
-- Update the OpenAPI specifications.
+## Database
+- Renamed the table `results.results` to `results.runs`, and the accompanying model from `exsclaim.api.models.Results` to `exsclaim.db.models.Run`.
+- Rewrote the database schema so information is not being repeated.
+  - All `VARCHAR` columns have been converted to `TEXT`.
+  - The `article` and `figure` tables will not rely on the run id to determine which run it belongs to. Instead, there is now a `results.article_authors` table that holds the relationship between which runs have which articles.
+  - Figures will only have a foreign key to the `results.article` table, and subfigure will have a foreign key to both the `result.figure` and `result.runs` table.
+- Added relationships to the SQLModels so it's easier to get related items in the code (getting all articles for a given run).
+- Moved `exsclaim.api.models.{SaveExtensions,Status,User}` to `exsclaim.db.models`.
+
+## API
+- Updated the OpenAPI specifications.
   - The specifications are available in JSON and YAML formatting at `/openapi.{json,yaml}` on the API.
+- Added a dependency submodule that holds any dependencies created for the FastAPI routers.
+  - Created a dependency that makes it easier to determine the content-type that should be returned given the client's `Accept` header.
+  - Add a dependency that only injects the user's id from the JWT instead of reading their entire user object from the database.
+- Added a `v2` endpoint that gets the results from the database at once, instead of going for articles, then figures and finally subfigures.
+  - The previous `v1` endpoint is still available.
+- Database sessions are no longer injected into each request.
 
 ## Dashboard
-- The UI alerts users when they're selecting a journal family that has to contend with CloudFlare.
+- The UI alerts users when they're selecting a journal family that has to contend with Cloudflare.
+- The UI can allow users to input a Webhook URL for notifications.
+- Users can now add spaces to the names for their runs.
+- Users must enter their password twice when creating an account.
+
+## Pipeline
+- The exsclaim results dictionary now has the root as the articles, with each article holding its list of figures instead of having the article information repeated for each of its figures.
+- Uploading results to the database no longer requires for the results to be written to CSV files.
+- Runs can now inherit the results from a previous run.
+- Moved the `FigureSeparator` to `exsclaim/tool.py` along with the other tools.
+- Renamed the `Notifications` class to `Notifiers`.
 
 ### Journal
 - Updated ACS, RSC, and Wiley.
 - Moved all of the JournalFamily components to the `exsclaim.journals` submodule.
+- The journals now record the ORCID of the authors if they have one.
+- Added tests for the JournalScrapers using `pytest` and downloaded, open-source articles to test that they still work.
+
+## Other
+- All of the requirement files have been folded into `pyproject.toml`.
 
 # Version 2.5.1
 ## API
@@ -73,7 +104,7 @@
 - Added the ability to send malformed responses back to the LLM to fix, along with the error from Pydantic.
 
 ### Figures
-- Updated the type hints for some of the files in `exsclaim/figures/scale`
+- Updated the type hints for some of the files in `exsclaim/figures/scale`.
 - Added a second YOLOv11 model to find the bounding boxes of the subfigures' labels.
 
 ## Training

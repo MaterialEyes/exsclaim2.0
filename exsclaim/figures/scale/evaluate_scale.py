@@ -74,8 +74,7 @@ def create_scale_bar_objects(scale_bar_lines: list[dict], scale_bar_labels: list
 		})
 
 	# Check which labels were left unassigned
-	unassigned_labels = list(map(lambda label: label[1], filter(lambda label: label[0] not in paired_labels, enumerate(scale_bar_labels))))
-	unassigned_labels2 = [label for i, label in enumerate(scale_bar_labels) if i not in paired_labels]
+	unassigned_labels = [label for i, label in enumerate(scale_bar_labels) if i not in paired_labels]
 	return scale_bar_jsons, unassigned_labels
 
 

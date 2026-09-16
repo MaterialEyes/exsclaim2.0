@@ -147,7 +147,8 @@ class LLMUsage:
 
 
 class OptionalSemaphore(Semaphore):
-	def __init__(self, value: Optional[int] = None):
+	def __init__(self, llm: "LLM"):
+		value = llm.request_concurrency()
 		self._is_valid_value = value is not None and value > 0
 		if self._is_valid_value:
 			super().__init__(value)
@@ -184,7 +185,10 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	@staticmethod
 	@abstractmethod
-	def check_validity(model: str, api_key: Optional[str]): ...
+	def check_validity(model: str, api_key: Optional[str]):
+		"""Checks if the given model and api key are valid.
+		:raises exsclaim.exceptions.PipelineConfigError: if there's an error with the values."""
+		...
 
 	@staticmethod
 	@abstractmethod
@@ -221,14 +225,14 @@ class LLM(ABC, metaclass=LLMMeta):
 	async def parse_captions(self, caption: str) -> tuple[dict[str, str], list[str], LLMUsage]:
 		messages = [
 			ChatMessage(role="system", content=(
-				"You are an experienced material scientist. " 
-				"Please parse the given caption with the response only containing a valid JSON object that can be plugging into Pydantic's BaseModel.model_validation_json. " 
-				"Do not add any markdown wrappers or code blocks, only the raw JSON object. " 
-				"The `keywords` key should hold a list of three to five (3-5) broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. " 
-				"The `captions` key should be a list of objects, where each object holds the letter sublabel in the `label` key and the parsed subcaption in the `caption` key. " 
-				"Please include any HTML tags from the full caption in the separated caption values. " 
-				"Remove as little content as possible when splitting the subcaptions, and having duplicated content across labels is okay. " 
-				"If there is no full caption then return an object with `keywords` and `captions` being empty lists. " 
+				"You are an experienced material scientist. "
+				"Please parse the given caption with the response only containing a valid JSON object that can be plugging into Pydantic's BaseModel.model_validation_json. "
+				"Do not add any markdown wrappers or code blocks, only the raw JSON object. "
+				"The `keywords` key should hold a list of three to five (3-5) broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. "
+				"The `captions` key should be a list of objects, where each object holds the letter sublabel in the `label` key and the parsed subcaption in the `caption` key. "
+				"Please include any HTML tags from the full caption in the separated caption values. "
+				"Remove as little content as possible when splitting the subcaptions, and having duplicated content across labels is okay. "
+				"If there is no full caption then return an object with `keywords` and `captions` being empty lists. "
 				"Do not hallucinate or create content that does not exist in the provided text."
 			)),
 			ChatMessage(role="user", content=caption)
@@ -247,7 +251,7 @@ class LLM(ABC, metaclass=LLMMeta):
 	# TODO: Add deprecations to these methods
 	async def separate_captions(self, caption: str) -> dict[str, str]:
 		messages = [
-			ChatMessage(role="system", content=dedent(f"""\
+			ChatMessage(role="system", content=dedent("""\
 				Please separate the given full caption into the exact subcaptions. 
 				Duplicating content across keys is okay. 
 				If there is no full caption then return a list with an empty dictionary. 
@@ -261,7 +265,7 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	async def get_keywords(self, caption: str) -> tuple[str, ...]:
 		messages = [
-			ChatMessage(role="system", content=dedent(f"""\
+			ChatMessage(role="system", content=dedent("""\
 				You are an experienced material scientist. 
 				Summarize the text in a less than three keywords separated by comma. 
 				Do not hallucinate or create content that does not exist in the provided text:""")),

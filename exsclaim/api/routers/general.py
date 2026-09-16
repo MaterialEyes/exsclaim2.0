@@ -1,4 +1,4 @@
-from ..models import *
+from ..models import Banner, Run
 from ...config import ui_settings
 from ...db import get_db_session
 
@@ -112,17 +112,23 @@ async def openapi_yaml(request: Request) -> Response:
 		app.openapi()
 
 	schema = request.app.openapi_yaml_schema
-	return Response(schema, status_code=200, media_type="text/plain")
+	return Response(schema, status_code=200, media_type="application/yaml")
 
 
 @router.api_route("/favicon.ico", methods=["GET", "HEAD"], include_in_schema=False)
-async def favicon() -> Response:
-	return Response(status_code=status.HTTP_308_PERMANENT_REDIRECT, headers={"Location": f"{ui_settings.DASHBOARD_URL}/favicon.ico"})
+async def favicon_ico() -> Response:
+	return Response(
+		status_code=status.HTTP_308_PERMANENT_REDIRECT,
+		headers={"Location": f"{ui_settings.DASHBOARD_URL}/favicon.ico"}
+	)
 
 
 @router.api_route("/favicon.png", methods=["GET", "HEAD"], include_in_schema=False)
-async def favicon() -> Response:
-	return Response(status_code=status.HTTP_308_PERMANENT_REDIRECT, headers={"Location": f"{ui_settings.DASHBOARD_URL}/favicon.png"})
+async def favicon_png() -> Response:
+	return Response(
+		status_code=status.HTTP_308_PERMANENT_REDIRECT,
+		headers={"Location": f"{ui_settings.DASHBOARD_URL}/favicon.png"}
+	)
 
 
 @router.api_route("/swagger-dark-ui.css", methods=["GET", "HEAD"], include_in_schema=False)
@@ -131,66 +137,70 @@ async def get_dark_css() -> Response:
 
 
 @router.api_route("/swagger-dark-ui.css.map", methods=["GET", "HEAD"], include_in_schema=False)
-async def get_dark_css() -> Response:
+async def get_dark_css_map() -> Response:
 	return await get_dark_ui(True)
 
 
 @router.api_route("/healthcheck", methods=["GET", "HEAD"], tags=["System Check"], include_in_schema=False,
-		 responses={
-			 200: {
-				 "description": "API is Healthy.",
-				 "content": {
-					 "application/json": {
-						 "schema": {
-							 "type": "object",
-							 "properties": {
-								 "message": {
-									 "type": "string"
-								 },
-							 }
-						 },
-						 "example": {
-							 "message": f"EXSCLAIM! version {exsclaim.__version__} is running fine."
-						 }
-					 },
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": f"EXSCLAIM! version {exsclaim.__version__} is running fine."
-					 }
-				 }
-			 },
-			 status.HTTP_503_SERVICE_UNAVAILABLE: {
-				 "description": "API Unhealthy.",
-				 "content": {
-					 "application/json": {
-						 "schema": {
-							 "type": "object",
-							 "properties": {
-								 "message": {
-									 "type": "string"
-								 }
-							 }
-						 },
-						 "example": {
-							 "message": "The API is running but cannot connect to the database.",
-						 }
-					 },
-					 "text/plain": {
-						 "schema": {
-							 "type": "string",
-						 },
-						 "example": "The API is running but cannot connect to the database.",
-					 }
-				 }
-			 },
-		 })
+				responses={
+					200: {
+						"description": "API is Healthy.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"message": {
+											"type": "string"
+										},
+									}
+								},
+								"example": {
+									"message": f"EXSCLAIM! version {exsclaim.__version__} is running fine."
+								}
+							},
+							"text/plain": {
+								"schema": {
+									"type": "string",
+								},
+								"example": f"EXSCLAIM! version {exsclaim.__version__} is running fine."
+							}
+						}
+					},
+					status.HTTP_503_SERVICE_UNAVAILABLE: {
+						"description": "API Unhealthy.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"message": {
+											"type": "string"
+										}
+									}
+								},
+								"examples": [
+									{
+										"message": "The API is running but cannot connect to the database.",
+									}
+								]
+							},
+							"text/plain": {
+								"schema": {
+									"type": "string",
+								},
+								"examples": [
+									"The API is running but cannot connect to the database."
+								],
+							}
+						}
+					},
+				})
 async def healthcheck(request: Request) -> Response:
 	logger: logging.Logger = request.state.logger
 	try:
 		async with get_db_session() as session:
-			await session.execute(select(Results))
+			await session.execute(select(Run))
 			response = Response(f"EXSCLAIM! version {exsclaim.__version__} is running fine.",
 								status_code=status.HTTP_200_OK, media_type="text/plain")
 	except OSError as e:
@@ -311,7 +321,7 @@ def robots(request: Request) -> Response:
 async def get_banner_text(last_seen_banner: Optional[UUID] = None) -> Response:
 	async with get_db_session() as session:
 		results = await session.execute(select(Banner).order_by(Banner.created.desc()).limit(1))
-		banner: Banner = results.scalar_one_or_none()
+		banner: Optional[Banner] = results.scalar_one_or_none()
 
 	if banner is None or banner.id == last_seen_banner:
 		return HTMLResponse(status_code=status.HTTP_204_NO_CONTENT)

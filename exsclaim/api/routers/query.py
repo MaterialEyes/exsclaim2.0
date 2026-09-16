@@ -1,9 +1,10 @@
 from ...config import settings
 from ...db import get_db_session
-from ..models import Results, User, ExsclaimJSONResponse, Status, get_guest_uuid, ClassificationCodes, PreviousRunFilters, QueryTools, Query, gen_uuid7, SaveExtensions
-from .users import ActiveUser, CurrentUser
+from ..models import Run, User, ExsclaimJSONResponse, Status, get_guest_uuid, ClassificationCodes, PreviousRunFilters, QueryTools, Query, gen_uuid7, SaveExtensions
+from ..dependencies import ActiveUserId, CurrentUserId
 
 import fastapi
+import json
 import logging
 import tarfile
 
@@ -13,7 +14,6 @@ from datetime import datetime as dt
 from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
 from fastapi import Body, Depends, status
 from hashlib import sha256
-from json import dump
 from os import listdir
 from pathlib import Path
 from sqlalchemy import select, update, insert, delete
@@ -70,7 +70,7 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, logger: logging.L
 		result_code = -1
 	finally:
 		async with get_db_session() as session:
-			await session.execute(update(Results).where(Results.id == _id).values(status=db_result, end_time=dt.now()))
+			await session.execute(update(Run).where(Run.id == _id).values(status=db_result, end_time=dt.now()))
 			await session.commit()
 
 	return result_code
@@ -155,10 +155,10 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, logger: logging.L
 		}
 	}
 }, tags=["Using EXSCLAIM"])
-async def query(request: Request, search_query: Query, background_tasks: fastapi.BackgroundTasks, user: CurrentUser) -> Response:
+async def query(request: Request, search_query: Query, background_tasks: fastapi.BackgroundTasks, user_id: CurrentUserId) -> Response:
 	logger: logging.Logger = request.state.logger
 
-	send_json = request.headers.get("accept", "") == "application/json"
+	send_json = request.headers.get("accept", "").lower() == "application/json"
 	try:
 		uuid = gen_uuid7()
 		str_uuid = str(uuid)
@@ -181,14 +181,14 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			"save_format": search_query.save_format,
 			"logging": ["exsclaim.log"],
 			"notifications": search_query.notifications.model_dump(),
-			"base_run_id": str(search_query.base_run_id) if search_query is not None else None,
+			"base_run_id": str(search_query.base_run_id) if search_query.base_run_id is not None else None,
 		}
 
 		results_dir = settings.RESULTS_PATH / str_uuid
 		results_dir.mkdir(exist_ok=True, parents=True)
 		logger = request.app.logger
 		with open(results_dir / "search_query.json", "w") as f:
-			dump(exsclaim_input, f, indent='\t')
+			json.dump(exsclaim_input, f, indent='\t')
 
 		background_tasks.add_task(run_exsclaim, uuid, results_dir / "search_query.json", logger, search_query.tools)
 
@@ -202,9 +202,9 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			...  # TODO: Sanitize these user inputs
 
 		async with get_db_session() as session:
-			await session.execute(insert(Results).values(
+			await session.execute(insert(Run).values(
 				id=uuid,
-				user_id=user.id,
+				user_id=user_id,
 				search_query=db_json,
 				extension=SaveExtensions.TAR)
 			)
@@ -370,13 +370,13 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 				}
 			},
 		})
-async def status_def(request: Request, result_id: UUID, user: CurrentUser):
+async def status_def(request: Request, result_id: UUID, user_id: CurrentUserId):
 	logger: logging.Logger = request.state.logger
 	async with get_db_session() as session:
-		results = await session.execute(select(Results).where(Results.id == result_id))
-		result: Results = results.scalar_one_or_none()
+		results = await session.execute(select(Run).where(Run.id == result_id))
+		result: Run = results.scalar_one_or_none()
 
-	if not User.has_permission(user, result):
+	if not User.has_permission(user_id, result):
 		return ExsclaimJSONResponse({
 			"results_status": "Not Found",
 			"message": f"There is no query recorded in our database with id: {result_id}."
@@ -400,7 +400,7 @@ async def status_def(request: Request, result_id: UUID, user: CurrentUser):
 			return ExsclaimJSONResponse(dict(message="An unknown results_status was saved in our database. Try again later."),
 						 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="application/json")
 
-	json = dict(
+	info = dict(
 		status=f"{results_status}.",
 		start_time=start_time,
 		end_time=end_time,
@@ -411,16 +411,16 @@ async def status_def(request: Request, result_id: UUID, user: CurrentUser):
 	if results_status == Status.FINISHED:
 		headers = {"Location": f"/results/{result_id}"}
 
-	return ExsclaimJSONResponse(json, status_code=status_code, media_type="application/json", headers=headers)
+	return ExsclaimJSONResponse(info, status_code=status_code, media_type="application/json", headers=headers)
 
 
 @router.api_route("/stop/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
-async def stop_run(result_id: UUID, user: CurrentUser):
+async def stop_run(result_id: UUID, user_id: CurrentUserId):
 	async with get_db_session() as session:
-		results = await session.execute(select(Results).where(Results.id == result_id))
-		result: Results = results.scalar_one_or_none()
+		results = await session.execute(select(Run).where(Run.id == result_id))
+		result: Run = results.scalar_one_or_none()
 
-	if result.user_id != user.id:
+	if result.user_id != user_id:
 		return ExsclaimJSONResponse({
 			"status": "Not Found",
 			"message": f"There is no query recorded in our database with id: {result_id}."
@@ -528,13 +528,13 @@ async def stop_run(result_id: UUID, user: CurrentUser):
 		}
 	},
 })
-async def download(request: Request, result_id: UUID, user: CurrentUser, compression: str = "default",
+async def download(request: Request, result_id: UUID, user_id: CurrentUserId, compression: str = "default",
                    filename: Literal["name", "id"] = "id", tmp_dir_name: str = Depends(get_temp_dir)) -> Response:
 	async with get_db_session() as session:
-		results = await session.execute(select(Results).where(Results.id == result_id))
-		result: Results = results.scalar_one_or_none()
+		results = await session.execute(select(Run).where(Run.id == result_id))
+		result: Run = results.scalar_one_or_none()
 
-	if not User.has_permission(user, result):
+	if not User.has_permission(user_id, result):
 		return Response(f"There is no query recorded in our database with id: {result_id}.", status_code=status.HTTP_404_NOT_FOUND,
 		                media_type="text/plain")
 
@@ -605,19 +605,19 @@ async def download(request: Request, result_id: UUID, user: CurrentUser, compres
 
 
 @router.delete("/results/{result_id}", tags=["Using EXSCLAIM"])
-async def delete_results(result_id: UUID, user: CurrentUser) -> Response:
+async def delete_results(result_id: UUID, user_id: CurrentUserId) -> Response:
 	async with get_db_session() as session:
-		results = await session.execute(select(Results).where(Results.id == result_id))
-		result: Results = results.scalar_one_or_none()
+		results = await session.execute(select(Run).where(Run.id == result_id))
+		result: Run = results.scalar_one_or_none()
 
-		if result is None or not User.has_permission(user, result):
+		if result is None or not User.has_permission(user_id, result):
 			return JSONResponse(dict(detail=f"There is no query recorded in our database with id: {result_id}.", result_id=str(result_id)),
 								status_code=status.HTTP_404_NOT_FOUND)
 		if result.user_id == get_guest_uuid():
 			return JSONResponse(dict(detail="Runs started by guest users (anonymous/not logged in) cannot be deleted."),
 								status_code=status.HTTP_401_UNAUTHORIZED)
 
-		await session.execute(delete(Results).where(Results.id == result_id))
+		await session.execute(delete(Run).where(Run.id == result_id))
 	return JSONResponse(dict(detail="Run deleted", result_id=str(result_id)), status_code=status.HTTP_200_OK)
 
 
@@ -625,14 +625,14 @@ STARTED_BACKING_UP_LOGS = dt(2026, 7, 8, 9, 30, tzinfo=ZoneInfo("America/Chicago
 
 
 @router.api_route("/results/{result_id}/logs", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
-async def download_logs(request: Request, result_id: UUID, user: CurrentUser):
+async def download_logs(request: Request, result_id: UUID, user_id: CurrentUserId):
 	logger = request.state.logger
 
 	async with get_db_session() as session:
-		results = await session.execute(select(Results).where(Results.id == result_id))
-		result: Optional[Results] = results.scalar_one_or_none()
+		results = await session.execute(select(Run).where(Run.id == result_id))
+		result: Optional[Run] = results.scalar_one_or_none()
 
-	if result is None or not User.has_permission(user, result):
+	if result is None or not User.has_permission(user_id, result):
 		return Response(f"There is no query recorded in our database with id: {result_id}.",
 		                status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
@@ -672,12 +672,12 @@ async def download_logs(request: Request, result_id: UUID, user: CurrentUser):
 
 
 @router.api_route("/results/{result_id}/publicize", methods=["POST", "HEAD"], tags=["Using EXSCLAIM"])
-async def publicize_result(result_id: UUID, user: ActiveUser, publicize: bool = Body(...)):
+async def publicize_result(result_id: UUID, user_id: ActiveUserId, publicize: bool = Body(...)):
 	async with get_db_session() as session:
-		results = await session.execute(select(Results).where(Results.id == result_id))
-		results: Optional[Results] = results.scalar_one_or_none()
+		results = await session.execute(select(Run).where(Run.id == result_id))
+		results: Optional[Run] = results.scalar_one_or_none()
 
-		if results is None or results.user_id != user.id:
+		if results is None or results.user_id != user_id:
 			return Response(f"There is no query recorded in our database with id: {result_id}.",
 							status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
@@ -689,7 +689,7 @@ async def publicize_result(result_id: UUID, user: ActiveUser, publicize: bool = 
 			return Response(f"Publicization status for {result_id} is already {publicize}.",
 							status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
 
-		await session.execute(update(Results).where(Results.id == result_id).values(publicize_results=publicize))
+		await session.execute(update(Run).where(Run.id == result_id).values(publicize_results=publicize))
 	return Response("Publicization status updated.", status_code=status.HTTP_200_OK, media_type="text/plain")
 
 
@@ -768,7 +768,7 @@ async def publicize_result(result_id: UUID, user: ActiveUser, publicize: bool = 
 	}
 		 })
 async def get_possible_compressions(request: Request, compression_type: Optional[str] = None) -> Response:
-	send_json = request.headers.get("accept", "") == "application/json"
+	send_json = request.headers.get("accept", "").lower() == "application/json"
 	compression_types = frozenset(map(lambda i: i[0], get_archive_formats()))
 
 	if compression_type is None: # TODO: Add E-Tag header for compression types
@@ -820,21 +820,21 @@ async def download_checkpoint(checkpoint: str) -> Response:
 
 
 @router.api_route("/previous_runs", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
-async def previous_runs(user: CurrentUser, conditions: Annotated[PreviousRunFilters, fastapi.Query()]) -> JSONResponse:
+async def previous_runs(user_id: CurrentUserId, conditions: Annotated[PreviousRunFilters, fastapi.Query()]) -> JSONResponse:
 	query = dedent(f"""
 		SELECT {conditions.selection} FROM (
 			SELECT
 				r.id, r.status, r.search_query->>'name' AS name, r.search_query->'query'->'search_field_1'->'term' AS term,
 				r.start_time, r.end_time, COALESCE(r.end_time, NOW()) - r.start_time AS run_time,
 				(r.search_query->>'maximum_scraped')::INT AS max_articles,
-				(SELECT COUNT(*) AS num_articles FROM results.article a WHERE a.run_id = r.id) AS num_articles,
+				(SELECT COUNT(article_id) AS num_articles FROM results.run_articles a WHERE a.run_id = r.id) AS num_articles,
 				(SELECT COUNT(*) AS num_figures FROM results.subfigure s WHERE s.run_id = r.id) AS num_figures
-			FROM results.results r
+			FROM results.runs r
 			WHERE r.user_id = :user_id
 		) r
 	""")
 
-	params = dict(user_id=user.id)
+	params = dict(user_id=user_id)
 	filter_clause = ""
 
 	if conditions is not None:
@@ -844,7 +844,6 @@ async def previous_runs(user: CurrentUser, conditions: Annotated[PreviousRunFilt
 
 	async with get_db_session() as session:
 		query = f"{query} {filter_clause} ORDER BY r.start_time DESC;"
-		# print(f"{query=}\n{params=}", flush=True)
 		results = await session.execute(text(query), params=params)
 		runs = results.fetchall()
 

@@ -22,7 +22,7 @@ def layout() -> html.Div:
 		from exsclaim.dashboard.components.common import create_header_component, create_footer_component
 		from exsclaim.dashboard.components.query import create_query_component, get_llms
 
-	available_llms, show_api_key, requires_api_key = get_llms()
+	available_llms, *_ = get_llms()
 	return html.Div([
 		# Header
 		create_header_component(),

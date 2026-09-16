@@ -145,12 +145,12 @@ class LlamaCPP(OpenAI):
 				response = client.get("/v1/models")
 			except httpx2.ConnectError as e:
 				if silent_fail:
-					logging.error(f"Could not connect to Llama.cpp. This may cause issues down the line if Llama.cpp LLMs are required.", exc_info=e)
+					logging.error("Could not connect to Llama.cpp. This may cause issues down the line if Llama.cpp LLMs are required.", exc_info=e)
 					return ()
 				raise httpx2.ConnectError(f"Could not connect to Llama.cpp server to retrieve the models: {e}") from e
 
 			if silent_fail and not response.is_success:
-				logging.error(f"Could not connect to Llama.cpp. This may cause issues down the line if Llama.cpp LLMs are required.")
+				logging.error("Could not connect to Llama.cpp. This may cause issues down the line if Llama.cpp LLMs are required.")
 				return ()
 
 			response.raise_for_status()
@@ -175,7 +175,7 @@ class LlamaCPP(OpenAI):
 		raise ValueError(f"Could not find ID for input {self.model}.")
 
 	async def listen_to_events(self, endpoint: Literal["load", "unload"], message_filter: Callable[[dict], bool], logger=None,
-							   timeout: int | float = 120, additional_headers: Optional[dict] = None) -> bool:
+							   timeout: int | float = 300, additional_headers: Optional[dict] = None) -> bool:
 		"""
 
 		:param logging.Logger | None logger:
@@ -234,7 +234,7 @@ class LlamaCPP(OpenAI):
 
 							case "done":
 								if logger is not None:
-									logger.info(f"Server side events finished before matching event was sent.")
+									logger.info("Server side events finished before matching event was sent.")
 								return False
 
 							case "model_status":
@@ -257,7 +257,7 @@ class LlamaCPP(OpenAI):
 			return False
 		except httpx2.TimeoutException as e:
 			if logger is not None:
-				logger.info(f"Could not connect to server side events to see when the LLM was fully loaded.", exc_info=e)
+				logger.info("Could not connect to server side events to see when the LLM was fully loaded.", exc_info=e)
 			return False
 
 	async def load(self, logger=None, num_captions: Optional[int] = None) -> bool:

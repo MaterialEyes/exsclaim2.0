@@ -213,12 +213,14 @@ async def launch(args=None):
 	query_subparser.add_argument("--caption_distributor", "--caption", "-cd", action="store_true")
 	query_subparser.add_argument("--figure_separator", "--figure", "-fs", action="store_true")
 	query_subparser.add_argument("--html_scraper", "-hs", action="store_true")
-	query_subparser.add_argument("--compress", "-c", choices=["zip", "tar", "gztar", "bztar", "xztar"], help="Compress the search results into a tar.gz file to save space. Deletes the original folder after compression.")
+	query_subparser.add_argument("--compress", "-c", choices=["zip", "tar", "gztar", "bztar", "xztar"],
+								 help="Compress the search results into a tar.gz file to save space. Deletes the original folder after compression.")
 	query_subparser.add_argument("--compress_location", "-cl", help="The location where the compressed search results will be stored.")
 	query_subparser.add_argument("--verbose", "-v", action="store_true")
 
 	view_subparser = subparsers.add_parser("ui", help="View search results from EXSCLAIM!")
-	view_subparser.add_argument("-dc", "--dashboard_configuration", help="The path to the gunicorn configuration file for the dashboard. Example at https://github.com/benoitc/gunicorn/blob/bacbf8aa5152b94e44aa5d2a94aeaf0318a85248/examples/example_config.py")
+	view_subparser.add_argument("-dc", "--dashboard_configuration",
+								help="The path to the gunicorn configuration file for the dashboard. Example at https://github.com/benoitc/gunicorn/blob/bacbf8aa5152b94e44aa5d2a94aeaf0318a85248/examples/example_config.py")
 	view_subparser.add_argument("-ac", "--api_configuration", help="The path to the gunicorn configuration file for the api.")
 	view_subparser.add_argument("-B", "--blocking", action="store_true", help="If the program should wait for the subprocesses to finish before closing.")
 	view_subparser.add_argument("-p", "--pid-folder", type=Path, help="The path to the folder where the pid files are stored. Default is /tmp if it exists, else None.")
@@ -227,24 +229,34 @@ async def launch(args=None):
 	results_subparsers.add_argument("json", help="The path to the `exsclaim.json` file.")
 
 	train_subparser = subparsers.add_parser("train", help="Train a new YOLOv11 model.")
-	train_subparser.add_argument("-fi", "--figures_input_model", default=None, help="The path to the detection YOLOv11 model that is being used to train the subfigure coordinate finder.")
-	train_subparser.add_argument("-fo", "--figures_output_model", default=None, help="The path where the refined model should be saved.")
+	train_subparser.add_argument("-fi", "--figures_input_model", default=None,
+								 help="The path to the detection YOLOv11 model that is being used to train the subfigure coordinate finder.")
+	train_subparser.add_argument("-fo", "--figures_output_model", default=None,
+								 help="The path where the refined model should be saved.")
 	train_subparser.add_argument("-fn", "--detector_name", default=None, help="The name of the detector.")
-	train_subparser.add_argument("-li", "--labels_input_model", default=None, help="The path to the detection YOLOv11 model that is being used to train the label coordinate finder.")
-	train_subparser.add_argument("-lo", "--labels_output_model", default=None, help="The path where the refined model should be saved.")
+	train_subparser.add_argument("-li", "--labels_input_model", default=None,
+								 help="The path to the detection YOLOv11 model that is being used to train the label coordinate finder.")
+	train_subparser.add_argument("-lo", "--labels_output_model", default=None,
+								 help="The path where the refined model should be saved.")
 	train_subparser.add_argument("-ln", "--labels_name", default=None, help="The name of the detector.")
-	train_subparser.add_argument("-ci", "--classification_input_model", default=None, help="The path to the classification YOLOv11 model that is being used to train.")
-	train_subparser.add_argument("-co", "--classification_output_model", default=None, help="The path where the refined model should be saved.")
+	train_subparser.add_argument("-ci", "--classification_input_model", default=None,
+								 help="The path to the classification YOLOv11 model that is being used to train.")
+	train_subparser.add_argument("-co", "--classification_output_model", default=None,
+								 help="The path where the refined model should be saved.")
 	train_subparser.add_argument("-cn", "--classifier_name", default=None, help="The name of the classifier.")
 	train_subparser.add_argument("-ts", "--test_size", default=0.1, help="The size of the test set.")
 	train_subparser.add_argument("-r", "--random_state", type=int, default=42, help="The random state to use.")
 	train_subparser.add_argument("-d", "--dataset_dir", default=None, help="The path to the dataset directory.")
 	train_subparser.add_argument("-p", "--project", default=None, help="The name of the wandb project.")
 
-	dataset_subparser = subparsers.add_parser("upload_training_data", help="Uploads training data instances to a HuggingFace dataset.")
-	dataset_subparser.add_argument("json", help="The path to the training data json downloaded from the EXSCLAIM site.", type=Path),
-	dataset_subparser.add_argument("-f", "--figure_dataset", help="The repo id of the dataset where the figure information should be stored.")
-	dataset_subparser.add_argument("-c", "--caption_dataset", help="The repo id of the dataset where the caption information should be stored.")
+	dataset_subparser = subparsers.add_parser("upload_training_data",
+											  help="Uploads training data instances to a HuggingFace dataset.")
+	dataset_subparser.add_argument("json", type=Path,
+								   help="The path to the training data json downloaded from the EXSCLAIM site."),
+	dataset_subparser.add_argument("-f", "--figure_dataset",
+								   help="The repo id of the dataset where the figure information should be stored.")
+	dataset_subparser.add_argument("-c", "--caption_dataset",
+								   help="The repo id of the dataset where the caption information should be stored.")
 	group = dataset_subparser.add_mutually_exclusive_group()
 	group.add_argument("-o", "--prioritize_old_data", action="store_true",
 	                   help="If there is a collision between the current dataset and the new dataset, the data in the old dataset with the same conflicting IDs will be kept.")

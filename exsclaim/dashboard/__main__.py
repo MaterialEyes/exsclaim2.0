@@ -14,7 +14,6 @@ import flask
 import logging
 
 from datetime import datetime as dt, timezone as tz
-from dash import Dash, html, dcc
 from textwrap import dedent
 from typing import Optional
 from pathlib import Path
@@ -71,7 +70,7 @@ def create_sitemap() -> str:
 	return sitemap
 
 
-def get_app() -> Dash:
+def get_app() -> dash.Dash:
 	global logger, app
 
 	logger = create_logger(ui_settings)
@@ -91,7 +90,7 @@ def get_app() -> Dash:
 				{"property": "og:image:height", "content": str(height)},
 			])
 
-	app = Dash(
+	app = dash.Dash(
 		title,
 		title=title,
 		on_error=error_handler,
@@ -111,12 +110,12 @@ def get_app() -> Dash:
 	fastapi_url = ui_settings.FAST_API_URL
 	public_fastapi_url = ui_settings.PUBLIC_API_URL
 
-	app.layout = html.Div([
-		dcc.Interval(
+	app.layout = dash.html.Div([
+		dash.dcc.Interval(
 			id="check-credentials",
 			interval=300_000 # Check every 5 minutes
 		),
-		dcc.Store(
+		dash.dcc.Store(
 			id="storage",
 			storage_type="local",
 			data=dict(
@@ -124,7 +123,7 @@ def get_app() -> Dash:
 				last_seen_banner=None
 			)
 		),
-		dcc.Store(
+		dash.dcc.Store(
 			id="exsclaim-store",
 			storage_type="memory",
 			data=dict(
@@ -134,7 +133,7 @@ def get_app() -> Dash:
 				required_api_key=required_api_key,
 				public_fastapi_url=public_fastapi_url
 			)),
-		dcc.Location(id="url", refresh=False),
+		dash.dcc.Location(id="url", refresh=False),
 		dash.page_container
 	])
 	server.sitemap = create_sitemap()

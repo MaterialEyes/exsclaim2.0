@@ -2,14 +2,15 @@
 
 ### Usage
 
-The test suite is divided into validity tests and accuracy tests. The validity tests check whether the code returns correct responses in certain situations. The accuracy tests check how accurate the models used in the pipeline are against certain ground truth, known results.
-
-To run validity tests from the exsclaim/ directory:
+The test suite is divided into unit tests and integration tests.
+The unit tests test individual methods to make sure they work; integrations tests check that entire sections of code are working properly.
+To run the tests, run
+```shell
+pytest tests
 ```
-python3 -m unittest
+from the [root directory](../) of the repository,
+or run
+```shell
+pytest
 ```
-
-To run accuracy tests:
-```
-python -m unittest discover -p "*test.py"
-```
+within this folder.

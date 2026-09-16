@@ -1,7 +1,7 @@
 # Acquired from https://github.com/pytorch/vision/tree/master/references/detection
-from copy import deepcopy
 import os
 
+import copy
 import torch
 import torch.utils.data
 from torchvision.datasets import CocoDetection
@@ -25,7 +25,7 @@ class FilterAndRemapCocoCategories(object):
         if not self.remap:
             target["annotations"] = anno
             return image, target
-        anno = deepcopy(anno)
+        anno = copy.deepcopy(anno)
         for obj in anno:
             obj["category_id"] = self.categories.index(obj["category_id"])
         target["annotations"] = anno

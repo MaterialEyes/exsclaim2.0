@@ -12,7 +12,7 @@ from re import compile
 from typing import Optional
 
 
-name_regex = compile(r"^[\w_\-]+$")
+name_regex = compile(r"^[\w_\- ]+$")
 
 
 def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool], dict[str, bool]]:
@@ -42,7 +42,7 @@ def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool], dict[
 def create_query_component(available_llms, debounce=True):
 	"""
 	Create the main query form component.
-	
+
 	Args:
 		available_llms (dict[str, dict[str, str | bool]]): List of available LLM models
 
@@ -125,7 +125,9 @@ def create_query_component(available_llms, debounce=True):
 				dbc.Col(width=6, children=[
 					create_ntfy_component(),
 				]),
-				dbc.Col(width=6, children=[]),
+				dbc.Col(width=6, children=[
+					create_webhooks_component(debounce=debounce),
+				]),
 			]),
 			],
 			id="advanced-options",
@@ -145,7 +147,7 @@ def create_output_name_component(debounce=True):
 	"""Create output name input component."""
 	return html.Div([
 		dbc.Tooltip(
-			"Allowed characters: letters, numbers, '-', '_'.",
+			"Allowed characters: letters, numbers, '-', '_', and spaces.",
 			id="output-name-tooltip",
 			target="output-name",
 			is_open=False,
@@ -157,7 +159,7 @@ def create_output_name_component(debounce=True):
 		dbc.Input(
 			id="output-name",
 			type="text",
-			pattern=r"[\w_\-]+",
+			pattern=r"[\w_\- ]+",
 			placeholder="Enter output file name...",
 			className="form-control",
 			debounce=debounce,
@@ -390,7 +392,7 @@ def create_model_component(available_llms, debounce=True):
 
 
 def create_save_methods_component():
-	"""Create save_methods component."""
+	"""Creates the save methods options component."""
 	methods = (
 		dict(label="Subfigures", value="subfigures"),
 		dict(label="Visualization", value="visualization"),
@@ -453,7 +455,7 @@ def create_ntfy_component(debounce=True):
 		),
 		dbc.Input(
 			id="ntfy-url",
-			type="text",
+			type="url",
 			placeholder="https://ntfy.sh/exsclaim",
 			className="form-control",
 			required=False,
@@ -482,6 +484,24 @@ def create_ntfy_component(debounce=True):
 			placeholder="3",
 			max=5,
 			min=1,
+			className="form-control",
+			required=False,
+			debounce=debounce
+		)
+	], className="mb-3")
+
+
+def create_webhooks_component(debounce=True):
+	"""Creates the components that would correspond to Webhook urls."""
+	return html.Div([
+		dbc.Label(
+			"Webhook URL:",
+			html_for="webhook-url",
+		),
+		dbc.Input(
+			id="webhook-url",
+			type="url",
+			placeholder="Webhook URL",
 			className="form-control",
 			required=False,
 			debounce=debounce
@@ -666,6 +686,7 @@ clientside_callback(
 		State("save-methods", "value"),
 		State("ntfy-url", "value"),
 		State("ntfy-priority", "value"),
+		State("webhook-url", "value"),
 	],
 	prevent_initial_call=True
 )

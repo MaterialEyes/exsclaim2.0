@@ -1,6 +1,7 @@
 from __future__ import division
 
 from typing import NamedTuple
+
 import cv2
 import numpy as np
 import torch
@@ -18,7 +19,7 @@ class ImageInfo(NamedTuple):
 	dy: int
 
 
-def label2yolobox(labels:np.ndarray, info_img:ImageInfo, maxsize:int, lrflip:bool) -> np.ndarray:
+def label2yolobox(labels: np.ndarray, info_img: ImageInfo, maxsize: int, lrflip: bool) -> np.ndarray:
 	"""
 	Transform coco labels to yolo box labels
 	Args:
@@ -58,7 +59,7 @@ def label2yolobox(labels:np.ndarray, info_img:ImageInfo, maxsize:int, lrflip:boo
 	return labels
 
 
-def yolobox2label(box, info_img:ImageInfo):
+def yolobox2label(box: list, info_img: ImageInfo):
 	"""
 	Transform yolo box labels to yxyx box labels.
 	Args:
@@ -133,7 +134,7 @@ def nms(bbox: np.ndarray, thresh: float, score: np.ndarray = None, limit: int = 
 	return selec.astype(np.int32)
 
 
-def postprocess(prediction:torch.Tensor, dtype, conf_thres:float = 0.7, nms_thres:float = 0.45) -> list[torch.Tensor]:
+def postprocess(prediction: torch.Tensor, dtype, conf_thres: float = 0.7, nms_thres: float = 0.45) -> list[torch.Tensor]:
 	"""
 	Postprocess for the output of YOLO model
 	perform box transformation, specify the class for each detection,
@@ -200,7 +201,7 @@ def postprocess(prediction:torch.Tensor, dtype, conf_thres:float = 0.7, nms_thre
 	return output
 
 
-def preprocess_mask(mask:np.ndarray, imgsize:int, info_img:ImageInfo):
+def preprocess_mask(mask: np.ndarray, imgsize: int, info_img: ImageInfo):
 	h, w, nh, nw, dx, dy = info_img
 	sized = np.ones((imgsize, imgsize, 1), dtype=np.uint8) * 127
 	mask = cv2.resize(mask, (nw, nh))
@@ -209,7 +210,7 @@ def preprocess_mask(mask:np.ndarray, imgsize:int, info_img:ImageInfo):
 	return sized
 
 
-def preprocess(img:np.ndarray, imgsize:int, jitter:float, random_placing:bool = False) -> tuple[np.ndarray, ImageInfo]:
+def preprocess(img: np.ndarray, imgsize: int, jitter: float, random_placing: bool = False) -> tuple[np.ndarray, ImageInfo]:
 	"""
 	Image preprocess for yolo input
 	Pad the shorter side of the image and resize to (imgsize, imgsize)
