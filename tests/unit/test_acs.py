@@ -1,6 +1,7 @@
 import logging
 
-from exsclaim import ACS, DynamicHtml, Author
+from exsclaim.journals import ACS, DynamicHtml
+from exsclaim.db import Author
 from typing import Any
 from unidecode import unidecode # Converts Unicode characters to their closest ASCII equivalent, which helps pass the author even if it's a different character used
 

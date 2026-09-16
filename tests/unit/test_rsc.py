@@ -1,6 +1,7 @@
 import logging
 
-from exsclaim import RSC, Author
+from exsclaim.db import Author
+from exsclaim.journals import RSC
 from typing import Any
 from unidecode import unidecode # Converts Unicode characters to their closest ASCII equivalent, which helps pass the author even if it's a different character used
 

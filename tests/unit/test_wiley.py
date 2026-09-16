@@ -1,6 +1,7 @@
 import logging
 
-from exsclaim import Wiley, Author
+from exsclaim.db import Author
+from exsclaim.journals import Wiley
 from typing import Any
 from unidecode import unidecode # Converts Unicode characters to their closest ASCII equivalent, which helps pass the author even if it's a different character used
 
