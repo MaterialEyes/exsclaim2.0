@@ -53,6 +53,23 @@ To use Docker Compose to host the service, run the following commands in the bas
 docker compose up --build python
 ```
 
+## Upgrading the Database
+Starting with version 2.5.3, EXSCLAIM will be using [Alembic](https://alembic.sqlalchemy.org/en/latest/index.html) to easily upgrade the schema of the database.
+If you have a version of the database existing before this change, you can run
+```shell
+alembic stamp 751d7ac35cd2
+```
+to have alembic recognize that the database already has a history, then run
+```shell
+alembic upgrade head
+```
+to update the database.
+With future versions, you can then run
+```shell
+alembic upgrade head
+```
+to update to the proper schema.
+
 ## Acknowledgements
 This material is based upon work supported by Laboratory Directed Research and Development (LDRD) funding from Argonne National Laboratory, provided by the Director, Office of Science, of the U.S. Department of Energy under Contract No. DE-AC02-06CH11357
 

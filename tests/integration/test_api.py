@@ -151,7 +151,7 @@ def test_user_methods(client: TestClient, name: Optional[str] = None, email: Opt
 
 	response = client.get("/user/name")
 	assert response.status_code == 200, f"Could not get username: {response.text}"
-	assert check_username(response, new_username), f"Updating the username didn't work"
+	assert check_username(response, new_username), "Updating the username didn't work."
 
 	# Create account with previously used email
 	response = client.post("/user/create_user", json=create_user_info)

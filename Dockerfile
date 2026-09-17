@@ -5,7 +5,6 @@ LABEL authors="Len Washington III"
 # This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
 ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
 ARG DEBIAN_FRONTEND=noninteractive
-ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
 
 ENV CUDA_LAUNCH_BLOCKING=1
 

@@ -16,7 +16,7 @@ import sqlalchemy.ext.asyncio as sql_async
 import sqlalchemy.dialects.postgresql as sa_psql
 
 
-__all__ = ["async_engine", "Database", "get_db_session"]
+__all__ = ["async_engine", "Database", "get_db_session", "PostgresSettings"]
 
 
 class PostgresSettings(BaseSettings):

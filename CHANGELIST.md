@@ -7,6 +7,7 @@
   - Figures will only have a foreign key to the `results.article` table, and subfigure will have a foreign key to both the `result.figure` and `result.runs` table.
 - Added relationships to the SQLModels so it's easier to get related items in the code (getting all articles for a given run).
 - Moved `exsclaim.api.models.{SaveExtensions,Status,User}` to `exsclaim.db.models`.
+- Alembic is now used to switch between schema versions.
 
 ## API
 - Updated the OpenAPI specifications.
