@@ -8,7 +8,7 @@ from datetime import datetime as dt, timezone as tz
 from enum import StrEnum
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sys import version_info
-from typing import Optional
+from typing import Annotated, Optional
 from uuid import UUID
 
 __all__ = ["Author", "ORCID_REGEX", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel", "ScaleLabel",
@@ -62,6 +62,9 @@ class Status(StrEnum):
 # language=PythonRegExp
 ORCID_REGEX_STRING = r"([\dX]{4}-[\dX]{4}-[\dX]{4}-[\dX]{4})"
 ORCID_REGEX = re.compile(ORCID_REGEX_STRING)
+
+ORCID_TYPE = Annotated[Optional[str], pydantic.StringConstraints(pattern=ORCID_REGEX_STRING)]
+"""A temporary fix while SQLModel is missing the pattern kwarg."""
 
 
 class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
@@ -117,10 +120,10 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 		)
 	)
 
-	orcid: Optional[str] = sqlmodel.Field(
+	orcid: ORCID_TYPE = sqlmodel.Field(
 		description="The ORCID id associated with the user's login.",
-		pattern=ORCID_REGEX,
-		# regex=ORCID_REGEX,
+		regex=ORCID_REGEX,
+		# pattern=ORCID_REGEX,
 		sa_column=sqlalchemy.Column(
 			sa_psql.CHAR(19),
 			sqlalchemy.CheckConstraint(f"orcid ~ '{ORCID_REGEX_STRING}'"),
@@ -297,11 +300,11 @@ class Author(AsyncAttrs, sqlmodel.SQLModel, table=True):
 		)
 	)
 
-	orcid: Optional[str] = sqlmodel.Field(
+	orcid: ORCID_TYPE = sqlmodel.Field(
 		default=None,
 		description="The author's ORCID iD, if available.",
-		# regex=ORCID_REGEX,
-		pattern=ORCID_REGEX,
+		regex=ORCID_REGEX,
+		# pattern=ORCID_REGEX,
 		sa_column=sqlalchemy.Column(
 			sa_psql.CHAR(19),
 			sqlalchemy.CheckConstraint(f"orcid ~ '{ORCID_REGEX_STRING}'"),
