@@ -293,13 +293,14 @@ async def launch(args=None):
 	return exit_code
 
 
-async def main(args=None):
-	exit_code = launch(args)
+def main(args=None):
+	import asyncio
+
+	exit_code = asyncio.run(launch(args))
 
 	if isinstance(exit_code, int):
 		exit(exit_code)
 
 
 if __name__ == "__main__":
-	import asyncio
-	asyncio.run(main())
+	main()

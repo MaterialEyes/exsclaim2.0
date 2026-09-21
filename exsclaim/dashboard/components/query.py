@@ -365,7 +365,10 @@ def create_model_component(available_llms, debounce=True):
 	elif "Ollama" in available_llms and len(available_llms["Ollama"]) > 0:
 		default_llm = available_llms["Ollama"][0]["model_name"]
 	else:
-		default_llm = options[0]["value"]
+		if len(options) == 0:
+			default_llm = None
+		else:
+			default_llm = options[0]["value"]
 
 	return html.Div([
 		dbc.Label("Model *", html_for="model-select"),
