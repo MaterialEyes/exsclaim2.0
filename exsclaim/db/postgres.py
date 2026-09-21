@@ -349,3 +349,30 @@ class Database:
 			if not len(existing_codes):
 				session.add_all(classification_codes)
 				await session.commit()
+
+	@staticmethod
+	def run_alembic():
+		from ..version import Version
+
+		from alembic import command
+		from alembic.config import Config
+		from itertools import pairwise
+
+		current_version = Version()
+
+		alembic_revision_loopkup = {
+			Version("2.5.3"): "3924f9a632d1"
+		}
+
+		directory = Path(__file__).parent.resolve()
+		alembic_cfg = Config(directory / "alembic.ini")
+		alembic_cfg.set_main_option("script_location", str(directory.parent / "alembic"))
+		alembic_cfg.set_main_option("sqlalchemy.url", PostgresSettings().connection_string)
+
+		keys = tuple(alembic_revision_loopkup.keys())
+		for version1, version2 in pairwise(keys):
+			if version1 <= current_version < version2:
+				command.upgrade(alembic_cfg, alembic_revision_loopkup[version1])
+				break
+		else:
+			command.upgrade(alembic_cfg, alembic_revision_loopkup[keys[-1]])

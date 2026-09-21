@@ -1,7 +1,7 @@
 UV := $(shell which uv)
 VENV_DIR := $(shell pwd)/build/venv/bin
 PYTHON := $(VENV_DIR)/python
-EXSCLAIM_VERSION := $(shell cat exsclaim/version.py | sed 's/[^0-9.b]//g')
+EXSCLAIM_VERSION := $(shell grep -oP "^version = \K(['\"]\\d+\\.\\d+\\.\\d+(b\\d+)?)['\"]" exsclaim/version.py | sed 's/[^0-9.b]//g')
 ifeq ($(UV),)
 	# UV isn't installed
 	PY := $(shell python3 -c "from sys import executable as ex; print(ex)" || python -c "from sys import executable as ex; print(ex)")

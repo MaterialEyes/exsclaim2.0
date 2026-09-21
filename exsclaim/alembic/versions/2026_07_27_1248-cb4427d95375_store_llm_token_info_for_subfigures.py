@@ -8,7 +8,6 @@ Original Implementation Date: 2026-07-27
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
@@ -35,6 +34,8 @@ def upgrade() -> None:
 					ADD COLUMN caption_output_tokens INT DEFAULT NULL;
                """)
 
+    op.execute("DROP TABLE IF EXISTS users.session")
+
 
 def downgrade() -> None:
     """Downgrade schema."""
@@ -46,3 +47,11 @@ def downgrade() -> None:
 					DROP COLUMN caption_input_tokens,
 					DROP COLUMN caption_output_tokens;
                """)
+
+    op.execute("""CREATE TABLE users.sessions(
+					"user" UUID REFERENCES users(id),
+					key UUID NOT NULL PRIMARY KEY,
+					salt BYTEA NOT NULL,
+					created TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+					expiration TIMESTAMP WITH TIME ZONE DEFAULT NOW() + '7 DAYS'::INTERVAL
+                  );""")

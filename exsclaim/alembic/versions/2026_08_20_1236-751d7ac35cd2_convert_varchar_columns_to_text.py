@@ -26,6 +26,7 @@ def upgrade() -> None:
                         ALTER COLUMN name SET DATA TYPE TEXT,
                         ALTER COLUMN email SET DATA TYPE TEXT,
                         ALTER COLUMN orcid SET DATA TYPE CHAR(19),
+                        DROP CONSTRAINT IF EXISTS users_orcid_check,
                         ADD CONSTRAINT users_orcid_check CHECK ( orcid ~ '([\dX]{4}-[\dX]{4}-[\dX]{4}-[\dX]{4})'::TEXT );
                """)
 

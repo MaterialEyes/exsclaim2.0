@@ -13,37 +13,8 @@ permissions:
     contents: read
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
-        steps:
-            -   uses: actions/checkout@v6
-            -   name: Set up Python 3.14
-                uses: actions/setup-python@v5
-                with:
-                    python-version: "3.14"
-            -   name: Install UV
-                uses: astral-sh/setup-uv@v10.1.0
-                with:
-                    python-version: "3.14"
-                    enable-cache: true
-            -   name: Install dependencies
-                run: |
-                    uv pip install --system --system-certs flake8 pytest build
-                    
-                    uv pip install --system --system-certs -r pyproject.toml --extra test --cache-dir=/tmp/pip
-                    
-                    playwright install chromium
-            -   name: Build a binary wheel and a source tarball
-                run: python3 -m build
-            -   name: Store the distribution packages
-                uses: actions/upload-artifact@v6.0.0
-                with:
-                    name: python-package-distributions
-                    path: dist/
     test:
         runs-on: ubuntu-latest
-        needs:
-            - build
         services:
             postgres:
                 image: postgres:18
@@ -90,13 +61,19 @@ jobs:
                   POSTGRES_PORT: 5432
               run: |
                   pytest tests
+            -   name: Build a binary wheel and a source tarball
+                run: python3 -m build
+            -   name: Store the distribution packages
+                uses: actions/upload-artifact@v6.0.0
+                with:
+                    name: python-package-distributions
+                    path: dist/
 
     pypi-publish:
         name: Upload to PyPI
         if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref, 'b') # Only push tags that are not in beta
         runs-on: ubuntu-latest
         needs:
-            - build
             - test
         environment:
             name: pypi

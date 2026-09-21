@@ -1,13 +1,16 @@
 import asyncio
-from exsclaim.db import PostgresSettings
 from logging.config import fileConfig
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
-import sqlmodel
+from sqlmodel import SQLModel
 
 from alembic import context
+
+from exsclaim.db.postgres import PostgresSettings
+from exsclaim.db.models import *
+from exsclaim.api.models import *
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -22,12 +25,18 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = sqlmodel.SQLModel.metadata
+target_metadata = SQLModel.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
+
+
+def include_name(name, type_, parent_names):
+    if type_ == "schema":
+        return name in {None, "results", "settings", "users"}
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -55,7 +64,14 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        render_as_batch=True,
+        user_module_prefix="sqlmodel.sql.sqltypes.",
+        include_schemas=True,
+        include_name=include_name
+    )
 
     with context.begin_transaction():
         context.run_migrations()

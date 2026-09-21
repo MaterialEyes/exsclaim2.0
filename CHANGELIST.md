@@ -8,6 +8,7 @@
 - Added relationships to the SQLModels so it's easier to get related items in the code (getting all articles for a given run).
 - Moved `exsclaim.api.models.{SaveExtensions,Status,User}` to `exsclaim.db.models`.
 - Alembic is now used to switch between schema versions.
+  - `exsclaim --update_db` should upgrade or downgrade the database to the expected version accompanying EXSCLAIM's version.
 
 ## API
 - Updated the OpenAPI specifications.
@@ -40,6 +41,7 @@
 
 ## Other
 - All of the requirement files have been folded into `pyproject.toml`.
+- Added a version class (`exsclaim.version.Version`) that allows for simple comparisons between version values.
 
 # Version 2.5.1
 ## API

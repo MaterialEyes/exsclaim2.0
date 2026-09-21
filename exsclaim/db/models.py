@@ -120,6 +120,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	orcid: Optional[str] = sqlmodel.Field(
 		description="The ORCID id associated with the user's login.",
 		pattern=ORCID_REGEX,
+		# regex=ORCID_REGEX,
 		sa_column=sqlalchemy.Column(
 			sa_psql.CHAR(19),
 			sqlalchemy.CheckConstraint(f"orcid ~ '{ORCID_REGEX_STRING}'"),
@@ -299,6 +300,7 @@ class Author(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	orcid: Optional[str] = sqlmodel.Field(
 		default=None,
 		description="The author's ORCID iD, if available.",
+		# regex=ORCID_REGEX,
 		pattern=ORCID_REGEX,
 		sa_column=sqlalchemy.Column(
 			sa_psql.CHAR(19),
@@ -363,6 +365,7 @@ class Article(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			sa_psql.TEXT,
 			# max_length=200,
 			nullable=False,
+			unique=True
 		)
 	)
 	license: Optional[str] = sqlmodel.Field(
@@ -676,11 +679,11 @@ class Subfigure(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	y1: int
 	x2: int
 	y2: int
-	caption: str = sqlmodel.Field(
+	caption: Optional[str] = sqlmodel.Field(
 		description="The caption of the subfigure.",
 		sa_column=sqlalchemy.Column(
 			sa_psql.TEXT,
-			nullable=False,
+			nullable=True,
 		)
 	)
 	caption_input_tokens: Optional[int] = sqlmodel.Field(
