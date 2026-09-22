@@ -5,7 +5,7 @@ from .journals import JournalFamily, ACS, RSC, Nature, Wiley
 from .utilities import *
 
 from .exceptions import *
-from .caption import LLM
+from .llms import LLM
 from .notifications import Notifier, Notification
 from .pipeline import Pipeline, SaveMethods
 from .tool import ExsclaimTool, JournalScraper, CaptionDistributor, FigureSeparator

@@ -6,7 +6,7 @@
 [![Production Website](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Production%20Website)](https://exsclaim.materialeyes.org)
 [![Production API](https://img.shields.io/website?url=https%3A%2F%2Fapi.exsclaim.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Production%20API)](https://api.exsclaim.materialeyes.org)
 [![Development Website](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim-dev.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Development%20Website)](https://exsclaim-dev.materialeyes.org)
-[![Development API](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim-dev.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Development%20API)](https://api.exsclaim-dev.materialeyes.org)
+[![Development API](https://img.shields.io/website?url=https%3A%2F%2Fapi.exsclaim-dev.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Development%20API)](https://api.exsclaim-dev.materialeyes.org)
 
 ## 🤔 Consider Collaboration
 
@@ -20,13 +20,6 @@ There are four main steps:
 2. [CaptionDistributor](https://github.com/MaterialEyes/exsclaim2.0/wiki/CaptionDistributor): separate figure captions into the component chunks that refer to the figure's subfigures using LLMs and prompt engineering
 3. [FigureSeparator](https://github.com/MaterialEyes/exsclaim2.0/wiki/FigureSeparator): separate figures into subfigures, detect scale information, label, and type of image
 4. [PDFScraper](https://github.com/MaterialEyes/exsclaim2.0/wiki/PDFScraper): scrape journal articles in PDF form, acquiring figures, captions and metadata.
-
-## Examples and tutorials
-We provide several tutorials demonstrating how to use EXSCLAIM2.0:
-1. [Nature_exsclaim_search](/jupyter/1_Nature_exsclaim_search.ipynb): automatically scrapping data from literature and performing Named Entity Recognition (NER) on the extracted captions.
-2. [HTMLScraper](/jupyter/2_HTMLScraper.ipynb): automatically scrapping data from user provided HTML files
-3. [Microscopy_CLIP_retrieval](/jupyter/3_Microscopy_CLIP_retrieval.ipynb): Using Microscopy_CLIP to perform image-to-image and text-to-image retrieval on our multimodal microscopy dataset.
-
 
 ## Installation
 The guides to install EXSCLAIM through Pip, Git and Docker can be found within the [wiki](https://github.com/MaterialEyes/exsclaim2.0/wiki/Installation).

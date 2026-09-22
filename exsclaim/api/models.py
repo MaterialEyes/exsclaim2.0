@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ..journals import JournalFamily
-from ..caption import LLM
+from ..llms import LLM
 from ..config import ExsclaimSettings
 from ..notifications import NTFY, Email, Webhook, QueryNotifications
 from ..db.models import Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes, \

@@ -1,4 +1,4 @@
-from ..caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
+from .caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
 from ..exceptions import PipelineConfigError
 
 from logging import exception

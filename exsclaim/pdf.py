@@ -1,6 +1,6 @@
 import pymupdf
 
-from .caption import LLM, ChatMessage, Captions, CaptionEntry
+from .llms import LLM, ChatMessage, Captions, CaptionEntry
 from .exceptions import PDFScrapeException
 from .tool import ExsclaimTool
 

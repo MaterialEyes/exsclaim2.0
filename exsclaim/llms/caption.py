@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from .exceptions import ExsclaimToolException
+from ..exceptions import ExsclaimToolException
 
 from abc import ABC, abstractmethod, ABCMeta
 from asyncio import Semaphore
@@ -45,11 +45,12 @@ class CaptionInfo(BaseModel):
 
 class ChatMessage:
 	def __init__(self, content: str, role: Literal["user", "assistant", "system", "tool"] = "user",
-				 temperature: Optional[float] = None, images: Optional[Collection[Any]] = None):
+				 temperature: Optional[float] = None, images: Optional[Collection[Any]] = None, cache: bool = False):
 		self.content = content
 		self.role = role
 		self.temperature = temperature
 		self.images = images
+		self.cache = cache
 
 	@property
 	def images(self) -> Optional[tuple[str]]:
@@ -166,7 +167,7 @@ class LLM(ABC, metaclass=LLMMeta):
 	_models = dict()
 	_classes = set()
 
-	def __init__(self, model: str, api_key: str = None, *args, **kwargs):
+	def __init__(self, model: str, api_key: str | None = None, *args, **kwargs):
 		self.model = model
 
 	@staticmethod
@@ -224,7 +225,7 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	async def parse_captions(self, caption: str) -> tuple[dict[str, str], list[str], LLMUsage]:
 		messages = [
-			ChatMessage(role="system", content=(
+			ChatMessage(role="system", cache=True, content=(
 				"You are an experienced material scientist. "
 				"Please parse the given caption with the response only containing a valid JSON object that can be plugging into Pydantic's BaseModel.model_validation_json. "
 				"Do not add any markdown wrappers or code blocks, only the raw JSON object. "
@@ -286,7 +287,7 @@ class LLM(ABC, metaclass=LLMMeta):
 	@classmethod
 	def from_search_query(cls, search_query: dict, run_id: Optional[UUID] = None):
 		llm, model_key = cls.get_info_from_search_query(search_query)
-		return cls(llm, model_key, run_id=run_id)
+		return cls(llm, model_key, run_id=run_id, max_tokens=search_query.get("max_tokens"))
 
 	@classmethod
 	def validate_search_query(cls, search_query: dict):

@@ -1,4 +1,4 @@
-from ..caption import LLM, LLMOptions
+from .caption import LLM, LLMOptions
 from .openai_llms import OpenAI
 
 from openai import AsyncOpenAI, NotGiven, NOT_GIVEN

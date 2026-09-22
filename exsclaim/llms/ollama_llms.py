@@ -1,4 +1,4 @@
-from ..caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
+from .caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
 from ..config import settings
 
 from ollama import AsyncClient, Client, ChatResponse, ResponseError

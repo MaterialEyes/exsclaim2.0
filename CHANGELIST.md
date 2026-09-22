@@ -39,6 +39,11 @@
 - The journals now record the ORCID of the authors if they have one.
 - Added tests for the JournalScrapers using `pytest` and downloaded, open-source articles to test that they still work.
 
+### LLM
+- Added support for [Anthropic](./exsclaim/llms/anthropic_llms.py) models.
+  - Anthropic's API requires an API key to see the listed models, which does not work with our current workflow. The current fix was to list all of the models currently available in the code.
+- Moved `exsclaim/caption.py` to `exsclaim/llms/caption.py`, meaning imports for `LLMMeta`, `LLM`, `LLMUsage`, `ChatMessage`, etc. have been moved to the `exsclaim.llms` submodule.
+
 ## Other
 - All of the requirement files have been folded into `pyproject.toml`.
 - Added a version class (`exsclaim.version.Version`) that allows for simple comparisons between version values.

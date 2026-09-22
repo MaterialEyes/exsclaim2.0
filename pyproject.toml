@@ -80,7 +80,7 @@ dependencies = [
     "starlette==1.6.0",
     "uvicorn==0.53.0",
     "hypercorn==0.18.0",
-     "sqlmodel==0.0.44",
+    "sqlmodel==0.0.44",
     "sqlalchemy==2.0.52",
     "pydantic_settings==2.15.0",
     "orjson==3.12.0",
@@ -96,8 +96,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ollama = [
-    "ollama~=0.6.2"
+llm = [
+    "ollama~=0.6.2",
+    "anthropic==1.8.0"
 ]
 
 test = [
@@ -112,7 +113,7 @@ test = [
 dev = [
     "ipython==9.15.0",
     "pydevd==3.5.0",
-    "pydevd_pycharm~=263.4732.31",
+    "pydevd_pycharm~=263.5153.49",
     "pytest==9.1.1",
     "scipy-stubs==1.18.0.0",
     "trio==0.33.0",

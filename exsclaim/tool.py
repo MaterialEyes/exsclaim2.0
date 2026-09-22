@@ -7,7 +7,7 @@ package. All the model classes are independent of each
 other, but they expose the same interface, so they are
 interchangeable.
 """
-from .caption import LLM, LLMUsage, OptionalSemaphore
+from .llms import LLM, LLMUsage, OptionalSemaphore
 from .config import settings
 from .exceptions import PipelineInterruptionException, JournalScrapeError, ExsclaimToolException, PipelineConfigError
 from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform, \

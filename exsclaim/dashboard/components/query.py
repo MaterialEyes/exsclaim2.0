@@ -16,13 +16,10 @@ name_regex = compile(r"^[\w_\- ]+$")
 
 
 def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool], dict[str, bool]]:
-	try:
-		from ...caption import LLMMeta
-	except ImportError:
-		from exsclaim.caption import LLMMeta
+	from exsclaim import llms
 
 	available_llms = dict()
-	for cls in LLMMeta.classes:
+	for cls in llms.LLMMeta.classes:
 		models = cls.available_models()
 		if not models:
 			continue

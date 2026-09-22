@@ -8,7 +8,7 @@ short_version: str
 
 
 class Version:
-	__init__(str)
+	__init__: None
 
 	__repr__: str
 	__hash__: int

@@ -16,20 +16,18 @@ def layout() -> html.Div:
 		html.Div: Complete HomePage layout
 	"""
 	try:
-		from components.common import create_header_component, create_footer_component
-		from components.query import create_query_component, get_llms
+		from ..components import common, query
 	except ImportError:
-		from exsclaim.dashboard.components.common import create_header_component, create_footer_component
-		from exsclaim.dashboard.components.query import create_query_component, get_llms
+		from exsclaim.dashboard.components import common, query
 
-	available_llms, *_ = get_llms()
+	available_llms, *_ = query.get_llms()
 	return html.Div([
 		# Header
-		create_header_component(),
+		common.create_header_component(),
 
 		# Query form
-		create_query_component(available_llms),
+		query.create_query_component(available_llms),
 
 		# Footer
-		create_footer_component()
+		common.create_footer_component()
 	], id="exsclaim-app")

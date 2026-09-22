@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1.7-labs
 FROM python:3.14.7-slim AS build
-LABEL authors="Len Washington III"
 
 # This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
 ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
@@ -39,7 +38,10 @@ COPY --parents ./exsclaim ./LICENSE ./Makefile ./MANIFEST.in ./README.md ./setup
 
 RUN --mount=type=cache,target=/tmp/pip \
     . ~/.bashrc && \
-    make install && \
+    make build && \
+    WHEEL_FILE=$(find ./dist -name "exsclaim*-py3-none-any.whl" -print -quit) && \
+    echo "Wheel file: $WHEEL_FILE" && \
+    uv pip install --system --system-certs "$WHEEL_FILE[llm]" && \
     make clean && \
     rm -rf /opt/install/exsclaim
 
