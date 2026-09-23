@@ -56,7 +56,7 @@ class JournalMeta(ABCMeta):
 	def __len__(self):
 		return len(self.subclasses)
 
-	def __iter__(cls):
+	def __iter__(cls) -> Iterator[tuple[str, Type["JournalFamily"]]]:
 		return iter(JournalMeta.subclasses.items())
 
 
@@ -860,7 +860,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 			case _:
 				raise NotImplementedError("JournalScraper can only convert svg graphics to png images at the moment.")
 
-	async def get_article_figures(self, url: str, html_directory: Optional[Path] = None, save_html: bool = True,
+	async def get_article_figures(self, url: str, html_directory: Optional[Path] = None, save_html: bool = False,
 								  svg_extension: str = "png") -> dict[str, Any]:
 		"""Get all figures from an article.
 		:param str url: The url to the journal article.

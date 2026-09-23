@@ -231,7 +231,7 @@ class JournalScraper(ExsclaimTool):
 		url = journal.domain + article
 
 		try:
-			article_dict = await journal.get_article_figures(url, html_directory)
+			article_dict = await journal.get_article_figures(url, html_directory, save_html=True)
 
 			if article_dict:
 				async with lock:

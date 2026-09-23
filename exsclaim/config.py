@@ -34,6 +34,10 @@ class EmailSettings(BaseSettings):
 		return self
 
 
+TMP_PATH = Path("/tmp")
+"""Acts as a sentinel for required paths, such that if the path is set to this, ExsclaimSettings will fill in the path with the base directory it has set."""
+
+
 class ExsclaimSettings(BaseSettings):
 	"""Gets access to the environment variables used throughout the project."""
 	model_config = SettingsConfigDict(
@@ -55,8 +59,8 @@ class ExsclaimSettings(BaseSettings):
 		examples=[],
 	)
 
-	CHECKPOINTS_PATH: Optional[Path] = Field(
-		default=None,
+	CHECKPOINTS_PATH: Path = Field(
+		default=TMP_PATH,
 		description="The directory where the checkpoint files for the FigureSeparator should be stored.",
 		examples=["~/.exsclaim/checkpoints", "/exsclaim/checkpoints"],
 	)
@@ -85,8 +89,8 @@ class ExsclaimSettings(BaseSettings):
 		description="If playwright should run headless (default, no visible screen) or headed (requires X server to show the pages)."
 	)
 
-	LOGS_PATH: Optional[Path] = Field(
-		default=None,
+	LOGS_PATH: Path = Field(
+		default=TMP_PATH,
 		description="The directory where the log files should be stored.",
 		examples=["~/.exsclaim/logs", "/var/logs/exsclaim", "/exsclaim/logs"],
 	)
@@ -97,8 +101,8 @@ class ExsclaimSettings(BaseSettings):
 		examples=["http://localhost:11434", "http://ollama:11434"],
 	)
 
-	RESULTS_PATH: Optional[Path] = Field(
-		default=None,
+	RESULTS_PATH: Path = Field(
+		default=TMP_PATH,
 		description="The directory where the results from the pipeline should be stored.",
 		examples=["~/.exsclaim/results", "/exsclaim/results"],
 	)
@@ -159,15 +163,15 @@ class ExsclaimSettings(BaseSettings):
 	def set_derived_paths(self):
 		self.PATH.mkdir(parents=True, exist_ok=True)
 
-		if self.LOGS_PATH is None:
+		if self.LOGS_PATH is None or self.LOGS_PATH == TMP_PATH:
 			self.LOGS_PATH = self.PATH / "logs"
 			self.LOGS_PATH.mkdir(exist_ok=True)
 
-		if self.RESULTS_PATH is None:
+		if self.RESULTS_PATH is None or self.RESULTS_PATH == TMP_PATH:
 			self.RESULTS_PATH = self.PATH / "results"
 			self.RESULTS_PATH.mkdir(exist_ok=True)
 
-		if self.CHECKPOINTS_PATH is None:
+		if self.CHECKPOINTS_PATH is None or self.CHECKPOINTS_PATH == TMP_PATH:
 			self.CHECKPOINTS_PATH = self.PATH / "checkpoints"
 			self.CHECKPOINTS_PATH.mkdir(exist_ok=True)
 

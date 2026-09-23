@@ -360,13 +360,12 @@ class Database:
 
 		current_version = Version()
 
-		alembic_revision_loopkup = {
+		alembic_revision_loopkup: dict[Version, str] = {
 			Version("2.5.3"): "3924f9a632d1"
 		}
 
-		directory = Path(__file__).parent.resolve()
+		directory = Path(__file__).parent.parent.resolve()
 		alembic_cfg = Config(directory / "alembic.ini")
-		alembic_cfg.set_main_option("script_location", str(directory.parent / "alembic"))
 		alembic_cfg.set_main_option("sqlalchemy.url", PostgresSettings().connection_string)
 
 		keys = tuple(alembic_revision_loopkup.keys())

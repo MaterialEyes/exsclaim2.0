@@ -1,4 +1,6 @@
 from ..models import Banner, Run
+from ..dependencies import AcceptHeader
+
 from ...config import ui_settings
 from ...db import get_db_session
 
@@ -196,31 +198,32 @@ async def get_dark_css_map() -> Response:
 						}
 					},
 				})
-async def healthcheck(request: Request) -> Response:
+async def healthcheck(request: Request, accept: AcceptHeader) -> Response:
 	logger: logging.Logger = request.state.logger
 	try:
 		async with get_db_session() as session:
 			await session.execute(select(Run))
-			response = Response(f"EXSCLAIM! version {exsclaim.__version__} is running fine.",
-								status_code=status.HTTP_200_OK, media_type="text/plain")
+			content = f"EXSCLAIM! version {exsclaim.__version__} is running fine."
+			status_code = status.HTTP_200_OK
 	except OSError as e:
-		logger.exception(f"An error occurred trying to connect to the database during a healthcheck: {e}")
-		response = Response("The API is running but cannot connect to the database.",
-							status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
+		logger.exception(f"An error occurred trying to connect to the database during a healthcheck", exc_info=e)
+		content = "The API is running but cannot connect to the database."
+		status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 	except UndefinedTableError as e:
-		logger.exception(e)
-		response = Response(
-			"The API and database are both running, however, the database seems to empty. Please try again later.",
-			status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
+		logger.exception("The API's database was missing a table during a healthcheck.", exc_info=e)
+		content = "The API and database are both running, however, the database seems to empty. Please try again later."
+		status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 	except Exception as e:
-		logger.exception(f"An error occurred during the healthcheck: {e}.")
-		response = Response("A fundamental error has prevented the API from functioning.",
-							status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
+		logger.exception(f"An error occurred during the healthcheck.", exc_info=e)
+		content = "A fundamental error has prevented the API from functioning."
+		status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
 
-	if request.headers.get("Accept") == "application/json":
-		response = JSONResponse({"message": response.body.decode(response.charset)}, status_code=response.status_code)
-
-	return response
+	media_type, *_ = accept.get_best_option(("application/json", "text/plain"))
+	match media_type:
+		case "application/json":
+			return JSONResponse({"message": content}, status_code=status_code, media_type=media_type)
+		case "text/plain":
+			return Response(content, status_code=status_code, media_type=media_type)
 
 
 @router.api_route("/sitemap.xml", methods=["GET"], include_in_schema=False)

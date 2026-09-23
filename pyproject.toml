@@ -143,6 +143,9 @@ include-package-data = true
 [tool.setuptools.dynamic]
 version = { attr = "exsclaim.version.version" }
 
+[tools.setuptools.package-data]
+"exsclaim" = ["alembic/*", "alembic.ini"]
+
 [tool.ruff]
 line-length=127
 target-version = "py314"

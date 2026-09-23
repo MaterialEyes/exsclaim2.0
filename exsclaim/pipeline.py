@@ -477,7 +477,7 @@ class Pipeline:
 			try:
 				figure = cv2.imread(self.results_directory / "figures" / figure_name)
 			except Exception as e:
-				self.logger.exception(f"Error printing {figure_name} to file. It may be damaged! {e}")
+				self.logger.exception(f"Error printing {figure_name} to file. It may be damaged!", exc_info=e)
 				continue
 
 			# save each master, inset, and dependent image as their own file in a directory according to label

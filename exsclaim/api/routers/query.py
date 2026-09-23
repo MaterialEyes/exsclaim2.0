@@ -62,7 +62,7 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, logger: logging.L
 			db_result = Status.FINISHED
 	except (KeyboardInterrupt, CancelledError) as e:
 		db_result = Status.STOPPED
-		logger.info(f"Run {_id} was stopped during processing: {e}")
+		logger.info(f"Run {_id} was stopped during processing.", exc_info=e)
 		result_code = 1
 	except Exception as e:
 		db_result = Status.ERROR

@@ -266,6 +266,24 @@ class ArticleAuthor(AsyncAttrs, sqlmodel.SQLModel, table=True):
 		)
 	)
 
+	_article: "Article" = sqlmodel.Relationship(
+		back_populates="_author_links",
+		# sa_relationship_kwargs=dict(overlaps="article")
+	)
+
+	_author: "Author" = sqlmodel.Relationship(
+		back_populates="_article_links",
+		# sa_relationship_kwargs=dict(overlaps="author")
+	)
+
+	@property
+	async def article(self) -> "Article":
+		return await self.awaitable_attrs._article
+
+	@property
+	async def author(self) -> "Author":
+		return await self.awaitable_attrs._author
+
 	# article: "Article" = sqlmodel.Relationship(
 	# 	back_populates="_author_links",
 	# 	sa_relationship_kwargs={"lazy": "selectin"}
@@ -303,7 +321,7 @@ class Author(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	orcid: ORCID_TYPE = sqlmodel.Field(
 		default=None,
 		description="The author's ORCID iD, if available.",
-		regex=ORCID_REGEX,
+		regex=ORCID_REGEX_STRING,
 		# pattern=ORCID_REGEX,
 		sa_column=sqlalchemy.Column(
 			sa_psql.CHAR(19),
@@ -311,14 +329,28 @@ class Author(AsyncAttrs, sqlmodel.SQLModel, table=True):
 		)
 	)
 
-	_articles: list["Article"] = sqlmodel.Relationship(
+	articles: list["Article"] = sqlmodel.Relationship(
 		back_populates="authors",
 		link_model=ArticleAuthor,
+		sa_relationship_kwargs={
+			"overlaps": "articles,_article,_author"
+		}
 	)
 
+	_article_links: list[ArticleAuthor] = sqlmodel.Relationship(
+		back_populates="_author",
+		sa_relationship_kwargs={
+			"overlaps": "articles"
+		}
+	)
+
+	# @property
+	# async def articles(self) -> list["Article"]:
+	# 	return await self.awaitable_attrs._articles
+
 	@property
-	async def articles(self) -> list["Article"]:
-		return await self.awaitable_attrs._articles
+	async def article_links(self) -> list[ArticleAuthor]:
+		return await self.awaitable_attrs._article_links
 
 	def __repr__(self) -> str:
 		if self.orcid is None:
@@ -403,10 +435,20 @@ class Article(AsyncAttrs, sqlmodel.SQLModel, table=True):
 		sa_relationship_kwargs={"lazy": "selectin"}
 	)
 
+	_author_links: list[ArticleAuthor] = sqlmodel.Relationship(
+		back_populates="_article",
+		sa_relationship_kwargs={
+			"overlaps": "authors,_author,articles"
+		}
+	)
+
 	authors: list[Author] = sqlmodel.Relationship(
-		back_populates="_articles",
+		back_populates="articles",
 		link_model=ArticleAuthor,
-		sa_relationship_kwargs={"lazy": "selectin"}
+		sa_relationship_kwargs={
+			"lazy": "selectin",
+			"overlaps": "_article_links,_author,_article"
+		}
 	)
 
 	@property
@@ -416,6 +458,10 @@ class Article(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	@property
 	async def runs(self) -> list["Run"]:
 		return [link.run for link in await self.awaitable_attrs._run_links]
+
+	@property
+	async def author_links(self):
+		return await self.awaitable_attrs._author_links
 
 	@pydantic.model_serializer(mode="wrap")
 	def serialize_model(self, handler):
@@ -698,7 +744,9 @@ class Subfigure(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	keywords: Optional[list[str]] = sqlmodel.Field(
 		default=None,
 		description="The keywords related to the subfigure.",
-		sa_column=sqlalchemy.Column(sqlalchemy.ARRAY(sqlalchemy.TEXT))
+		sa_column=sqlalchemy.Column(
+			sqlalchemy.ARRAY(sqlalchemy.TEXT)
+		)
 	)
 	figure_id: str = sqlmodel.Field(
 		description="The id of the figure that this subfigure came from.",
@@ -758,10 +806,18 @@ class Scale(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		)
 	)
-	x1: int
-	y1: int
-	x2: int
-	y2: int
+	x1: int = sqlmodel.Field(
+		description="The left coordinate of the scale."
+	)
+	y1: int = sqlmodel.Field(
+		description="The upper coordinate of the scale."
+	)
+	x2: int = sqlmodel.Field(
+		description="The right coordinate of the scale."
+	)
+	y2: int = sqlmodel.Field(
+		description="The lower coordinate of the scale."
+	)
 	length: Optional[int] = sqlmodel.Field(
 		default=None,
 		nullable=True,
@@ -820,10 +876,18 @@ class SubfigureLabel(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		)
 	)
-	x1: int
-	y1: int
-	x2: int
-	y2: int
+	x1: int = sqlmodel.Field(
+		description="The left coordinate of the subfigure's label."
+	)
+	y1: int = sqlmodel.Field(
+		description="The upper coordinate of the subfigure's label."
+	)
+	x2: int = sqlmodel.Field(
+		description="The right coordinate of the subfigure's label."
+	)
+	y2: int = sqlmodel.Field(
+		description="The lower coordinate of the subfigure's label."
+	)
 	label_confidence: Optional[float] = sqlmodel.Field(
 		default=None,
 		nullable=True,
@@ -870,10 +934,18 @@ class ScaleLabel(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		)
 	)
-	x1: int
-	y1: int
-	x2: int
-	y2: int
+	x1: int = sqlmodel.Field(
+		description="The left coordinate of the scale's label."
+	)
+	y1: int = sqlmodel.Field(
+		description="The upper coordinate of the scale's label."
+	)
+	x2: int = sqlmodel.Field(
+		description="The right coordinate of the scale's label."
+	)
+	y2: int = sqlmodel.Field(
+		description="The lower coordinate of the scale's label."
+	)
 	label_confidence: Optional[float] = sqlmodel.Field(
 		default=None,
 		nullable=True,

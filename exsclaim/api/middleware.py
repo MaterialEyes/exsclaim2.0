@@ -36,7 +36,7 @@ def format_response(_id, request: Request, ip: Optional[ipaddress._BaseAddress] 
 			ip = request.client.host or "Unknown IP"
 
 	path = request.url.path if hasattr(request, "url") else "NULL PATH"
-	log = f"[{request_id_ctx.get()}] {{{ip} using {request.headers.get('User-Agent', 'Unknown User-Agent')}}} {path}"
+	log = f"[{request_id_ctx.get()}] {{{ip} using {request.headers.get('User-Agent', 'Unknown User-Agent')}}} [{request.method}] {path}"
 	if request.url.query:
 		log += f"?{request.url.query}"
 
@@ -145,7 +145,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 			end_time = perf_counter()
 			diff = end_time - start_time
 
-			self.logger.exception(f"{format_response(request_id_ctx.get(), request, address)} Time to error: {self.get_log_time(diff)}. Unhandled error: {e}.")
+			self.logger.exception(f"{format_response(request_id_ctx.get(), request, address)} Time to error: {self.get_log_time(diff)}. Unhandled error.", exc_info=e)
 			return JSONResponse(dict(detail="Internal Server Error.", request_id=request.state.id),
 								status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 								media_type="text/plain", headers={"X-Request-Id": request_id})

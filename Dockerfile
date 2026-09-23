@@ -109,8 +109,8 @@ WORKDIR /opt/exsclaim
 COPY docker-entrypoint docker-healthcheck /usr/local/bin/
 COPY --chown=$UID:$GID query ./query
 
-COPY --from=build /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
-COPY --from=build /usr/local/bin/hypercorn /usr/local/bin/gunicorn /usr/local/bin/playwright  /usr/local/bin/
+COPY --link --from=build /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
+COPY --from=build /usr/local/bin/hypercorn /usr/local/bin/gunicorn /usr/local/bin/playwright /usr/local/bin/alembic /usr/local/bin/
 
 RUN --mount=type=cache,target=/var/lib/apt \
     chmod +x /usr/local/bin/docker-entrypoint && \

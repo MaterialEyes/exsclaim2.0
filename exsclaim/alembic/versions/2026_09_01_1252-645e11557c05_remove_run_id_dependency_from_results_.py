@@ -8,6 +8,8 @@ Original Implementation Date: 2026-09-01
 from typing import Sequence, Union
 
 from alembic import op
+
+import asyncio
 import sqlalchemy as sa
 
 
@@ -91,13 +93,6 @@ def upgrade() -> None:
                   ORDER BY a.id, author_number;
                """)
 
-    # # Creates a temporary subfigure label table with the start time for the run the table is associated with
-    # op.execute("""CREATE TEMPORARY TABLE temp_subfigure_label AS
-    #                 SELECT s.*, r.start_time FROM results.subfigurelabel s
-    #                 INNER JOIN results.results r ON r.id = s.run_id;""")
-    #
-    # # Delete the duplicated subfigure label id
-
     # Upload remove old constraints so they can be updated
     op.execute("""ALTER TABLE results.subfigurelabel
                     DROP CONSTRAINT subfigurelabel_run_id_subfigure_id_fkey,
@@ -171,6 +166,15 @@ def upgrade() -> None:
 
     op.execute("ALTER TABLE results.results RENAME TO runs;")
 
+    try:
+        loop = asyncio.get_running_loop()
+        if loop is not None and loop.is_running():
+            loop.create_task(update_articles_data())
+        else:
+            asyncio.run(update_articles_data())
+    except RuntimeError:
+        asyncio.run(update_articles_data())
+
 
 def downgrade() -> None:
     """Downgrade schema."""
@@ -203,8 +207,112 @@ def test_downgrade() -> None:
                     ADD PRIMARY KEY (run_id, id)
                """)
 
-    # TODO: Add the author data back info results.article before dropping these tables
     op.execute("DROP TABLE results.article_authors")
 
     op.execute("DROP TABLE results.authors")
 
+
+async def update_articles_data():
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+
+    import exsclaim
+
+    async with exsclaim.get_db_session() as session:
+        await session.execute(sa.text("DELETE FROM results.article_authors"))
+        results = await session.execute(sa.select(exsclaim.Author))
+        all_authors = results.scalars().all()
+        authors_lookup = {author.name: author for author in all_authors}
+        orcid_lookup = {author.orcid: author.id for author in all_authors if author.orcid is not None}
+
+        with TemporaryDirectory() as tmpdir:
+            results_dir = Path(tmpdir)
+            for i, (name, cls) in enumerate(exsclaim.JournalFamily):
+                new_name = f"{name}_{i}"
+                journal = cls({
+                    "name": new_name,
+                    "results_dir": results_dir / new_name
+                })
+                results = await session.execute(sa.select(exsclaim.Article).where(exsclaim.Article.url.startswith(journal.domain)))
+                articles = results.scalars().all()
+
+                async with journal:
+                    for article_num, article in enumerate(articles):
+                        print(f"Processing article {article_num + 1:}/{len(articles):,}: {article.url}")
+                        try:
+                            article_dict = await journal.get_article_figures(article.url, None, save_html=False)
+                        except BaseException as e:
+                            print(f"An error occurred while processing article {article.url}: {e}")
+                            continue
+
+                        updated_article = dict(
+                            title=article_dict["title"],
+                            license=article_dict["license"],
+                            open=article_dict["open"],
+                            abstract=article_dict.get("abstract"),
+                            article_id=article.id
+                        )
+
+                        await session.execute(
+                            sa.text("UPDATE results.article SET title = :title, license = :license, open = :open, abstract = :abstract WHERE id = :article_id"),
+                            updated_article
+                        )
+
+                        for author_num, author in enumerate(article_dict["authors"]):
+                            if author.orcid is not None:
+                                cached_author = orcid_lookup.get(author.orcid)
+                            else:
+                                cached_author = authors_lookup.get(author.name)
+
+                            if cached_author is None:
+                                # Upload author to the database
+                                results = await session.execute(
+                                    sa.text("INSERT INTO results.authors(name, orcid) VALUES(:name, :orcid) RETURNING id"),
+                                    dict(name=author.name, orcid=author.orcid)
+                                )
+                                author_id = results.scalar_one()
+                            else:
+                                author_id = cached_author.id
+
+                            await session.execute(
+                                sa.text("INSERT INTO results.article_authors(article_id, author_id, author_order) VALUES(:article_id, :author_id, :author_order)"),
+                                dict(
+                                    article_id=article.id,
+                                    author_id=author_id,
+                                    author_order=author_num,
+                                )
+                            )
+
+                        results = await session.execute(sa.text("SELECT id FROM results.figure WHERE article_id = :article_id"),
+                                                        dict(article_id=article.id))
+                        figure_ids = {row[0] for row in results.all()}
+
+                        # Update the figures
+                        for figure_id, figure in article_dict["figures"].items(): # Create a set of figure_ids that are in the database, insert if it's not th
+                            figure_id = '.'.join(figure_id.split(".")[:-1]).replace("_", "-")
+                            if figure_id in figure_ids:
+                                await session.execute(
+                                    sa.text("UPDATE results.figure SET caption = :caption, url = :url WHERE id = :id"),
+                                    dict(
+                                        caption=figure["full_caption"],
+                                        url=figure["image_url"],
+                                        id=figure_id
+                                    )
+                                )
+                            else:
+                                await session.execute(
+                                    sa.text("INSERT INTO results.figure(id, caption, url, figure_path, article_id) VALUES(:id, :caption, :url, :figure_path, :article_id)"),
+                                    dict(
+                                        id=figure_id,
+                                        caption=figure["full_caption"],
+                                        url=figure["image_url"],
+                                        figure_path=figure["figure_path"],
+                                        article_id=article.id
+                                    )
+                                )
+
+        await session.execute(sa.text("DELETE FROM results.authors a WHERE a.id NOT IN (SELECT DISTINCT (author_id) FROM results.article_authors);"))
+
+
+if __name__ == "__main__":
+    asyncio.run(update_articles_data())
