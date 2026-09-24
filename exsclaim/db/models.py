@@ -329,24 +329,24 @@ class Author(AsyncAttrs, sqlmodel.SQLModel, table=True):
 		)
 	)
 
-	articles: list["Article"] = sqlmodel.Relationship(
+	_articles: list["Article"] = sqlmodel.Relationship(
 		back_populates="authors",
 		link_model=ArticleAuthor,
 		sa_relationship_kwargs={
-			"overlaps": "articles,_article,_author"
+			"overlaps": "_articles,_article,_author"
 		}
 	)
 
 	_article_links: list[ArticleAuthor] = sqlmodel.Relationship(
 		back_populates="_author",
 		sa_relationship_kwargs={
-			"overlaps": "articles"
+			"overlaps": "_articles"
 		}
 	)
 
-	# @property
-	# async def articles(self) -> list["Article"]:
-	# 	return await self.awaitable_attrs._articles
+	@property
+	async def articles(self) -> list["Article"]:
+		return await self.awaitable_attrs._articles
 
 	@property
 	async def article_links(self) -> list[ArticleAuthor]:
@@ -438,12 +438,12 @@ class Article(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	_author_links: list[ArticleAuthor] = sqlmodel.Relationship(
 		back_populates="_article",
 		sa_relationship_kwargs={
-			"overlaps": "authors,_author,articles"
+			"overlaps": "authors,_author,_articles"
 		}
 	)
 
 	authors: list[Author] = sqlmodel.Relationship(
-		back_populates="articles",
+		back_populates="_articles",
 		link_model=ArticleAuthor,
 		sa_relationship_kwargs={
 			"lazy": "selectin",

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import re
 
-version = "2.5.2b20"
+version = "2.5.2b21"
 VERSION_REGEX = re.compile(r"(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)(b(?P<beta>\d+))?")
 
 
 def type_check(other):
 	if not isinstance(other, Version):
-		raise ValueError(f"exsclaim.Version can only be compared with exsclaim.Version, not {type(other).__name__}.")
+		raise TypeError(f"exsclaim.Version can only be compared with exsclaim.Version, not {type(other).__name__}.")
 
 
 class Version:
@@ -79,11 +79,12 @@ class Version:
 
 		raise ValueError(f"This should never happen when comparing versions {self!r} and {other!r}.")
 
-	def __eq__(self, value: Version) -> bool:
-		type_check(value)
+	def __eq__(self, value: object) -> bool:
+		if not isinstance(value, Version):
+			return False
 		return self.major == value.major and self.minor == value.minor and self.patch == value.patch and self.beta == value.beta
 
-	def __ne__(self, value: Version) -> bool:
+	def __ne__(self, value: object) -> bool:
 		return not self == value
 
 	def __le__(self, other: Version) -> bool:

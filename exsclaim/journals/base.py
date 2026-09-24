@@ -21,10 +21,10 @@ from pathlib import Path
 from playwright.async_api import BrowserContext, Locator, async_playwright, Response, PlaywrightContextManager, Page
 from playwright._impl import _errors as playwright_errors
 from playwright_stealth import Stealth
-from typing import Any, Awaitable, Callable, Collection, Iterable, Literal, Optional, Self, Sequence, Type, overload
+from typing import Any, Awaitable, Callable, Collection, Iterable, Iterator, Literal, Optional, Self, Sequence, overload
 
-__all__ = ["JournalFamily", "JournalMeta", "JournalHtml", "StaticHtml", "DynamicHtml", "JournalFamilyStatic", "JournalFamilyDynamic",
-		   "URLParams", "DOI_REGEX", "ORCID_REGEX", "ResponseFunction", "default_predicate"]
+__all__ = ["JournalFamily", "JournalMeta", "JournalHtml", "StaticHtml", "DynamicHtml", "JournalFamilyStatic",
+		   "JournalFamilyDynamic", "URLParams", "DOI_REGEX", "ORCID_REGEX", "ResponseFunction", "default_predicate"]
 
 URLParams = dict[str, Any]
 
@@ -44,7 +44,7 @@ def default_predicate(logger: logging.Logger, resp: Response, wanted_url: str, a
 
 
 class JournalMeta(ABCMeta):
-	subclasses: dict[str, Type] = dict()
+	subclasses: dict[str, type["JournalFamily"]] = dict()
 
 	def __new__(cls, name, bases, dct):
 		_new = super().__new__(cls, name, bases, dct)
@@ -56,7 +56,7 @@ class JournalMeta(ABCMeta):
 	def __len__(self):
 		return len(self.subclasses)
 
-	def __iter__(cls) -> Iterator[tuple[str, Type["JournalFamily"]]]:
+	def __iter__(cls) -> Iterator[tuple[str, type["JournalFamily"]]]:
 		return iter(JournalMeta.subclasses.items())
 
 

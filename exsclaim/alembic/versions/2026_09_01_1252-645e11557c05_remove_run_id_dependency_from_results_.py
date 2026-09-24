@@ -311,7 +311,10 @@ async def update_articles_data():
                                     )
                                 )
 
+                    await session.commit()
+
         await session.execute(sa.text("DELETE FROM results.authors a WHERE a.id NOT IN (SELECT DISTINCT (author_id) FROM results.article_authors);"))
+        await session.commit()
 
 
 if __name__ == "__main__":

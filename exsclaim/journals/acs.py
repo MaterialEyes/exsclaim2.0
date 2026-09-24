@@ -113,6 +113,18 @@ class ACS(JournalFamilyDynamic):
 		return unknown_license
 
 	async def get_license(self, html: DynamicHtml):
+		# In Page Copyright info
+		copyright_element = await html.select("div.acs-combined-copyright-license")
+		if len(copyright_element) > 0:
+			copyright_element = copyright_element[0]
+			try:
+				link = copyright_element.select_one("a[href]").get("href")
+				if link is not None:
+					return (True, link)
+			except playwright_errors.TimeoutError:
+				pass
+
+		# Permissions Tab
 		permissions_link = await html.select_one("a#PermissionsLink").get("href")
 		param_encoded_doi_regex = DOI_REGEX.replace("/", "%2F")
 		doi_match = re.search(rf"https://marketplace.copyright.com/rs-ui-web/(\w{{2}})/search/all/{param_encoded_doi_regex}", permissions_link)

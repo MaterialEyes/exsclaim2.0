@@ -61,7 +61,7 @@ async def get_dark_ui(map_file: bool = False) -> Response:
 	return content
 
 
-@router.get("/", include_in_schema=False)
+@router.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 async def dark_theme(request: Request):
 	schema = request.app.openapi()
 	logger = request.app.logger
@@ -206,7 +206,7 @@ async def healthcheck(request: Request, accept: AcceptHeader) -> Response:
 			content = f"EXSCLAIM! version {exsclaim.__version__} is running fine."
 			status_code = status.HTTP_200_OK
 	except OSError as e:
-		logger.exception(f"An error occurred trying to connect to the database during a healthcheck", exc_info=e)
+		logger.exception("An error occurred trying to connect to the database during a healthcheck", exc_info=e)
 		content = "The API is running but cannot connect to the database."
 		status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 	except UndefinedTableError as e:
@@ -214,7 +214,7 @@ async def healthcheck(request: Request, accept: AcceptHeader) -> Response:
 		content = "The API and database are both running, however, the database seems to empty. Please try again later."
 		status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 	except Exception as e:
-		logger.exception(f"An error occurred during the healthcheck.", exc_info=e)
+		logger.exception("An error occurred during the healthcheck.", exc_info=e)
 		content = "A fundamental error has prevented the API from functioning."
 		status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
 
