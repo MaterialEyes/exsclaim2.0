@@ -268,7 +268,7 @@ def create_scale_component():
 			create_input("Min Height", "scale-min-height", 3, value=0),
 			create_input("Max Height", "scale-max-height", 4, value=1_600),
 		]),
-		dbc.Label("Specify confidence threshold:"),
+		dbc.Label("Specify minimum confidence threshold:"),
 		dcc.Slider(0, 1, 0.01,
 				   id="scale-threshold",
 				   value=0,

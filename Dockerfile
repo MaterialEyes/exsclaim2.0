@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7-labs
-FROM python:3.14.7-slim AS build
+FROM python:3.14.7-slim AS deps
 
 # This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
 ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
@@ -33,6 +33,8 @@ RUN --mount=type=cache,target=/tmp/pip \
     uv pip install --system --system-certs -r pyproject.toml --cache-dir=/tmp/pip || exit 1; \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
+
+FROM deps AS build
 
 COPY --parents ./exsclaim ./LICENSE ./Makefile ./MANIFEST.in ./README.md ./setup.py ./
 
@@ -109,7 +111,7 @@ WORKDIR /opt/exsclaim
 COPY docker-entrypoint docker-healthcheck /usr/local/bin/
 COPY --chown=$UID:$GID query ./query
 
-COPY --link --from=build /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
+COPY --link --from=deps /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=build /usr/local/bin/hypercorn /usr/local/bin/gunicorn /usr/local/bin/playwright /usr/local/bin/alembic /usr/local/bin/
 
 RUN --mount=type=cache,target=/var/lib/apt \
@@ -123,6 +125,7 @@ RUN --mount=type=cache,target=/var/lib/apt \
 	playwright install chromium && \
     rm -rf /var/lib/apt/lists/*
 
+COPY --link --from=build /usr/local/lib/python3.14/site-packages/exsclaim /usr/local/lib/python3.14/site-packages/exsclaim
 COPY --from=build /usr/local/bin/exsclaim /usr/local/bin/exsclaim
 COPY --from=build /opt/install/dist/ /opt/install/dist
 

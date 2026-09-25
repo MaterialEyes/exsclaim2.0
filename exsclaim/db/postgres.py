@@ -360,18 +360,18 @@ class Database:
 
 		current_version = Version()
 
-		alembic_revision_loopkup: dict[Version, str] = {
-			Version("2.5.3"): "3924f9a632d1"
+		alembic_revision_lookup: dict[Version, str] = {
+			Version("2.5.2"): "3924f9a632d1"
 		}
 
 		directory = Path(__file__).parent.parent.resolve()
 		alembic_cfg = Config(directory / "alembic.ini")
 		alembic_cfg.set_main_option("sqlalchemy.url", PostgresSettings().connection_string)
 
-		keys = tuple(alembic_revision_loopkup.keys())
+		keys = tuple(alembic_revision_lookup.keys())
 		for version1, version2 in pairwise(keys):
 			if version1 <= current_version < version2:
-				command.upgrade(alembic_cfg, alembic_revision_loopkup[version1])
+				command.upgrade(alembic_cfg, alembic_revision_lookup[version1])
 				break
 		else:
-			command.upgrade(alembic_cfg, alembic_revision_loopkup[keys[-1]])
+			command.upgrade(alembic_cfg, alembic_revision_lookup[keys[-1]])

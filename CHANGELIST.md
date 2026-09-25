@@ -12,7 +12,7 @@
 
 ## API
 - Updated the OpenAPI specifications.
-  - The specifications are available in JSON and YAML formatting at `/openapi.{json,yaml}` on the API.
+  - The specifications are available in JSON and YAML formatting at `/openapi.{`[`json`](https://api.exsclaim.materialeyes.org/openapi.json)`,`[`yaml`](https://api.exsclaim.materialeyes.org/openapi.yaml)`}` on the API.
 - Added a dependency submodule that holds any dependencies created for the FastAPI routers.
   - Created a dependency that makes it easier to determine the content-type that should be returned given the client's `Accept` header.
   - Add a dependency that only injects the user's id from the JWT instead of reading their entire user object from the database.
