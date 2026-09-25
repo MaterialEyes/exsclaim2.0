@@ -1,7 +1,7 @@
 # Acquired from https://github.com/pytorch/vision/tree/master/references/detection
-from copy import deepcopy
 import os
 
+import copy
 import torch
 import torch.utils.data
 from torchvision.datasets import CocoDetection

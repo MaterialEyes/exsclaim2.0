@@ -4,16 +4,13 @@ Converted from React Layout.js component.
 """
 
 import dash_bootstrap_components as dbc
+import httpx2
+import re
 
-from certifi import where
 from dash import html, dcc, callback, clientside_callback, ClientsideFunction, Output, Input, State, no_update, ALL
 from dash_extensions import Purify
-
 from exsclaim.api import Status
-from httpx import Client
-from re import sub
 from uuid import UUID
-from ssl import create_default_context
 
 
 def create_layout_component(result_id: UUID, base_url: str, public_api_url: str):
@@ -216,8 +213,7 @@ def create_keywords_component():
 
 def create_classification_component(base_url):
 	"""Create classification component."""
-	ssl_context = create_default_context(cafile=where())
-	with Client(verify=ssl_context) as client:
+	with httpx2.Client() as client:
 		response = client.get(f"{base_url}/classification_codes")
 		if not response.is_success:
 			raise ValueError(f"Could not get classification codes from the API: {response.text}")
@@ -272,7 +268,7 @@ def create_scale_component():
 			create_input("Min Height", "scale-min-height", 3, value=0),
 			create_input("Max Height", "scale-max-height", 4, value=1_600),
 		]),
-		dbc.Label("Specify confidence threshold:"),
+		dbc.Label("Specify minimum confidence threshold:"),
 		dcc.Slider(0, 1, 0.01,
 				   id="scale-threshold",
 				   value=0,
@@ -376,8 +372,9 @@ def update_keywords(keyword_type, data):
 					keywords.extend(article["title"].split(" "))
 
 	# Remove duplicates and create options
-	unique_keywords = sorted(set(map(lambda kw: sub(r"[^a-zA-Z\d_-]", "", kw), keywords)), key=lambda kw: kw.upper())
-	return [{"label": kw, "value": kw} for kw in unique_keywords]
+	kw_regex = re.compile(r"[^\w\d<>_-]", re.I)
+	unique_keywords = sorted({kw_regex.sub("", kw) for kw in keywords}, key=lambda kw: kw.upper())
+	return [{"label": Purify(html=kw), "value": kw} for kw in unique_keywords]
 
 
 @callback(
@@ -448,7 +445,9 @@ async def update_images(data, max_width, max_height):
 						),
 						html.Small(
 							html.A(
-								article.get("title", "Unknown Article"),
+								Purify(
+									html=article.get("title", "Unknown Article")
+								),
 								href=article.get("url", "#"),
 								target="_blank"
 							) if article else "Unknown Article",

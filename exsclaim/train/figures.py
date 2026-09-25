@@ -1,12 +1,10 @@
 from .ds_features import image_features, classification_labels
 
-from asyncio import get_event_loop
 from collections import defaultdict
-from datetime import datetime as dt, timezone as tz
+from datetime import datetime as dt
 from datasets import load_dataset, Dataset, IterableDataset
 from os import PathLike
 from pathlib import Path
-from PIL import Image
 from re import compile, IGNORECASE
 from shutil import copytree
 from tempfile import TemporaryDirectory
@@ -20,7 +18,6 @@ from ultralytics import YOLO
 
 import os
 import cv2
-# import wandb
 
 
 Point = tuple[int | float, int | float]
@@ -248,7 +245,7 @@ async def train_model(figures_input_model: Optional[Model] = None, labels_input_
 
 	# Process the data splits
 	process_data_split(train, "train", images_path, subfigure_coords, label_coords, classify_path, class_id_mapping)
-	process_data_split(val, "val",  images_path, subfigure_coords, label_coords, classify_path, class_id_mapping)
+	process_data_split(val, "val", images_path, subfigure_coords, label_coords, classify_path, class_id_mapping)
 
 	class_id_mapping_names = repr(list(class_id_mapping.keys()))
 	for path, yaml in zip((subfigures_path, subfig_labels_path), (figures_yaml, labels_yaml)):

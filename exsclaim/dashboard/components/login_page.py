@@ -53,18 +53,31 @@ def create_email_component(debounce=True):
 	], className="mb-3")
 
 
-def create_password_component(debounce=False, show_signup_tips: bool = False):
+def create_password_component(debounce=False, signup: bool = False):
 	"""Create number of articles input component."""
-	tips = []
-	if show_signup_tips:
-		tips = [
+	signup_elements = []
+	if signup:
+		signup_elements = [
+			dbc.Label(
+				"Verify Password:",
+				html_for="password_verify",
+			),
+			dbc.Input(
+				id="password_verify",
+				name="password_verify",
+				type="password",
+				className="form-control",
+				debounce=debounce,
+				required=True
+			),
 			html.Ul([
 				html.Li("8 or more characters", id="password_length", className="li-password password-failed"),
 				html.Li("At least one uppercase (capital) letter", id="password_upper", className="li-password password-failed"),
 				html.Li("At least one lowercase letter", id="password_lower", className="li-password password-failed"),
 				html.Li("At least one number", id="password_number", className="li-password password-failed"),
 				html.Li(r"At least one special character: !#$&?@^_(){}<>[]\/|=+,-.:;", id="password_special",
-						className="li-password password-failed")
+						className="li-password password-failed"),
+				html.Li(r"Passwords match", id="password_match", className="li-password password-passed")
 			], id="password_requirements")
 		]
 	return html.Div([
@@ -77,10 +90,10 @@ def create_password_component(debounce=False, show_signup_tips: bool = False):
 			name="password",
 			type="password",
 			className="form-control",
-			debounce=False,
+			debounce=debounce,
 			required=True
 		),
-		*tips
+		*signup_elements
 	], className="mb-3")
 
 
@@ -123,13 +136,13 @@ def create_login_button_component(mode: FormMode = FormMode.LOGIN):
 	], className="mb-3")
 
 
-def create_login_form_component(mode: FormMode = FormMode.LOGIN, debounce=True):
+def create_login_form_component(mode: FormMode = FormMode.LOGIN, debounce=False):
 	match mode:
 		case FormMode.LOGIN:
 			form_components = [
 				create_orcid_button_component(mode),
 				create_email_component(debounce),
-				create_password_component(debounce, show_signup_tips=False),
+				create_password_component(debounce, signup=False),
 				create_login_button_component(mode),
 			]
 		case FormMode.SIGNUP:
@@ -137,7 +150,7 @@ def create_login_form_component(mode: FormMode = FormMode.LOGIN, debounce=True):
 				create_orcid_button_component(mode),
 				create_username_component(debounce),
 				create_email_component(debounce),
-				create_password_component(debounce, show_signup_tips=True),
+				create_password_component(debounce, signup=True),
 				create_login_button_component(mode)
 			]
 		case _:
@@ -162,19 +175,39 @@ def handle_callbacks(mode: FormMode = FormMode.LOGIN):
 		clientside_callback(
 			ClientsideFunction(
 				namespace="user",
+				function_name="check_password_signup"
+			),
+			Output("password", "valid"),
+			Output("password", "invalid"),
+			Output("password_verify", "valid"),
+			Output("password_verify", "invalid"),
+			Input("password", "value"),
+			Input("password_verify", "value")
+		)
+
+		clientside_callback(
+			ClientsideFunction(
+				namespace="user",
+				function_name="check_username"
+			),
+			Output("username", "valid"),
+			Output("username", "invalid"),
+			Input("username", "value"),
+			prevent_initial_call=True
+		)
+	else:
+		clientside_callback(
+			ClientsideFunction(
+				namespace="user",
 				function_name="check_password"
 			),
-			[
-				Output("password", "valid"),
-				Output("password", "invalid"),
-			],
-			[
-				Input("password", "value")
-			]
+			Output("password", "valid"),
+			Output("password", "invalid"),
+			Input("password", "value"),
 		)
 
 
-def create_login_page_layout(mode: FormMode = FormMode.LOGIN, debounce=True) -> html.Div:
+def create_login_page_layout(mode: FormMode = FormMode.LOGIN, debounce=False) -> html.Div:
 	match mode:
 		case FormMode.LOGIN:
 			description = [html.P(style={"textAlign": "center", "marginBottom": "20px"}, children=[
@@ -217,11 +250,9 @@ clientside_callback(
 	}
 	""",
 	Output("submit-info", "disabled"),
-	[
-		Input("email", "valid"),
-		Input("password", "valid"),
-		Input("username", "valid", allow_optional=True),
-	]
+	Input("email", "valid"),
+	Input("password", "valid"),
+	Input("username", "valid", allow_optional=True),
 )
 
 

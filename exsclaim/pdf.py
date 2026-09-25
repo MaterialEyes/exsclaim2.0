@@ -1,20 +1,20 @@
 import pymupdf
 
-from .caption import LLM, ChatMessage, Captions, CaptionEntry
+from .llms import LLM, ChatMessage, Captions, CaptionEntry
 from .exceptions import PDFScrapeException
 from .tool import ExsclaimTool
 
 from asyncio import gather, Lock
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 
 __all__ = ["PDFScraper"]
 
 
 class PDFScraper(ExsclaimTool):
-	def __init__(self, search_query:dict, **kwargs):
+	def __init__(self, search_query: dict, **kwargs):
 		kwargs.setdefault("logger", __name__ + ".PDFScraper")
 		super().__init__(search_query, **kwargs)
 
@@ -33,6 +33,9 @@ class PDFScraper(ExsclaimTool):
 
 	async def unload(self):
 		await LLM.from_search_query(self.search_query).unload()
+
+	async def check_search_query(self, query_dict: dict[str, Any]):
+		...
 
 	def extract_authors_from_pdf(self, pdf: pymupdf.Document) -> list[str]:
 		metadata = pdf.metadata
@@ -78,10 +81,10 @@ class PDFScraper(ExsclaimTool):
 					for rect in rects:
 						images.append(dict(xref=xref, rect=rect))
 				else:
-					self.logger.info(f"No rectangles found for image xref {xref} on page {page_num+1:,}.")
+					self.logger.info(f"No rectangles found for image xref {xref} on page {page_num + 1:,}.")
 
 			if not images:
-				self.logger.info(f"No images with positions found on page {page_num+1:,}.")
+				self.logger.info(f"No images with positions found on page {page_num + 1:,}.")
 				continue
 
 			# Get the page width to determine left and right halves
@@ -168,7 +171,7 @@ class PDFScraper(ExsclaimTool):
 		prompt = dedent("""\
 			The provided image is a page from a literature paper. Please perform the following steps as accurately as possible:
 	        1. Identify and return in the correct order they are located (the index 0 figure or scheme is located on the top left of the page) in the page the figure name and the full caption that describe the figure or scheme depicted on this page.
-	        2. If a figure caption or scheme is not found directly above or under the image then do not consider it as an image caption or scheme and return 'N/A'.
+	        2. If a figure caption or scheme is not found directly above or under the image then do not consider it as an image caption or scheme and return 'N/A'. 
 	        3. If a figure doesn't have a directly associated caption found directly above or under the image that starts with 'Fig.' or 'Figure' or 'Scheme' return 'N/A'. 
 	        4. The figure name or scheme should be found directly above or under the figure and not as part of the main text.
 	        5. You should not extract image captions from the paper abstract or toc of the paper.
@@ -232,8 +235,8 @@ class PDFScraper(ExsclaimTool):
 
 		return image_metadata
 
-	async def save_figures_pdf(self, filename: Path, pdf: pymupdf.Document, figures_path: Path, logo_hashes: set[str] = None,
-							   verbose:bool = False) -> dict[str, Any]:
+	async def save_figures_pdf(self, filename: Path, pdf: pymupdf.Document, figures_path: Path,
+							   logo_hashes: Optional[set[str]] = None, verbose: bool = False) -> dict[str, Any]:
 		logo_hashes = logo_hashes or {
 			"3b4c0ee6601485a77bac913ee230cec8", "cde2017ee1dd0136c9ae78f4cb37ddd3"
 			# "a6030f1bba4aa390c453d28c14a58c1d", "4c01d3acab441ccc10381b6a62afa238",
@@ -296,7 +299,7 @@ class PDFScraper(ExsclaimTool):
 
 		return article_json
 
-	async def runner(self, exsclaim_json: dict, lock:Lock, pdf_loc: Path):
+	async def runner(self, exsclaim_json: dict, lock: Lock, pdf_loc: Path):
 		t0 = self._start_timer()
 		article = pdf_loc.stem
 		self.display_info(f">>> Extracting figures from: {article.split('/')[-1]}")

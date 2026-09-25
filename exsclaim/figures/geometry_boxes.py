@@ -7,6 +7,8 @@ In addition, we often want to check the relation of two bounding
 boxes and their properties (like center point)
 """
 
+import numpy as np
+
 __all__ = ["convert_coords_to_geometry", "convert_geometry_to_coords", "find_box_center", "crop_from_geometry", "is_contained"]
 
 
@@ -36,7 +38,7 @@ def find_box_center(geometry):
     return (x1 + x2) / 2.0, (y1 + y2) / 2.0
 
 
-def crop_from_geometry(geometry: list[dict], image: "numpy.ndarray") -> "numpy.ndarray":
+def crop_from_geometry(geometry: list[dict], image: np.ndarray) -> np.ndarray:
     """Returns an image cropped to include coordinates in geometry
 
     Args:

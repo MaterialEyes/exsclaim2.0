@@ -5,20 +5,18 @@ from datetime import datetime as dt, timezone as tz, timedelta as td, tzinfo
 from email.message import EmailMessage
 from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, GetCoreSchemaHandler, \
 	field_serializer, WithJsonSchema, Field
-from pydantic_core import CoreSchema
 from smtplib import SMTP, SMTP_SSL
-from typing import Annotated, Collection, Generator, Optional, Type, Self
+from typing import Annotated, Generator, Optional, Type, Self
 from uuid import UUID
 
 import asyncio
-import fastapi
-import httpx
+import httpx2
 import logging
 import re
 import ssl
 import zoneinfo
 
-__all__ = ["Notification", "SuccessNotification", "InterruptionNotification", "ErrorNotification", "Notifications",
+__all__ = ["Notification", "SuccessNotification", "InterruptionNotification", "ErrorNotification", "Notifier",
 		   "NTFY", "Email", "Webhook", "CouldNotNotifyException", "QueryNotifications"]
 
 
@@ -37,8 +35,10 @@ class Notification(BaseModel):
 	message: str | dict[str, str]
 	run_id: Optional[UUID] = None
 	name: str
-	time: dt = Field(default_factory=lambda: dt.now(tz=tz.utc),
-					 description=f"The headers that should be sent with the webhook.")
+	time: dt = Field(
+		default_factory=lambda: dt.now(tz=tz.utc),
+		description="The headers that should be sent with the webhook."
+	)
 
 
 class SuccessNotification(Notification):
@@ -64,8 +64,19 @@ TZInfo = Annotated[
 ]
 
 
-class Notifications(BaseModel, ABC):
+_notifiers: dict[str, Type["Notifier"]] = {}
+
+
+class Notifier(BaseModel, ABC):
 	"""An interface designed to notify the user in various ways."""
+	def __init_subclass__(cls, **kwargs):
+		super().__init_subclass__(**kwargs)
+		_notifiers[cls.json_name()] = cls
+
+	@staticmethod
+	def notifiers() -> dict[str, Type["Notifier"]]:
+		return _notifiers
+
 	@classmethod
 	def json_name(cls) -> str:
 		return cls.__name__.lower()
@@ -75,50 +86,47 @@ class Notifications(BaseModel, ABC):
 		...
 
 	@staticmethod
-	def notifiers() -> dict[str, Type["Notifications"]]:
-		def get_subclasses(cls) -> set:
-			subclasses = set()
-			for subclass in cls.__subclasses__():
-				subclasses.add(subclass)
-				subclasses.update(get_subclasses(subclass))
-			return subclasses
-
-		return {notifier.json_name(): notifier for notifier in get_subclasses(Notifications)}
-
-	def _get_results_link(self, results_id: Optional[UUID]) -> Optional[str]:
+	def _get_results_link(results_id: Optional[UUID]) -> Optional[str]:
 		if ui_settings.DASHBOARD_URL is None or results_id is None:
 			return None
 
 		return f"{ui_settings.DASHBOARD_URL}/results/{results_id}"
 
-	def _get_logs_link(self, results_id: Optional[UUID]) -> Optional[str]:
+	@staticmethod
+	def _get_logs_link(results_id: Optional[UUID]) -> Optional[str]:
 		if ui_settings.PUBLIC_API_URL is None or results_id is None:
 			return None
 
 		return f"{ui_settings.PUBLIC_API_URL}/results/{results_id}/logs"
 
 
-class NTFY(Notifications):
+class NTFY(Notifier):
 	"""A base model representing the necessary info to send an NTFY notification."""
 	model_config = ConfigDict(arbitrary_types_allowed=True)
 
-	url: Annotated[str, fastapi.Path(
-		title="The url to the NTFY server, with the topic included (e.g. {create_link('https://ntfy.sh/exsclaim')})")]
+	url: str = Field(
+		description=f"The url to the NTFY server, with the topic included (e.g. {create_link('https://ntfy.sh/exsclaim')})")
 
-	access_token: Annotated[Optional[str], Path(
-		title="The access token fastapi.that may be needed to send the NTFY notification as stated in {create_link('https://docs.ntfy.sh/publish/#access-tokens')}")] = None
+	access_token: Optional[str] = Field(
+		default=None,
+		description=f"The access token fastapi.that may be needed to send the NTFY notification as stated in {create_link('https://docs.ntfy.sh/publish/#access-tokens')}"
+	)
 
-	priority: Annotated[int, fastapi.Path(
-		title="The priority of the message as stated in {create_link('https://docs.ntfy.sh/publish/#message-priority')}.",
-		ge=1, le=5)] = 3
+	priority: int = Field(
+		title=f"The priority of the message as stated in {create_link('https://docs.ntfy.sh/publish/#message-priority')}.",
+		default=3,
+		ge=1,
+		le=5
+	)
 
-	timezone: Annotated[TZInfo, fastapi.Path(
+	timezone: TZInfo = Field(
+		default=zoneinfo.ZoneInfo("localtime"),
 		title="A timezone used to send the relative time to NTFY since NTFY's client cannot parse it directly.",
-	)] = zoneinfo.ZoneInfo("localtime")
+	)
 
 	@field_validator("timezone", mode="before")
 	@classmethod
-	def get_timezone(cls, value: Optional[str]) -> TZInfo:
+	def get_timezone(cls, value: Optional[str | float | int]) -> TZInfo:
 		if value is None:
 			return tz.utc
 
@@ -141,12 +149,12 @@ class NTFY(Notifications):
 	def is_valid_notifier(self) -> Self:
 		"""Checks if the given NTFY server is valid."""
 		try:
-			with httpx.Client() as client:
-				response: httpx.Response = client.get(self.url)
+			with httpx2.Client() as client:
+				response: httpx2.Response = client.get(self.url)
 				if response.is_success or response.is_redirect:
 					return self
 				raise ValueError(response.text)
-		except httpx.InvalidURL as e:
+		except httpx2.InvalidURL as e:
 			raise ValueError(str(e)) from e
 
 	@field_serializer("timezone")
@@ -157,8 +165,6 @@ class NTFY(Notifications):
 		return dt.now(value).utcoffset().total_seconds() / 3600
 
 	async def notify(self, notification: Notification, logger: logging.Logger):
-		from json import dumps
-
 		headers = {
 			"Markdown": "yes",
 			"Title": f"EXSCLAIM: `{notification.name}` Notification",
@@ -182,14 +188,14 @@ class NTFY(Notifications):
 			data = f"An error occurred at {finished_at} running{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}.\n"
 			data += ' '.join(format_exception(notification.exception))
 
-		async with httpx.AsyncClient() as client:
+		async with httpx2.AsyncClient() as client:
 			try:
 				await client.post(self.url, data=data, headers=headers)
-			except httpx.ConnectError as e:
+			except httpx2.ConnectError as e:
 				raise CouldNotNotifyException from e
 
 
-class Email(Notifications, RootModel[list[EmailStr]]):
+class Email(Notifier, RootModel[list[EmailStr]]):
 	@model_validator(mode="after")
 	def is_valid_notifier(self) -> Self:
 		if ui_settings.EMAIL is None and not ui_settings.ALLOW_EMAILS_WITHOUT_ACCOUNT:
@@ -207,7 +213,7 @@ class Email(Notifications, RootModel[list[EmailStr]]):
 			logger.warning("Email credentials were not provided by the pipeline's maintainer, so emails cannot be sent.")
 			return
 
-		messages: list[EmailMessage] = [EmailMessage() for email in emails]
+		messages: list[EmailMessage] = [EmailMessage() for _ in emails]
 		for i, (email, msg) in enumerate(zip(emails, messages)):
 			msg["Subject"] = f"EXSCLAIM Run {notification.name} ({notification.run_id})"
 			msg["From"] = email_settings.ACCOUNT
@@ -222,7 +228,7 @@ class Email(Notifications, RootModel[list[EmailStr]]):
 				else:
 					html = text
 			elif isinstance(notification, InterruptionNotification):
-				text = html = f"EXSCLAIM run stopped by user request."
+				text = html = f"EXSCLAIM run stopped by user request at {notification.time}."
 			elif isinstance(notification, ErrorNotification):
 				logs_link = self._get_logs_link(notification.run_id)
 				text = f"EXSCLAIM run stopped due to an error at {notification.time}."
@@ -244,20 +250,22 @@ class Email(Notifications, RootModel[list[EmailStr]]):
 				server.send_message(msg)
 
 
-class Webhook(Notifications):
+class Webhook(Notifier):
 	"""
 	When setting up a webhook, there are two types of events that will be sent.
 	The first is the `test` event sent before the pipeline runs.
 	The webhook needs to respond with status 202 Accepted for the pipeline to accept that the webhook is properly configured.
 	The second event is the `message` event, which is the pipeline sending if the pipeline finished successfully or crashed.
-	The pipeline must respond with a 200 or 300 level status code that is **not** 202, or else the pipeline will think that the message didn't go through.
+	The pipeline must respond with a 200 or 300-level status code that is **not** 202, or else the pipeline will think that the message didn't go through.
 	"""
 	url: str = Field(description="The url that should be posted to.")
 
-	authorization: Optional[str] = Field(default=None,
-										 description=f"The bearer token that should be sent with the webhook. This takes priority over a the Authorization header you may pass, so leave it empty if you're handling headers through the headers value.")
+	authorization: Optional[str] = Field(
+		default=None,
+		description="The bearer token that should be sent with the webhook. This takes priority over a the Authorization header you may pass, so leave it empty if you're handling headers through the headers value."
+	)
 
-	headers: dict[str, str] = Field(default_factory=dict, description=f"The headers that should be sent with the webhook.")
+	headers: dict[str, str] = Field(default_factory=dict, description="The headers that should be sent with the webhook.")
 
 	@staticmethod
 	def get_url_pattern() -> re.Pattern[str]:
@@ -266,7 +274,7 @@ class Webhook(Notifications):
 	@model_validator(mode="wrap")
 	@classmethod
 	def _resolve_adaptive_object(cls, data: dict, handler: GetCoreSchemaHandler, /) -> Webhook:
-		if Notifications not in cls.__bases__:
+		if Notifier not in cls.__bases__:
 			return handler(data)
 
 		url = data["url"]
@@ -276,18 +284,19 @@ class Webhook(Notifications):
 
 		return cls.model_validate(data)
 
-	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx.Response:
+	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx2.Response:
 		headers = self.headers.copy()
 		if self.authorization is not None:
 			headers["Authorization"] = self.authorization
 
 		headers["Content-Type"] = "application/json"
 
-		async with httpx.AsyncClient() as client:
+		async with httpx2.AsyncClient() as client:
 			try:
 				response = await client.post(self.url, data=notification.model_dump(), headers=headers)
 				response.raise_for_status()
-			except httpx.HTTPError as e:
+				return response
+			except httpx2.HTTPError as e:
 				raise CouldNotNotifyException from e
 
 
@@ -297,13 +306,13 @@ class Slack(Webhook):
 	The first is the `test` event sent before the pipeline runs.
 	The webhook needs to respond with status 202 Accepted for the pipeline to accept that the webhook is properly configured.
 	The second event is the `message` event, which is the pipeline sending if the pipeline finished successfully or crashed.
-	The pipeline must respond with a 200 or 300 level status code that is **not** 202, or else the pipeline will think that the message didn't go through.
+	The pipeline must respond with a 200 or 300-level status code that is **not** 202, or else the pipeline will think that the message didn't go through.
 	"""
 	@staticmethod
 	def get_url_pattern() -> re.Pattern[str]:
 		return re.compile(r"https://hooks.slack.com/services/T(\w{8,})/B(\w{8,})/(\w{24})")
 
-	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx.Response:
+	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx2.Response:
 		headers = {"Content-Type": "application/json"}
 		timestamp = f"<!date^{int(notification.time.timestamp())}^ {{date_short_pretty}} at {{time_secs}}|{notification.time.isoformat()}>"
 
@@ -346,11 +355,11 @@ class Slack(Webhook):
 			else:
 				data = {"text": f"Results for *{notification.name}* finished compiling{timestamp}."}
 
-		async with httpx.AsyncClient() as client:
+		async with httpx2.AsyncClient() as client:
 			try:
 				response = await client.post(self.url, headers=headers, json=data)
 				response.raise_for_status()
-			except httpx.HTTPError as e:
+			except httpx2.HTTPError as e:
 				raise CouldNotNotifyException(f"[{response.status_code}] The status code that the webhook responded with "
 			                              f"did not match what was expected: {response.text}.") from e
 		return response
@@ -361,14 +370,27 @@ class Discord(Webhook):
 	def get_url_pattern() -> re.Pattern[str]:
 		return re.compile(r"https://discord.com/api/webhooks/(\d{17,19})/(\w+)")
 
-	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx.Response:
+	async def notify(self, notification: Notification, logger: logging.Logger) -> httpx2.Response:
 		headers = {"Content-Type": "application/json"}
 		iso_timestamp = f"{notification.time:%Y-%m-%d %H:%M}"
 		timestamp = int(notification.time.timestamp())
 		timestamp = f"<t:{timestamp}:f>"
 
 		if isinstance(notification, InterruptionNotification):
+			logs_link = self._get_logs_link(notification.run_id)
 			description = f"Results for **{notification.name}** were stopped by the user at {timestamp}.",
+			data = {
+				"content": None,
+				"embeds": [{
+					"title": f"{notification.name}: Pipeline Stopped",
+					"description": description,
+					"url": logs_link,
+					"color": 16711680,
+					"timestamp": iso_timestamp
+				}],
+				"attachments": []
+			}
+
 		elif isinstance(notification, ErrorNotification):
 			logs_link = self._get_logs_link(notification.run_id)
 			if logs_link is None:
@@ -409,14 +431,15 @@ class Discord(Webhook):
 		data["username"] = "EXSCLAIM Pipeline"
 		data["avatar_url"] = "https://raw.githubusercontent.com/MaterialEyes/exsclaim2.0/54317f169b0436eadde45bcc391c9beaf0a1135e/exsclaim/dashboard/assets/favicon.png"
 
-		async with httpx.AsyncClient() as client:
+		async with httpx2.AsyncClient() as client:
 			try:
 				response = await client.post(self.url, headers=headers, json=data)
 				response.raise_for_status()
-			except httpx.HTTPError as e:
+			except httpx2.HTTPError as e:
 				raise CouldNotNotifyException(
 					f"[{response.status_code}] The status code that the webhook responded with "
 					f"did not match what was expected: {response.text}.") from e
+		return response
 
 	@model_validator(mode="after")
 	def is_valid_notifier(self) -> Self:
@@ -425,11 +448,11 @@ class Discord(Webhook):
 			"Content-Type": "application/json",
 		}
 
-		with httpx.Client() as client:
+		with httpx2.Client() as client:
 			try:
 				response = client.get(self.url, headers=headers)
 				response.raise_for_status()
-			except httpx.HTTPError as e:
+			except httpx2.HTTPError as e:
 				raise ValueError("Test ping for Discord did not work") from e
 
 		return self

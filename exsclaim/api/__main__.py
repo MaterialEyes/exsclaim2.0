@@ -1,14 +1,14 @@
 import exsclaim
 import logging
+import yaml
 
-from .middleware import *
-from .routers import v1_router, general_router, query_router, users_router
+from .middleware import RequestLoggerMiddleware, PreflightCacheMiddleware
+from .routers import v1_router, v2_router, general_router, query_router, users_router
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from logging.handlers import TimedRotatingFileHandler
-from pathlib import Path
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -25,6 +25,7 @@ def my_schema():
 	openapi_schema = get_openapi(
 		title="EXSCLAIM API",
 		version=exsclaim.__version__,
+		openapi_version="3.2.0",
 		routes=app.routes,
 	)
 
@@ -37,7 +38,6 @@ def my_schema():
 		# "termsOfService": "https://materialeyes.org/terms/",
 		"contact": {
 			"name": "Developers",
-			# "url": "https://materialeyes.org/help",
 			"email": "developer@materialeyes.org"
 		},
 		"license": {
@@ -48,6 +48,7 @@ def my_schema():
 	}
 
 	app.openapi_schema = openapi_schema
+	app.openapi_yaml_schema = yaml.dump(openapi_schema, default_flow_style=False)
 	return app.openapi_schema
 
 
@@ -126,7 +127,6 @@ def get_middleware(settings, logger: logging.Logger) -> tuple[Middleware, ...]:
 		Middleware(PreflightCacheMiddleware),
 		Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts),
 		Middleware(GZipMiddleware, minimum_size=1_000),
-		Middleware(SQLAlchemyMiddleware, logger=logger),
 	)
 
 
@@ -149,7 +149,7 @@ def get_app() -> FastAPI:
 	app.openapi = my_schema
 	app.configuration_ini = None
 
-	for router in (general_router, query_router, users_router, v1_router):
+	for router in (general_router, query_router, users_router, v1_router, v2_router):
 		app.include_router(router)
 
 	return app

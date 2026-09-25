@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-from .exceptions import ExsclaimToolException
-import numpy as np
+from ..exceptions import ExsclaimToolException
 
 from abc import ABC, abstractmethod, ABCMeta
 from asyncio import Semaphore
@@ -15,6 +14,9 @@ from pydantic_core import ValidationError
 from re import sub
 from textwrap import dedent
 from typing import Literal, Iterable, Type, Optional, Any, TypeVar, Self, Collection, NamedTuple
+from uuid import UUID
+
+import numpy as np
 
 
 __all__ = ["ChatMessage", "LLMOptions", "LLMMeta", "LLMUsage", "LLM", "CaptionEntry", "Captions", "Keywords", "ResponseBase", "OptionalSemaphore"]
@@ -43,11 +45,12 @@ class CaptionInfo(BaseModel):
 
 class ChatMessage:
 	def __init__(self, content: str, role: Literal["user", "assistant", "system", "tool"] = "user",
-				 temperature: Optional[float] = None, images: Optional[Collection[Any]] = None):
+				 temperature: Optional[float] = None, images: Optional[Collection[Any]] = None, cache: bool = False):
 		self.content = content
 		self.role = role
 		self.temperature = temperature
 		self.images = images
+		self.cache = cache
 
 	@property
 	def images(self) -> Optional[tuple[str]]:
@@ -145,7 +148,8 @@ class LLMUsage:
 
 
 class OptionalSemaphore(Semaphore):
-	def __init__(self, value: Optional[int] = None):
+	def __init__(self, llm: "LLM"):
+		value = llm.request_concurrency()
 		self._is_valid_value = value is not None and value > 0
 		if self._is_valid_value:
 			super().__init__(value)
@@ -163,7 +167,7 @@ class LLM(ABC, metaclass=LLMMeta):
 	_models = dict()
 	_classes = set()
 
-	def __init__(self, model: str, api_key: str = None, *args, **kwargs):
+	def __init__(self, model: str, api_key: str | None = None, *args, **kwargs):
 		self.model = model
 
 	@staticmethod
@@ -178,6 +182,13 @@ class LLM(ABC, metaclass=LLMMeta):
 	def available_models() -> Iterable[LLMOptions]:
 		"""Returns a list of tuples describing the available models.
 		Each tuple should contain the name of the model and a boolean indicating if it requires an api_key/password (True) or not (False)."""
+		...
+
+	@staticmethod
+	@abstractmethod
+	def check_validity(model: str, api_key: Optional[str]):
+		"""Checks if the given model and api key are valid.
+		:raises exsclaim.exceptions.PipelineConfigError: if there's an error with the values."""
 		...
 
 	@staticmethod
@@ -214,15 +225,15 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	async def parse_captions(self, caption: str) -> tuple[dict[str, str], list[str], LLMUsage]:
 		messages = [
-			ChatMessage(role="system", content=(
-				"You are an experienced material scientist. " 
-				"Please parse the given caption with the response only containing a valid JSON object that can be plugging into Pydantic's BaseModel.model_validation_json. " 
-				"Do not add any markdown wrappers or code blocks, only the raw JSON object. " 
-				"The `keywords` key should hold a list of three to five (3-5) broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. " 
-				"The `captions` key should be a list of objects, where each object holds the letter sublabel in the `label` key and the parsed subcaption in the `caption` key. " 
-				"Please include any HTML tags from the full caption in the separated caption values. " 
-				"Remove as little content as possible when splitting the subcaptions, and having duplicated content across labels is okay. " 
-				"If there is no full caption then return an object with `keywords` and `captions` being empty lists. " 
+			ChatMessage(role="system", cache=True, content=(
+				"You are an experienced material scientist. "
+				"Please parse the given caption with the response only containing a valid JSON object that can be plugging into Pydantic's BaseModel.model_validation_json. "
+				"Do not add any markdown wrappers or code blocks, only the raw JSON object. "
+				"The `keywords` key should hold a list of three to five (3-5) broad and general description of the caption and can be related to the materials used, characterization techniques, or any other scientific related keyword. "
+				"The `captions` key should be a list of objects, where each object holds the letter sublabel in the `label` key and the parsed subcaption in the `caption` key. "
+				"Please include any HTML tags from the full caption in the separated caption values. "
+				"Remove as little content as possible when splitting the subcaptions, and having duplicated content across labels is okay. "
+				"If there is no full caption then return an object with `keywords` and `captions` being empty lists. "
 				"Do not hallucinate or create content that does not exist in the provided text."
 			)),
 			ChatMessage(role="user", content=caption)
@@ -241,7 +252,7 @@ class LLM(ABC, metaclass=LLMMeta):
 	# TODO: Add deprecations to these methods
 	async def separate_captions(self, caption: str) -> dict[str, str]:
 		messages = [
-			ChatMessage(role="system", content=dedent(f"""\
+			ChatMessage(role="system", content=dedent("""\
 				Please separate the given full caption into the exact subcaptions. 
 				Duplicating content across keys is okay. 
 				If there is no full caption then return a list with an empty dictionary. 
@@ -255,7 +266,7 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	async def get_keywords(self, caption: str) -> tuple[str, ...]:
 		messages = [
-			ChatMessage(role="system", content=dedent(f"""\
+			ChatMessage(role="system", content=dedent("""\
 				You are an experienced material scientist. 
 				Summarize the text in a less than three keywords separated by comma. 
 				Do not hallucinate or create content that does not exist in the provided text:""")),
@@ -265,13 +276,23 @@ class LLM(ABC, metaclass=LLMMeta):
 		keywords = await self.get_response(messages, response_format=Keywords)
 		return tuple(keywords.keywords)
 
-	@classmethod
-	def from_search_query(cls, search_query: dict, run_id: Optional["uuid.UUID"] = None):
+	@staticmethod
+	def get_info_from_search_query(search_query: dict[str, Any]) -> tuple[str, Optional[str]]:
 		llm = search_query.get("llm", None)
 		if llm is None:
 			raise ValueError("llm key must be provided to search_query.")
 		model_key = search_query.get("model_key", None)
-		return cls(llm, model_key, run_id=run_id)
+		return llm, model_key
+
+	@classmethod
+	def from_search_query(cls, search_query: dict, run_id: Optional[UUID] = None):
+		llm, model_key = cls.get_info_from_search_query(search_query)
+		return cls(llm, model_key, run_id=run_id, max_tokens=search_query.get("max_tokens"))
+
+	@classmethod
+	def validate_search_query(cls, search_query: dict):
+		llm, model_key = cls.get_info_from_search_query(search_query)
+		cls.check_validity(llm, model_key)
 
 	@staticmethod
 	def remove_control_characters(string: str) -> str:

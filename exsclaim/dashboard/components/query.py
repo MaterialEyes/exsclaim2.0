@@ -4,6 +4,7 @@ Converted from React Query.js component.
 """
 
 import dash_bootstrap_components as dbc
+import httpx2
 
 from dash import html, dcc, callback, Output, Input, State, clientside_callback, ClientsideFunction
 from dash.exceptions import PreventUpdate
@@ -11,17 +12,14 @@ from re import compile
 from typing import Optional
 
 
-name_regex = compile(r"^[\w_\-]+$")
+name_regex = compile(r"^[\w_\- ]+$")
 
 
 def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool], dict[str, bool]]:
-	try:
-		from ...caption import LLMMeta
-	except ImportError:
-		from exsclaim.caption import LLMMeta
+	from exsclaim import llms
 
 	available_llms = dict()
-	for cls in LLMMeta.classes:
+	for cls in llms.LLMMeta.classes:
 		models = cls.available_models()
 		if not models:
 			continue
@@ -38,12 +36,11 @@ def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool], dict[
 	return available_llms, show_api_key, required_api_key
 
 
-def create_query_component(journal_families, available_llms, debounce=True):
+def create_query_component(available_llms, debounce=True):
 	"""
 	Create the main query form component.
-	
+
 	Args:
-		journal_families (list): List of available journal families
 		available_llms (dict[str, dict[str, str | bool]]): List of available LLM models
 
 	Returns:
@@ -105,11 +102,12 @@ def create_query_component(journal_families, available_llms, debounce=True):
 				create_num_articles_component(debounce=debounce),
 				create_input_term_component(debounce=debounce),
 				create_input_synonyms_component(debounce=debounce),
+				create_inheritance_component(),
 			]),
 
 			# Right column - Advanced inputs
 			dbc.Col(width=6, children=[
-				create_journal_family_component(journal_families),
+				create_journal_family_component(),
 				create_sort_by_component(),
 				create_open_access_component(),
 				create_save_methods_component(),
@@ -124,7 +122,9 @@ def create_query_component(journal_families, available_llms, debounce=True):
 				dbc.Col(width=6, children=[
 					create_ntfy_component(),
 				]),
-				dbc.Col(width=6, children=[]),
+				dbc.Col(width=6, children=[
+					create_webhooks_component(debounce=debounce),
+				]),
 			]),
 			],
 			id="advanced-options",
@@ -144,7 +144,7 @@ def create_output_name_component(debounce=True):
 	"""Create output name input component."""
 	return html.Div([
 		dbc.Tooltip(
-			"Allowed characters: letters, numbers, '-', '_'.",
+			"Allowed characters: letters, numbers, '-', '_', and spaces.",
 			id="output-name-tooltip",
 			target="output-name",
 			is_open=False,
@@ -156,7 +156,7 @@ def create_output_name_component(debounce=True):
 		dbc.Input(
 			id="output-name",
 			type="text",
-			pattern=r"[\w_\-]+",
+			pattern=r"[\w_\- ]+",
 			placeholder="Enter output file name...",
 			className="form-control",
 			debounce=debounce,
@@ -234,38 +234,84 @@ def create_input_synonyms_component(debounce=True):
 	], className="mb-3")
 
 
-def create_journal_family_component(journal_families):
+def create_inheritance_component():
+	return html.Div([
+		dbc.Label(
+			"Extend Results From:",
+			html_for="base-run-id"
+		),
+		dcc.Dropdown(
+			id="base-run-id",
+			placeholder="Add results from run...",
+			className="form-control",
+			multi=False,
+		)
+	])
+
+
+@callback(
+	Output("base-run-id", "options"),
+	Output("base-run-id", "value"),
+	State("exsclaim-store", "data")
+)
+async def load_previous_runs(data):
+	try:
+		async with httpx2.AsyncClient(base_url=data["fast_api_url"], timeout=30) as client:
+			response = await client.get("/previous_runs?return_values=id&return_values=name")
+			runs = response.json()
+	except httpx2.HTTPError as e:
+		print(f"{e=}", flush=True)
+		return [], None
+
+	options = [None] * (len(runs) + 1)
+	options[0] = {"value": None, "label": "-"}
+
+	for i, run in enumerate(runs, start=1):
+		options[i] = {"value": str(run["id"]), "label": f"{run['name']} ({run['id']})"}
+
+	return options, None
+
+
+DAGGER = "\u2020"
+
+
+def create_journal_family_component():
 	"""Create journal family dropdown component."""
-	if not len(journal_families):
-		raise ValueError("At least one journal family option is required.")
+	try:
+		from ...journals import JournalFamily, JournalFamilyDynamic
+	except ImportError:
+		from exsclaim.journals import JournalFamily, JournalFamilyDynamic
 
-	options = [{"label": family, "value": family} for family in journal_families]
-	initial_value = None
-	for i, option in enumerate(options):
-		name = option["label"].lower()
-		if name == "acs" or name == "wiley":
-			options[i]["disabled"] = True
-		else:
-			if initial_value is None:
-				initial_value = option["value"]
+	options = [None] * len(JournalFamily)
+	for i, (name, cls) in enumerate(JournalFamily):
+		option = {"label": name, "value": name}
+		if JournalFamilyDynamic in cls.__bases__ or name.lower() == "wiley":
+			option["label"] = html.Div([name, html.Sup(DAGGER)])
 
-	if initial_value is None:
-		raise ValueError("At least one valid journal family option is required.")
+		if name.lower() == "wiley":
+			option["disabled"] = True
+
+		options[i] = option
+
+	initial_value = "Nature"
 
 	return html.Div([
 		dbc.Label(
 			"Journal Family *",
 			html_for="journal-family",
 		),
-		dbc.Select( # TODO: MIght be able to use dcc.DropDown using Dash==4.0.0
+		dcc.Dropdown(
 			id="journal-family",
 			options=options,
 			value=initial_value,
 			className="form-control",
-			valid=True,
-			invalid=False,
 			persistence=True,
-			persistence_type="local"
+			persistence_type="local",
+		),
+		html.P(
+			f"{DAGGER} The selected Journal Family's website is protected by CloudFlare, so there is a higher chance of information not being retrieved for this run.",
+			id="journal-family-warning",
+			hidden=True
 		)
 	], className="mb-3")
 
@@ -300,11 +346,6 @@ def create_open_access_component():
 
 def create_model_component(available_llms, debounce=True):
 	"""Create model selection component."""
-	# options = [
-	# 	{"label": llm["display_name"], "value": llm["model_name"]}
-	# 	for llm in available_llms
-	# ]
-
 	options = []
 	for i, (provider, llms) in enumerate(available_llms.items()):
 		options.append(dict(value=provider, label=provider, disabled=True))
@@ -321,7 +362,10 @@ def create_model_component(available_llms, debounce=True):
 	elif "Ollama" in available_llms and len(available_llms["Ollama"]) > 0:
 		default_llm = available_llms["Ollama"][0]["model_name"]
 	else:
-		default_llm = options[0]["value"]
+		if len(options) == 0:
+			default_llm = None
+		else:
+			default_llm = options[0]["value"]
 
 	return html.Div([
 		dbc.Label("Model *", html_for="model-select"),
@@ -348,7 +392,7 @@ def create_model_component(available_llms, debounce=True):
 
 
 def create_save_methods_component():
-	"""Create save_methods component."""
+	"""Creates the save methods options component."""
 	methods = (
 		dict(label="Subfigures", value="subfigures"),
 		dict(label="Visualization", value="visualization"),
@@ -411,7 +455,7 @@ def create_ntfy_component(debounce=True):
 		),
 		dbc.Input(
 			id="ntfy-url",
-			type="text",
+			type="url",
 			placeholder="https://ntfy.sh/exsclaim",
 			className="form-control",
 			required=False,
@@ -440,6 +484,24 @@ def create_ntfy_component(debounce=True):
 			placeholder="3",
 			max=5,
 			min=1,
+			className="form-control",
+			required=False,
+			debounce=debounce
+		)
+	], className="mb-3")
+
+
+def create_webhooks_component(debounce=True):
+	"""Creates the components that would correspond to Webhook urls."""
+	return html.Div([
+		dbc.Label(
+			"Webhook URL:",
+			html_for="webhook-url",
+		),
+		dbc.Input(
+			id="webhook-url",
+			type="url",
+			placeholder="Webhook URL",
 			className="form-control",
 			required=False,
 			debounce=debounce
@@ -553,8 +615,30 @@ def valid_search_term(search_term: Optional[str]) -> tuple[bool, bool, bool]:
 		return False, True, True
 
 	valid_name = bool(search_term.strip())
-
 	return valid_name, not valid_name, not valid_name
+
+
+@callback(
+	Output("journal-family-warning", "hidden"),
+	Input("journal-family", "value"),
+	State("journal-family", "options"),
+)
+def show_journal_warning(journal_family: str, options) -> bool:
+	option = next(filter(lambda option: option["value"] == journal_family, options), None)
+	if option is None:
+		return False
+
+	if isinstance(option["label"], str):
+		return True
+
+	children = option["label"]["props"].get("children", ())
+	for child in children:
+		if isinstance(child, str):
+			continue
+		if child.get("props", dict()).get("children") == DAGGER:
+			return False
+
+	return DAGGER not in option["label"]
 
 
 @callback(
@@ -595,12 +679,14 @@ clientside_callback(
 		State("sort-by", "value"),
 		State("input-term", "value"),
 		State("input-synonyms", "value"),
+		State("base-run-id", "value"),
 		State("open-access", "value"),
 		State("model-select", "value"),
 		State("model-key", "value"),
 		State("save-methods", "value"),
 		State("ntfy-url", "value"),
 		State("ntfy-priority", "value"),
+		State("webhook-url", "value"),
 	],
 	prevent_initial_call=True
 )

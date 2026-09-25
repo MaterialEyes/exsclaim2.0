@@ -83,7 +83,7 @@ def get_model(train_status):
         return model, lr_scheduler, optimizer, 0
 
     best_checkpoint = checkpoints / best_checkpoint
-    epoch = get_epoch(model, best_checkpoint)
+    epoch = get_epoch(model, optimizer, best_checkpoint)
 
     return model, lr_scheduler, optimizer, epoch
 

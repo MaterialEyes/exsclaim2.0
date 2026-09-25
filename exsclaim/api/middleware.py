@@ -1,27 +1,24 @@
-import ipaddress
-import logging
+from .models import gen_uuid7
+from ..db import get_db_session
 
-from .models import get_guest_uuid, gen_uuid7
-from ..db import async_engine, get_db_session
-
-from asyncio import wait_for, TimeoutError as AsyncTimeoutError
 from contextvars import ContextVar
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette import status
+from starlette.datastructures import URL
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse, JSONResponse
-from starlette.types import ASGIApp, Scope, Receive, Send, Message
+from starlette.types import ASGIApp
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio.session import AsyncSession
-from sqlalchemy.orm import sessionmaker
 from time import perf_counter
+from typing import AsyncGenerator, Optional
 from uuid import UUID
 
-import ipaddress as ip
+import ipaddress
+import logging
 import re
 
-__all__ = ["RequestLoggerMiddleware", "PreflightCacheMiddleware", "SQLAlchemyMiddleware"]
+__all__ = ["RequestLoggerMiddleware", "PreflightCacheMiddleware"]
 
 
 request_id_ctx = ContextVar("request_id")
@@ -32,14 +29,14 @@ BLOCKED_PATHS = [
 ]
 
 
-def format_response(_id, request: Request, ip: ip._BaseAddress = None) -> str:
+def format_response(_id, request: Request, ip: Optional[ipaddress._BaseAddress] = None) -> str:
 	if ip is None:
 		ip = request.headers.get('X-Forwarded-For', None)
 		if ip is None:
 			ip = request.client.host or "Unknown IP"
 
 	path = request.url.path if hasattr(request, "url") else "NULL PATH"
-	log = f"[{request_id_ctx.get()}] {{{ip} using {request.headers.get('User-Agent', 'Unknown User-Agent')}}} {path}"
+	log = f"[{request_id_ctx.get()}] {{{ip} using {request.headers.get('User-Agent', 'Unknown User-Agent')}}} [{request.method}] {path}"
 	if request.url.query:
 		log += f"?{request.url.query}"
 
@@ -61,7 +58,8 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 			return f"{diff * 1000:,.4f}ms"
 		return f"{diff:,.2f}s"
 
-	def path_is_blocked(self, url: "starlette.datastructures.URL") -> bool:
+	@staticmethod
+	def path_is_blocked(url: URL) -> bool:
 		# TODO: Create a more comprehensive set of banned endpoints
 		for regex in BLOCKED_PATHS:
 			if regex.match(url.path):
@@ -74,7 +72,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 		if immediately_stop_request:
 			return Response(status_code=status.HTTP_404_NOT_FOUND)
 		else:
-			async def send_infinite_zeroes() -> bytes:
+			async def send_infinite_zeroes() -> AsyncGenerator[bytes, None]:
 				while not await request.is_disconnected():
 					yield b"000"
 
@@ -84,7 +82,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 		start_time = perf_counter()
 
 		try:
-			address = ip.ip_address(request.headers.get('X-Forwarded-For', request.client.host))
+			address = ipaddress.ip_address(request.headers.get('X-Forwarded-For', request.client.host))
 		except ValueError as e:
 			self.logger.error(f"Could not extract an IP address for {request.client.host}, so the attempt was blocked.", exc_info=e)
 			return Response(status_code=status.HTTP_404_NOT_FOUND)
@@ -102,7 +100,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 			async with get_db_session() as session:
 				await session.execute(
 					text("INSERT INTO settings.banned_ips(address, reason) VALUES (:address, :reason);"),
-					dict(address=address, reason=f"Attempted to access: {request.url.path}"[:90])
+					dict(address=address, reason=f"Attempted to access: {request.url.path}")
 				)
 				await session.commit()
 
@@ -137,15 +135,20 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
 					return response
 
 			self.logger.info(f"{format_response(request_id, request, address)} ({response.status_code}) in {self.get_log_time(diff)}.")
-
 			return response
+		except SQLAlchemyError as e:
+			self.logger.exception(f"{format_response(request_id_ctx.get(), request)} Database Error occurred.", exc_info=e)
+			return JSONResponse(dict(detail="Internal Database Error.", request_id=request.state.id),
+									status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+									media_type="text/plain", headers={"X-Request-Id": request_id_ctx.get()})
 		except BaseException as e:
 			end_time = perf_counter()
 			diff = end_time - start_time
 
-			self.logger.exception(f"{format_response(request_id_ctx, request, address)} Time to error: {self.get_log_time(diff)}. Unhandled error: {e}.")
-			return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=f"Internal Server Error. Please try again later. Request ID: {request_id}.",
-			                media_type="text/plain", headers={"X-Request-Id": request_id})
+			self.logger.exception(f"{format_response(request_id_ctx.get(), request, address)} Time to error: {self.get_log_time(diff)}. Unhandled error.", exc_info=e)
+			return JSONResponse(dict(detail="Internal Server Error.", request_id=request.state.id),
+								status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+								media_type="text/plain", headers={"X-Request-Id": request_id})
 		finally:
 			for handler in self.logger.handlers:
 				handler.flush()
@@ -169,40 +172,3 @@ class PreflightCacheMiddleware(BaseHTTPMiddleware):
 				response.headers[header] = "Sec-Ch-Prefers-Color-Scheme"
 
 		return response
-
-
-class SQLAlchemyMiddleware(BaseHTTPMiddleware):
-	def __init__(self, app: ASGIApp, logger, dispatch=None):
-		super().__init__(app, dispatch)
-		self.logger = logger
-		self.session_factory = sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=False)
-
-	async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-		session: AsyncSession = self.session_factory()
-		request.state.session = session
-		try:
-			response = await call_next(request)
-			await session.commit()
-		except SQLAlchemyError as e:
-			response = JSONResponse(dict(detail="Internal database error detected.", request_id=request.state.id),
-								status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-								media_type="text/plain", headers={"X-Request-Id": request_id_ctx.get()})
-			await session.rollback()
-			self.logger.exception(f"{format_response(request_id_ctx.get(), request)} Database Error occurred: {e}.")
-		finally:
-			await session.close()
-
-		return response
-
-
-# TODO: Finish implementing the timeout middleware
-class TimeoutMiddleware(BaseHTTPMiddleware):
-	def __init__(self, app:ASGIApp, timeout: int = 60, dispatch=None):
-		super().__init__(app, dispatch)
-		self.timeout = timeout
-
-	async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-		try:
-			return await wait_for(call_next(request), self.timeout)
-		except AsyncTimeoutError:
-			return Response("Timeout waiting for response.", status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")

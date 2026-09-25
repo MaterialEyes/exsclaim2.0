@@ -1,11 +1,11 @@
-import json
-import random
-import warnings
-
 import cv2
+import json
 import numpy as np
+import random
 import torch
 import torchvision
+import warnings
+
 from os import path, PathLike, listdir
 from pathlib import Path
 from PIL import Image
@@ -15,6 +15,7 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from .ctc import ctcBeamSearch, postprocess_ctc
 from .lm import LanguageModel
 from .process import non_max_suppression_malisiewicz
+from ..models import CRNN
 from ..transformations import resize_transform
 from ...figures import geometry_boxes as boxes
 
@@ -73,8 +74,7 @@ def create_scale_bar_objects(scale_bar_lines: list[dict], scale_bar_labels: list
 		})
 
 	# Check which labels were left unassigned
-	unassigned_labels = list(map(lambda label: label[1], filter(lambda label: label[0] not in paired_labels, enumerate(scale_bar_labels))))
-	unassigned_labels2 = [label for i, label in enumerate(scale_bar_labels) if i not in paired_labels]
+	unassigned_labels = [label for i, label in enumerate(scale_bar_labels) if i not in paired_labels]
 	return scale_bar_jsons, unassigned_labels
 
 

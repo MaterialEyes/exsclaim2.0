@@ -28,3 +28,6 @@ include exsclaim/dashboard/assets/*.svg
 
 include exsclaim/dashboard/components
 include exsclaim/dashboard/pages
+
+include exsclaim/alembic.ini
+include exsclaim/alembic/*

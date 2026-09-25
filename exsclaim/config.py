@@ -2,7 +2,7 @@ from datetime import datetime as dt
 from multiprocessing import cpu_count
 from os import getenv
 from pathlib import Path
-from pydantic import Field, computed_field, field_validator, EmailStr, model_validator
+from pydantic import Field, field_validator, EmailStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from re import compile
 from typing import Optional, Self
@@ -28,10 +28,14 @@ class EmailSettings(BaseSettings):
 
 		if self.PASSWORD_FILE is not None:
 			with open(self.PASSWORD_FILE, "r") as f:
-				self.PASSWORD = self.PASSWORD_FILE.read()
+				self.PASSWORD = f.read()
 
 		self.PASSWORD = self.PASSWORD.strip()
 		return self
+
+
+TMP_PATH = Path("/tmp")
+"""Acts as a sentinel for required paths, such that if the path is set to this, ExsclaimSettings will fill in the path with the base directory it has set."""
 
 
 class ExsclaimSettings(BaseSettings):
@@ -39,7 +43,14 @@ class ExsclaimSettings(BaseSettings):
 	model_config = SettingsConfigDict(
 		env_prefix="EXSCLAIM_",
 		env_nested_delimiter="__",
-		secrets_dir=("/run/secrets/", "/var/run")
+		secrets_dir=("/run/secrets/", "/var/run"),
+		secrets_dir_missing="ok"
+	)
+
+	PATH: Path = Field(
+		default=Path.home().resolve() / ".exsclaim",
+		description="The base directory where EXSCLAIM should write information to",
+		examples=["~/.exsclaim", "/exsclaim"]
 	)
 
 	ALLOW_PDF_PATHS: bool = Field(
@@ -49,7 +60,7 @@ class ExsclaimSettings(BaseSettings):
 	)
 
 	CHECKPOINTS_PATH: Path = Field(
-		default="/exsclaim/checkpoints",
+		default=TMP_PATH,
 		description="The directory where the checkpoint files for the FigureSeparator should be stored.",
 		examples=["~/.exsclaim/checkpoints", "/exsclaim/checkpoints"],
 	)
@@ -73,8 +84,13 @@ class ExsclaimSettings(BaseSettings):
 		description="If the Email's model validator should raise an error if emails are provided without the pipeline being able to send emails."
 	)
 
+	PLAYWRIGHT_HEADLESS: bool = Field(
+		default=True,
+		description="If playwright should run headless (default, no visible screen) or headed (requires X server to show the pages)."
+	)
+
 	LOGS_PATH: Path = Field(
-		default="/exsclaim/logs",
+		default=TMP_PATH,
 		description="The directory where the log files should be stored.",
 		examples=["~/.exsclaim/logs", "/var/logs/exsclaim", "/exsclaim/logs"],
 	)
@@ -86,7 +102,7 @@ class ExsclaimSettings(BaseSettings):
 	)
 
 	RESULTS_PATH: Path = Field(
-		default=Path.home().resolve() / ".exsclaim",
+		default=TMP_PATH,
 		description="The directory where the results from the pipeline should be stored.",
 		examples=["~/.exsclaim/results", "/exsclaim/results"],
 	)
@@ -116,7 +132,7 @@ class ExsclaimSettings(BaseSettings):
 			return url
 		return url.rstrip("/")
 
-	@field_validator("ALLOW_PDF_PATHS", "DEBUG", "DISPLAY_TQDM", mode="before")
+	@field_validator("ALLOW_PDF_PATHS", "DEBUG", "DISPLAY_TQDM", "PLAYWRIGHT_HEADLESS", mode="before")
 	@classmethod
 	def validate_boolean(cls, value) -> bool:
 		if isinstance(value, bool):
@@ -130,8 +146,7 @@ class ExsclaimSettings(BaseSettings):
 
 		raise ValueError(f"Unknown boolean-coercion type: {type(value).__name__} with value {value}.")
 
-	@field_validator("CHECKPOINTS_PATH", "LOGS_PATH", "RESULTS_PATH", "UNDETECTED_SUBFIGURES_PATH", "UNCLASSIFIED_SUBFIGURES_PATH",
-					 "UNSCRAPED_HTML_PATH", mode="after")
+	@field_validator("UNDETECTED_SUBFIGURES_PATH", "UNCLASSIFIED_SUBFIGURES_PATH", "UNSCRAPED_HTML_PATH", mode="after")
 	@classmethod
 	def validate_paths(cls, path: Optional[Path]) -> Optional[Path]:
 		if path is None:
@@ -143,6 +158,24 @@ class ExsclaimSettings(BaseSettings):
 			path.mkdir(parents=True, exist_ok=True)
 
 		return path
+
+	@model_validator(mode="after")
+	def set_derived_paths(self):
+		self.PATH.mkdir(parents=True, exist_ok=True)
+
+		if self.LOGS_PATH is None or self.LOGS_PATH == TMP_PATH:
+			self.LOGS_PATH = self.PATH / "logs"
+			self.LOGS_PATH.mkdir(exist_ok=True)
+
+		if self.RESULTS_PATH is None or self.RESULTS_PATH == TMP_PATH:
+			self.RESULTS_PATH = self.PATH / "results"
+			self.RESULTS_PATH.mkdir(exist_ok=True)
+
+		if self.CHECKPOINTS_PATH is None or self.CHECKPOINTS_PATH == TMP_PATH:
+			self.CHECKPOINTS_PATH = self.PATH / "checkpoints"
+			self.CHECKPOINTS_PATH.mkdir(exist_ok=True)
+
+		return self
 
 
 class ORCIDSettings(BaseSettings):
@@ -200,7 +233,6 @@ class UISettings(ExsclaimSettings):
 
 	FAST_API_URL: str = Field(
 		default="http://localhost:8000",
-		# default=getenv("EXSCLAIM_FAST_API_URL", "http://localhost:8000").rstrip('/'),
 		description="The URL that a user inside the docker network would use to access the API i.e. from another service within Docker Compose.",
 		examples=["http://localhost:8000", "http://python:8000"],
 	)
@@ -257,10 +289,10 @@ def get_variables(port_env: str, default_port: str, log_subfolder: str) -> dict:
 	log_dir.mkdir(parents=True, exist_ok=True)
 	date = dt.now().strftime("%Y-%m-%d")
 
-	accesslog = log_dir / f"access-{date}.log"
-	errorlog = log_dir / f"error-{date}.log"
+	access_log = log_dir / f"access-{date}.log"
+	error_log = log_dir / f"error-{date}.log"
 
-	for log in (accesslog, errorlog):
+	for log in (access_log, error_log):
 		log.touch(exist_ok=True)
 
 	reload = settings.DEBUG and ui_settings.ALLOW_RELOAD
@@ -270,8 +302,8 @@ def get_variables(port_env: str, default_port: str, log_subfolder: str) -> dict:
 		reload=reload,
 		settings=settings,
 		include_date_header=True,
-		accesslog=str(accesslog),
-		errorlog=str(errorlog),
+		accesslog=str(access_log),
+		errorlog=str(error_log),
 	)
 
 	if settings.DEBUG:

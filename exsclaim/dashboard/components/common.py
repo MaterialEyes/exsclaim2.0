@@ -42,7 +42,7 @@ def create_login_component():
 def create_header_component(description: Optional[list[Component]] = None):
 	"""
 	Create the header component with logo, welcome message, and notification.
-	
+
 	Returns:
 		dbc.Container: Header component
 	"""
@@ -152,7 +152,7 @@ def create_banner_component() -> html.Center:
 def create_footer_component():
 	"""
 	Create the footer component with Argonne logo and links.
-	
+
 	Returns:
 		dbc.Container: Footer component
 	"""
@@ -243,7 +243,7 @@ clientside_callback(
 	_allow_dynamic_callbacks=True
 )
 async def get_username_if_logged_in(_, data: dict[str, Any]):
-	from httpx import AsyncClient
+	from httpx2 import AsyncClient
 	from flask import request
 
 	cookie = request.cookies.get("access_token")

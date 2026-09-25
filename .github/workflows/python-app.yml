@@ -1,0 +1,90 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Python application
+
+on:
+    push:
+        branches: [ "main", "dev" ]
+    pull_request:
+        branches: [ "main" ]
+
+permissions:
+    contents: read
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        services:
+            postgres:
+                image: postgres:18
+                env:
+                    POSTGRES_USER: postgres
+                    POSTGRES_PASSWORD: postgres1!
+                    POSTGRES_DB: exsclaim-test
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd pg_isready
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        steps:
+            - uses: actions/checkout@v6
+            - name: Set up Python 3.14
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.14"
+            - name: Install UV
+              uses: astral-sh/setup-uv@v10.1.0
+              with:
+                  python-version: "3.14"
+                  enable-cache: true
+            - name: Install dependencies
+              run: |
+                  uv pip install --system --system-certs flake8 pytest build
+                  
+                  uv pip install --system --system-certs -r pyproject.toml --extra test --cache-dir=/tmp/pip
+                  playwright install chromium
+            - name: Lint with flake8
+              run: |
+                  # stop the build if there are Python syntax errors or undefined names
+                  flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+                  # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+                  flake8 . --count --exit-zero --max-complexity=10 --ignore=W191 --max-line-length=127 --statistics
+            - name: Test with pytest
+              env:
+                  POSTGRES_USER: postgres
+                  POSTGRES_DB: exsclaim-test
+                  POSTGRES_PASSWORD: postgres1!
+                  POSTGRES_HOST: localhost
+                  POSTGRES_PORT: 5432
+              run: |
+                  pytest tests
+            -   name: Build a binary wheel and a source tarball
+                run: python3 -m build
+            -   name: Store the distribution packages
+                uses: actions/upload-artifact@v6.0.0
+                with:
+                    name: python-package-distributions
+                    path: dist/
+
+    pypi-publish:
+        name: Upload to PyPI
+        if: startsWith(github.ref, 'refs/tags/')
+        runs-on: ubuntu-latest
+        needs:
+            - test
+        environment:
+            name: pypi
+            url: https://pypi.org/p/exsclaim2.0
+        permissions:
+            id-token: write
+        steps:
+            - name: Download all the dists
+              uses: actions/download-artifact@v6.0.0
+              with:
+                  name: python-package-distributions
+                  path: dist/
+            - name: Publish distribution to PyPI
+              uses: pypa/gh-action-pypi-publish@release/v1
