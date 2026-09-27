@@ -60,7 +60,7 @@ def upgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_results_results_user_id_start_time'))
         batch_op.create_index('ix_results_runs_user_id_start_time', ['user_id', 'start_time'], unique=False)
         batch_op.create_unique_constraint("runs_id_key", ['id'])
-        batch_op.drop_constraint(batch_op.f('results_user_id_user_id_fkey'), type_='foreignkey')
+        batch_op.drop_constraint(batch_op.f('results_user_id_fkey'), type_='foreignkey')
         batch_op.create_foreign_key("runs_user_id_users_id_fkey", 'users', ['user_id'], ['id'], referent_schema='users', onupdate='CASCADE', ondelete='CASCADE')
 
     with op.batch_alter_table('scale', schema='results') as batch_op:
@@ -128,7 +128,7 @@ def downgrade() -> None:
 
     with op.batch_alter_table('runs', schema='results') as batch_op:
         batch_op.drop_constraint("runs_user_id_users_id_fkey", type_='foreignkey')
-        batch_op.create_foreign_key(batch_op.f('results_user_id_user_id_fkey'), 'users', ['user_id'], ['id'], referent_schema='users')
+        batch_op.create_foreign_key(batch_op.f('results_user_id_fkey'), 'users', ['user_id'], ['id'], referent_schema='users')
         batch_op.drop_constraint("runs_id_key", type_='unique')
         batch_op.drop_index('ix_results_runs_user_id_start_time')
         batch_op.create_index(batch_op.f('ix_results_results_user_id_start_time'), ['user_id', 'start_time'], unique=False)

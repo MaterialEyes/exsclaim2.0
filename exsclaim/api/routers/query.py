@@ -690,6 +690,7 @@ async def publicize_result(result_id: UUID, user_id: ActiveUserId, publicize: bo
 							status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
 
 		await session.execute(update(Run).where(Run.id == result_id).values(publicize_results=publicize))
+		await session.commit()
 	return Response("Publicization status updated.", status_code=status.HTTP_200_OK, media_type="text/plain")
 
 

@@ -413,7 +413,8 @@ async def delete_user(request: Request, user: ActiveUser) -> JSONResponse:
 # 	return PlainTextResponse(PUBLIC_KEY, status_code=status.HTTP_200_OK)
 
 
-@router.post("/merge_accounts", tags=[TAG], description="Merges an ORCID account with an account created using email and password")
+@router.post("/merge_accounts", tags=[TAG],
+			 description="Merges an ORCID account with an account created using email and password")
 async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUser) -> JSONResponse:
 	if orcid_user.orcid is None:
 		return JSONResponse({"detail": "You must be logged in as your ORCID account, not your account with your email and password."}, status_code=status.HTTP_409_CONFLICT)
@@ -473,3 +474,24 @@ async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUs
 		email_user_id=str(email_user.id),
 		new_id=str(orcid_user.id)
 	), status_code=status.HTTP_200_OK)
+
+
+@router.get("/articles", tags=[TAG],
+			description="Returns a list of articles authored by the current user (if they have an ORCID id attached).")
+async def get_articles(user: CurrentUser) -> JSONResponse:
+	if user.id == get_guest_uuid():
+		return JSONResponse({"detail": "Not logged in."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+	if user.orcid is None:
+		return JSONResponse(
+			{"detail": "You must have an ORCID id attached to this account to see which articles attached to this user have been viewed."},
+			status_code=status.HTTP_412_PRECONDITION_FAILED
+		)
+
+	async with get_db_session() as session:
+		results = await session.execute(
+			text("SELECT title, url FROM results.article WHERE id IN (SELECT article_id FROM results.article_authors WHERE author_id = (SELECT id FROM results.authors WHERE orcid = :orcid));"),
+			dict(orcid=user.orcid)
+		)
+		articles = dict(results.scalars().all())
+		return JSONResponse(articles, status_code=status.HTTP_200_OK)
