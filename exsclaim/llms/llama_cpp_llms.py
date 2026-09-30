@@ -128,12 +128,20 @@ class LlamaCPP(OpenAI):
 
 		return f"LlamaCPP({self.model} [{self.alias}])"
 
+	@classmethod
+	def display_name(cls):
+		return "Llama.cpp"
+
+	@staticmethod
+	def _api_key_needed_for_list() -> bool:
+		return False
+
 	@staticmethod
 	def check_validity(model: str, api_key: Optional[str]):
 		...
 
 	@staticmethod
-	def available_models(silent_fail: bool = False):
+	def available_models(api_key: Optional[str] = None, silent_fail: bool = False):
 		if settings.HOST is None:
 			if silent_fail:
 				logging.error("Could not connect to Llama.cpp. This may cause issues down the line if Llama.cpp LLMs are required.")

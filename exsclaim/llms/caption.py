@@ -6,16 +6,15 @@ from asyncio import Semaphore
 from base64 import b64encode
 from dataclasses import dataclass
 from io import BytesIO
-from json import dumps
 from logging import Logger
 from PIL import Image
 from pydantic import BaseModel, Field
 from pydantic_core import ValidationError
-from re import sub
 from textwrap import dedent
 from typing import Literal, Iterable, Type, Optional, Any, TypeVar, Self, Collection, NamedTuple
 from uuid import UUID
 
+import json
 import numpy as np
 
 
@@ -133,12 +132,15 @@ class LLMMeta(ABCMeta):
 		return iter(LLMMeta.models.items())
 
 	def append_llms(cls):
-		for scan_cls in LLMMeta.unscanned_classes:
-			for model, allows_api_key, needs_api_key, label in scan_cls.available_models():
-				LLMMeta.models[model] = (scan_cls, allows_api_key, needs_api_key, label)
+		for scan_cls in cls.unscanned_classes:
+			if scan_cls._api_key_needed_for_list():
+				continue
 
-		LLMMeta.unscanned_classes.clear()
-		LLM._models = LLMMeta.models
+			for model, allows_api_key, needs_api_key, label in scan_cls.available_models():
+				cls.models[model] = (scan_cls, allows_api_key, needs_api_key, label)
+
+		cls.unscanned_classes.clear()
+		LLM._models = cls.models
 
 
 @dataclass
@@ -170,6 +172,15 @@ class LLM(ABC, metaclass=LLMMeta):
 	def __init__(self, model: str, api_key: str | None = None, *args, **kwargs):
 		self.model = model
 
+	@classmethod
+	def display_name(cls) -> str:
+		return cls.__name__
+
+	@staticmethod
+	@abstractmethod
+	def _api_key_needed_for_list() -> bool:
+		...
+
 	@staticmethod
 	def models() -> dict[str, tuple[type["LLM"], bool, bool, str]]:
 		"""Returns a dictionary containing each available LLM.
@@ -179,7 +190,7 @@ class LLM(ABC, metaclass=LLMMeta):
 
 	@staticmethod
 	@abstractmethod
-	def available_models() -> Iterable[LLMOptions]:
+	def available_models(api_key: Optional[str] = None, silent_fail: bool = False) -> Iterable[LLMOptions]:
 		"""Returns a list of tuples describing the available models.
 		Each tuple should contain the name of the model and a boolean indicating if it requires an api_key/password (True) or not (False)."""
 		...
@@ -244,7 +255,7 @@ class LLM(ABC, metaclass=LLMMeta):
 				info, usage = await self.get_response(messages, response_format=CaptionInfo)
 				break
 			except ValidationError as error:
-				messages.append(ChatMessage(role="user", content=f"Your previous response could not be parsed: {dumps(error.errors())}"))
+				messages.append(ChatMessage(role="user", content=f"Your previous response could not be parsed: {json.dumps(error.errors())}"))
 
 		captions = {entry.label: entry.caption for entry in info.captions}
 		return captions, info.keywords[:5], usage # TODO: Make sure the keywords are unique
@@ -293,7 +304,3 @@ class LLM(ABC, metaclass=LLMMeta):
 	def validate_search_query(cls, search_query: dict):
 		llm, model_key = cls.get_info_from_search_query(search_query)
 		cls.check_validity(llm, model_key)
-
-	@staticmethod
-	def remove_control_characters(string: str) -> str:
-		return sub(r"[\x00-\x1F\x7F-\x9F]", "", string)

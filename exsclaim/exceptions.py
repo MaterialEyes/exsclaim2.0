@@ -1,7 +1,7 @@
 from typing import Collection, Optional
 
 __all__ = ["ExsclaimError", "ExsclaimToolException", "JournalScrapeError", "PDFScrapeException", "PipelineInterruptionException",
-		   "PipelineConfigError"]
+		   "PipelineConfigError", "LLMException"]
 
 
 class ExsclaimError(Exception):
@@ -62,4 +62,8 @@ class PDFScrapeException(ExsclaimToolException):
 
 
 class PipelineInterruptionException(ExsclaimError):
+	...
+
+
+class LLMException(ExsclaimError):
 	...

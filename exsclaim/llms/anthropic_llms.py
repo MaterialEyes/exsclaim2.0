@@ -1,8 +1,8 @@
 from .caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
-from ..exceptions import PipelineConfigError
+from ..exceptions import PipelineConfigError, LLMException
 
 from logging import exception
-from typing import Any, Collection, Type, Optional
+from typing import Any, Collection, Iterable, Type, Optional
 
 import anthropic
 import asyncio
@@ -15,22 +15,22 @@ class Anthropic(LLM):
 		self.max_tokens = max_tokens or 1_024
 
 	@staticmethod
-	def available_models(): # Unfortunately, Anthropic's API requires an API key to list models
-		cached_models = (
-			LLMOptions('claude-opus-5-5', True, True, 'Claude Opus 5.5'),
-			LLMOptions('claude-fable-5-1', True, True, 'Claude Fable 5.1'),
-			LLMOptions('claude-opus-5', True, True, 'Claude Opus 5'),
-			LLMOptions('claude-sonnet-5', True, True, 'Claude Sonnet 5'),
-			LLMOptions('claude-fable-5', True, True, 'Claude Fable 5'),
-			LLMOptions('claude-opus-4-8', True, True, 'Claude Opus 4.8'),
-			LLMOptions('claude-opus-4-7', True, True, 'Claude Opus 4.7'),
-			LLMOptions('claude-sonnet-4-6', True, True, 'Claude Sonnet 4.6'),
-			LLMOptions('claude-opus-4-6', True, True, 'Claude Opus 4.6'),
-			LLMOptions('claude-opus-4-5-20251101', True, True, 'Claude Opus 4.5'),
-			LLMOptions('claude-haiku-4-5-20251001', True, True, 'Claude Haiku 4.5'),
-			LLMOptions('claude-sonnet-4-5-20250929', True, True, 'Claude Sonnet 4.5')
+	def _api_key_needed_for_list() -> bool:
+		return True
+
+	@staticmethod
+	def available_models(api_key: str, silent_fail: bool = False):
+		if api_key is None:
+			raise LLMException("An API key is required to list Anthropic's models.")
+
+		client = anthropic.Anthropic(api_key=api_key)
+		models = client.models.list().data
+		options = tuple(
+			LLMOptions(model.id, True, True, model.display_name) for model in models
+			if model.capabilities.structured_outputs.supported
 		)
-		return cached_models
+
+		return options
 
 	@staticmethod
 	def check_validity(model: str, api_key: str):

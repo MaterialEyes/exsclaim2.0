@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/tmp/pip \
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
     pip install --upgrade pip --cache-dir=/tmp/pip --root-user-action ignore && \
     . ~/.bashrc && \
-    uv pip install --system --system-certs -r pyproject.toml --cache-dir=/tmp/pip || exit 1; \
+    uv pip install --system --system-certs -r pyproject.toml --all-extras --cache-dir=/tmp/pip || exit 1; \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 

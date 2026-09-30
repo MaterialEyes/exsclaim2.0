@@ -98,7 +98,8 @@ dependencies = [
 [project.optional-dependencies]
 llm = [
     "ollama~=0.6.2",
-    "anthropic==1.8.0"
+    "anthropic==1.8.0",
+    "google-genai==2.25.0"
 ]
 
 test = [

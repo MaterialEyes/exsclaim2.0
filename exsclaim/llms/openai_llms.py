@@ -32,7 +32,11 @@ class OpenAI(LLM):
 		self.client = openai.AsyncOpenAI(api_key=api_key)
 
 	@staticmethod
-	def available_models():
+	def _api_key_needed_for_list() -> bool:
+		return False
+
+	@staticmethod
+	def available_models(api_key: Optional[str] = None, silent_fail: bool = False):
 		return tuple(
 			LLMOptions(model, True, True, model.replace("gpt", "GPT")) for model in valid_models
 		)

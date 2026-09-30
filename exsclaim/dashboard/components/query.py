@@ -6,8 +6,9 @@ Converted from React Query.js component.
 import dash_bootstrap_components as dbc
 import httpx2
 
-from dash import html, dcc, callback, Output, Input, State, clientside_callback, ClientsideFunction
+from dash import html, dcc, callback, ctx, Output, Input, State, clientside_callback, ClientsideFunction, no_update
 from dash.exceptions import PreventUpdate
+from exsclaim import llms
 from re import compile
 from typing import Optional
 
@@ -16,14 +17,17 @@ name_regex = compile(r"^[\w_\- ]+$")
 
 
 def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool], dict[str, bool]]:
-	from exsclaim import llms
-
 	available_llms = dict()
 	for cls in llms.LLMMeta.classes:
+		if cls._api_key_needed_for_list():
+			available_llms[cls.display_name()] = []
+			continue
+
 		models = cls.available_models()
 		if not models:
 			continue
-		available_llms[cls.__name__] = [dict(
+
+		available_llms[cls.display_name()] = [dict(
 			model_name=model_name,
 			show_api_key=show_api_key,
 			needs_api_key=needs_api_key,
@@ -346,33 +350,31 @@ def create_open_access_component():
 
 def create_model_component(available_llms, debounce=True):
 	"""Create model selection component."""
-	options = []
-	for i, (provider, llms) in enumerate(available_llms.items()):
-		options.append(dict(value=provider, label=provider, disabled=True))
-		options.extend((dict(value=llm["model_name"], label=llm["display_name"]) for llm in llms))
-
-		# dbc.Select currently doesn't support html.Option and html.Optgroup
-		# options[i] = html.Optgroup(
-		# 	label=provider,
-		# 	children=[html.Option(value=llm["model_name"], label=llm["display_name"]) for llm in llms]
-		# )
-
-	if "LlamaCPP" in available_llms and len(available_llms["LlamaCPP"]) > 0:
-		default_llm = available_llms["LlamaCPP"][0]["model_name"]
-	elif "Ollama" in available_llms and len(available_llms["Ollama"]) > 0:
-		default_llm = available_llms["Ollama"][0]["model_name"]
-	else:
-		if len(options) == 0:
-			default_llm = None
-		else:
-			default_llm = options[0]["value"]
+	providers = sorted(available_llms.keys(), key=lambda name: name.upper())
 
 	return html.Div([
+		dbc.Tooltip(
+			"This provider requires an API key to list available models, so the list will be empty until one is provided.",
+			id="model-api-requirement",
+			target="model-provider",
+			is_open=False,
+			trigger=None
+		),
+		dbc.Label("Model Provider*", html_for="model-provider"),
+		dbc.RadioItems(
+			id="model-provider",
+			options=providers,
+			inline=True,
+			value=None,
+			className="form-control",
+			persistence=True,
+			persistence_type="local"
+		),
 		dbc.Label("Model *", html_for="model-select"),
 		dbc.Select(
 			id="model-select",
-			options=options,
-			value=default_llm,
+			options=[],
+			value=None,
 			className="form-control",
 			valid=True,
 			invalid=False,
@@ -519,6 +521,43 @@ def collapse_advanced_options(n_clicks, is_open):
 	if n_clicks is None:
 		raise PreventUpdate
 	return not is_open
+
+
+@callback(
+	Output("model-select", "options"),
+	Output("model-api-requirement", "is_open"),
+	Output("model-select", "value"),
+	Output("model-key", "value"),
+	Input("model-provider", "value"),
+	Input("model-key", "value"),
+	State("exsclaim-store", "data")
+)
+def update_model_list(current_provider, api_key, data):
+	# If the provider was just changed, remove the value in the API key input so it isn't sent to a remote provider
+	if ctx.triggered_id == "model-provider":
+		new_api_key_value = ""
+		api_key = None
+	else:
+		new_api_key_value = no_update
+
+	for cls in llms.LLMMeta.classes:
+		if cls.display_name() != current_provider:
+			continue
+
+		if cls._api_key_needed_for_list():
+			if api_key is None:
+				return [], True, None, new_api_key_value
+
+			models = cls.available_models(api_key)
+			models = [dict(value=model.id, label=model.display_name) for model in models]
+		else:
+			models = data["available_llms"][current_provider]
+			models = [dict(value=model["model_name"], label=model["display_name"]) for model in models]
+
+		default = models[0]["value"] if len(models) > 0 else None
+		return models, False, default, new_api_key_value
+	else:
+		raise PreventUpdate
 
 
 @callback(
