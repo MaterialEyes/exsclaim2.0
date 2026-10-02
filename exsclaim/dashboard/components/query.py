@@ -18,16 +18,16 @@ name_regex = compile(r"^[\w_\- ]+$")
 
 def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool], dict[str, bool]]:
 	available_llms = dict()
-	for cls in llms.LLMMeta.classes:
+	for name, cls in llms.LLM.classes.items():
 		if cls._api_key_needed_for_list():
-			available_llms[cls.display_name()] = []
+			available_llms[name] = []
 			continue
 
 		models = cls.available_models()
 		if not models:
 			continue
 
-		available_llms[cls.display_name()] = [dict(
+		available_llms[name] = [dict(
 			model_name=model_name,
 			show_api_key=show_api_key,
 			needs_api_key=needs_api_key,
@@ -540,8 +540,8 @@ def update_model_list(current_provider, api_key, data):
 	else:
 		new_api_key_value = no_update
 
-	for cls in llms.LLMMeta.classes:
-		if cls.display_name() != current_provider:
+	for name, cls in llms.LLMMeta.classes.items():
+		if name != current_provider:
 			continue
 
 		if cls._api_key_needed_for_list():
@@ -720,6 +720,7 @@ clientside_callback(
 		State("input-synonyms", "value"),
 		State("base-run-id", "value"),
 		State("open-access", "value"),
+		State("model-provider", "value"),
 		State("model-select", "value"),
 		State("model-key", "value"),
 		State("save-methods", "value"),

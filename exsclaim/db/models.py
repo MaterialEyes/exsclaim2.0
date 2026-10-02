@@ -11,9 +11,9 @@ from sys import version_info
 from typing import Annotated, Optional
 from uuid import UUID
 
-__all__ = ["Author", "ORCID_REGEX", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel", "ScaleLabel",
-		   "ClassificationCodes", "User", "Run", "Status", "SaveExtensions", "gen_uuid7", "get_guest_uuid",
-		   "ArticleAuthor", "RunArticles", "cryptographic_hash"]
+__all__ = ["Author", "ORCID_REGEX", "DOI_REGEX_STRING", "DOI_REGEX", "Article", "Figure", "Subfigure", "Scale",
+		   "SubfigureLabel", "ScaleLabel", "ClassificationCodes", "User", "Run", "Status", "SaveExtensions", "gen_uuid7",
+		   "get_guest_uuid", "ArticleAuthor", "RunArticles", "cryptographic_hash"]
 
 if version_info >= (3, 14):
 	def gen_uuid7() -> UUID:
@@ -60,9 +60,14 @@ class Status(StrEnum):
 
 
 # language=PythonRegExp
+DOI_REGEX_STRING = r"(10\.\d{4,9})/([-.;()/:\w%]+)"
+DOI_REGEX = re.compile(DOI_REGEX_STRING)
+
+# language=PythonRegExp
 ORCID_REGEX_STRING = r"([\dX]{4}-[\dX]{4}-[\dX]{4}-[\dX]{4})"
 ORCID_REGEX = re.compile(ORCID_REGEX_STRING)
 
+DOI_TYPE = Annotated[Optional[str], pydantic.StringConstraints(pattern=DOI_REGEX_STRING)]
 ORCID_TYPE = Annotated[Optional[str], pydantic.StringConstraints(pattern=ORCID_REGEX_STRING)]
 """A temporary fix while SQLModel is missing the pattern kwarg."""
 
@@ -412,6 +417,17 @@ class Article(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=True,
 		)
 	)
+
+	doi: DOI_TYPE = sqlmodel.Field(
+		description="The DOI of the article.",
+		sa_column=sqlalchemy.Column(
+			sa_psql.TEXT,
+			default=None,
+			nullable=True,
+			unique=True
+		)
+	)
+
 	open: bool = sqlmodel.Field(
 		default=False,
 		description="If the article is open access."

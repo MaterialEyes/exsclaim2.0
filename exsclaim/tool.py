@@ -301,10 +301,10 @@ class CaptionDistributor(ExsclaimTool):
 	"""
 	CaptionDistributor object.
 	Distribute subfigure caption chunks from full figure captions
-	in an exsclaim_dict using custom caption nlp tools
+	in an exsclaim_dict using custom caption NLP tools
 	Parameters:
 	model_path: str
-		Absolute path to caption nlp model
+		Absolute path to caption NLP model
 	"""
 
 	def __init__(self, search_query: dict, **kwargs):
@@ -354,8 +354,8 @@ class CaptionDistributor(ExsclaimTool):
 	async def check_search_query(self, query_dict: dict[str, Any]):
 		self.llm.validate_search_query(query_dict)
 
-	async def _task(self, exsclaim_json: dict, search_query: dict, article_id: str, figure: str, new_separated: set, lock: asyncio.Lock,
-					 semaphore: OptionalSemaphore):
+	async def _task(self, exsclaim_json: dict, search_query: dict, article_id: str, figure: str, new_separated: set,
+					lock: asyncio.Lock, semaphore: OptionalSemaphore):
 		async with semaphore:
 			try:
 				caption_text = exsclaim_json[article_id]["figures"][figure]["full_caption"]

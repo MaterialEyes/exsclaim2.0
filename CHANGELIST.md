@@ -1,3 +1,7 @@
+# Version 2.5.3
+## API
+- The API now displays available LLMs for the providers that don't require an API key to list their models (`/query/llms`).
+
 # Version 2.5.2
 ## Database
 - Renamed the table `results.results` to `results.runs`, and the accompanying model from `exsclaim.api.models.Results` to `exsclaim.db.models.Run`.

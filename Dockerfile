@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7-labs
-FROM python:3.14.7-slim AS deps
+FROM python:3.14.8-slim AS deps
 
 # This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
 ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/tmp/pip \
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
     pip install --upgrade pip --cache-dir=/tmp/pip --root-user-action ignore && \
     . ~/.bashrc && \
-    uv pip install --system --system-certs -r pyproject.toml --all-extras --cache-dir=/tmp/pip || exit 1; \
+    uv pip install --system --system-certs -r pyproject.toml --extra llm --cache-dir=/tmp/pip || exit 1; \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/tmp/pip \
     rm -rf /opt/install/exsclaim
 
 # syntax=docker/dockerfile:1.7-labs
-FROM python:3.14.7-slim AS core
+FROM python:3.14.8-slim AS core
 
 ARG UID=1000
 ARG GID=1000
@@ -72,7 +72,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 SHELL ["/bin/bash", "-c"]
 HEALTHCHECK --interval=20s --timeout=4s --start-period=12s --retries=8 CMD docker-healthcheck
 ENTRYPOINT ["docker-entrypoint"]
-CMD exsclaim ui --blocking --initialize_db
+CMD exsclaim ui --blocking --update_db
 
 WORKDIR /opt/install
 

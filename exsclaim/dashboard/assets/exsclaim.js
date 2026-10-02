@@ -824,8 +824,8 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 	query: {
 		submit_query: async function(n_clicks, stored_data, output_name, journal_family, num_articles, sort_by, term,
-									 synonyms, base_run_id, open_access, model, model_key, save_formats, ntfy_link,
-									 ntfy_priority, webhook_url) {
+									 synonyms, base_run_id, open_access, model_provider, model, model_key, save_formats,
+									 ntfy_link, ntfy_priority, webhook_url) {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 
 			// Validated required fields
@@ -855,6 +855,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 				synonyms: synonyms_list,
 				save_format: save_formats,
 				open_access: getDefault(open_access, false),
+				model_provider: model_provider,
 				llm: getDefault(model, "llama3.2"),
 				model_key: model_key,
 				notifications: {

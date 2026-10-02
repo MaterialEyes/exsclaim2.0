@@ -1,10 +1,11 @@
-from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX, ORCID_REGEX, Author
+from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX_STRING, ORCID_REGEX, Author
 from ..exceptions import JournalScrapeError
 
 import math
 import re
 
 from playwright._impl import _errors as playwright_errors
+from typing import Optional
 
 __all__ = ["RSC"]
 
@@ -12,7 +13,7 @@ __all__ = ["RSC"]
 class RSC(JournalFamilyDynamic):
 	def __init__(self, search_query: dict, **kwargs):
 		name_patterns = (
-			(re.compile(fr"(\w{2})/article/doi/{DOI_REGEX}/(\d+)/.+", re.I), 3),
+			(re.compile(fr"(\w{2})/article/doi/{DOI_REGEX_STRING}/(\d+)/.+", re.I), 3),
 			(re.compile(r"(\w{2})/article/(\d+)/(\d+)/(\d+)/(\d+)/(.+)", re.I), 5),
 			(re.compile(r"(\w{2})/article/(\d+)?searchresult=1#(\d+)", re.I), 2),
 		)
@@ -110,6 +111,13 @@ class RSC(JournalFamilyDynamic):
 		title = await super().get_title(html, url)
 		self.logger.warning(f"Could not find title for {url}.")
 		return title
+
+	async def get_doi(self, html: DynamicHtml, url: str) -> Optional[str]:
+		doi = html.select_one("div.citation-doi")
+		try:
+			return await doi.get_text()
+		except playwright_errors.TimeoutError:
+			return None
 
 	async def get_authors(self, html: DynamicHtml) -> tuple[Author]:
 		authors = []

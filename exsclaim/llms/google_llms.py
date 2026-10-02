@@ -11,7 +11,7 @@ __all__ = ["Google"]
 
 
 class Google(LLM):
-	def __init__(self, model: str, api_key: str):
+	def __init__(self, model: str, api_key: str, **kwargs):
 		super().__init__(model, api_key, **kwargs)
 		self.client = genai.Client(api_key=api_key).aio
 
@@ -23,7 +23,7 @@ class Google(LLM):
 		...
 
 	async def unload(self, logger: Optional[logging.Logger] = None):
-		await self.client.close()
+		await self.client.aclose()
 
 	@staticmethod
 	def available_models(api_key: Optional[str] = None, silent_fail: bool = False) -> Iterable[LLMOptions]:
@@ -63,16 +63,16 @@ class Google(LLM):
 		return None
 
 	def format_messages(self, messages: Collection[ChatMessage]) -> list[types.interactions.Content]:
-		new_messages: list[types.interactions.Content] = [None]
+		new_messages: list[types.interactions.Content] = [None] * len(messages)
 
 		for i, message in enumerate(messages):
 			if message.images is not None:
-				formatted_message = types.interactions.ImageContent(
+				formatted_message = types.interactions.ImageContentParam(
 					data=message.images[0],
 					type="image"
 				)
 			else:
-				formatted_message = types.interactions.TextContent(text=message.content, type="text")
+				formatted_message = types.interactions.TextContentParam(text=message.content, type="text")
 
 			new_messages[i] = formatted_message
 
@@ -80,12 +80,12 @@ class Google(LLM):
 
 	async def get_response(self, prompt: list[ChatMessage], response_format: Type[ResponseBase] = str) -> tuple[ResponseBase, LLMUsage]:
 		if response_format == str:
-			interaction_format = types.interactions.ResponseFormatParam(
+			interaction_format = types.interactions.TextResponseFormatParam(
 				mime_type="text/plain",
 				type="text"
 			)
 		else:
-			interaction_format = types.interactions.ResponseFormatParam(
+			interaction_format = types.interactions.TextResponseFormatParam(
 				mime_type="application/json",
 				schema_=response_format.model_json_schema(),
 				type="text"
@@ -93,15 +93,16 @@ class Google(LLM):
 
 		_input = self.format_messages(prompt)
 
+		genai.types
 		response = await self.client.interactions.create(
 			model=self.model,
-			input=prompt,
+			input=_input,
 			response_format=interaction_format,
 		)
 
 		usage = LLMUsage(
-			input_tokens=response.total_input_tokens,
-			output_tokens=response.total_output_tokens
+			input_tokens=response.usage.total_input_tokens,
+			output_tokens=response.usage.total_output_tokens
 		)
 
 		formatted_response = response.output_text

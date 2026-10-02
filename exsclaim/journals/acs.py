@@ -1,4 +1,4 @@
-from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX, Author, ORCID_REGEX
+from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX_STRING, Author, ORCID_REGEX
 from ..exceptions import JournalScrapeError
 
 import math
@@ -8,6 +8,7 @@ from contextlib import suppress
 from bs4 import BeautifulSoup
 from playwright.async_api import Response
 from playwright._impl import _errors as playwright_errors
+from typing import Optional
 
 __all__ = ["ACS"]
 
@@ -126,7 +127,7 @@ class ACS(JournalFamilyDynamic):
 
 		# Permissions Tab
 		permissions_link = await html.select_one("a#PermissionsLink").get("href")
-		param_encoded_doi_regex = DOI_REGEX.replace("/", "%2F")
+		param_encoded_doi_regex = DOI_REGEX_STRING.replace("/", "%2F")
 		doi_match = re.search(rf"https://marketplace.copyright.com/rs-ui-web/(\w{{2}})/search/all/{param_encoded_doi_regex}", permissions_link)
 
 		if doi_match is None:
@@ -170,6 +171,13 @@ class ACS(JournalFamilyDynamic):
 		title = await super().get_title(html, url)
 		self.logger.warning(f"Could not find title for {url}.")
 		return title
+
+	async def get_doi(self, html: DynamicHtml, url: str) -> Optional[str]:
+		doi = html.select_one("div.citation-doi")
+		try:
+			return await doi.get_text()
+		except playwright_errors.TimeoutError:
+			return None
 
 	async def get_authors(self, html: DynamicHtml) -> tuple[Author]:
 		authors_list = await html.select("div.al-author-name")

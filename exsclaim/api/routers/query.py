@@ -12,6 +12,7 @@ from asyncio import all_tasks, create_task, CancelledError, Task
 from base64 import b64encode
 from datetime import datetime as dt
 from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
+from exsclaim import llms
 from fastapi import Body, Depends, status
 from hashlib import sha256
 from os import listdir
@@ -182,6 +183,7 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			"logging": ["exsclaim.log"],
 			"notifications": search_query.notifications.model_dump(),
 			"base_run_id": str(search_query.base_run_id) if search_query.base_run_id is not None else None,
+			"model_provider": search_query.model_provider,
 		}
 
 		results_dir = settings.RESULTS_PATH / str_uuid
@@ -866,3 +868,18 @@ async def previous_runs(user_id: CurrentUserId, conditions: Annotated[PreviousRu
 		output[i] = run
 
 	return JSONResponse(fastapi.encoders.jsonable_encoder(output), status_code=status.HTTP_200_OK)
+
+
+@router.api_route("/query/llms", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
+async def get_available_llms() -> JSONResponse:
+	info = dict()
+	for provider, cls in llms.LLM.classes.items():
+		requires_api = cls._api_key_needed_for_list()
+		available_models = [model[-1] for model in cls.available_models(silent_fail=True)] if not requires_api else []
+
+		info[provider] = {
+			"requires_api": requires_api,
+			"available_llms": available_models
+		}
+
+	return JSONResponse(info, status_code=status.HTTP_200_OK)

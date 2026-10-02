@@ -99,7 +99,7 @@ dependencies = [
 llm = [
     "ollama~=0.6.2",
     "anthropic==1.8.0",
-    "google-genai==2.25.0"
+    "google-genai==2.28.0"
 ]
 
 test = [
@@ -114,7 +114,7 @@ test = [
 dev = [
     "ipython==9.15.0",
     "pydevd==3.5.0",
-    "pydevd_pycharm~=263.5153.49",
+    "pydevd_pycharm~=263.6259.38",
     "pytest==9.1.1",
     "scipy-stubs==1.18.0.0",
     "trio==0.33.0",

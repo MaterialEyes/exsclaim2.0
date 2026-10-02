@@ -163,11 +163,12 @@ class Database:
 
 						# Upload the article json
 						await session.execute(
-							text("INSERT INTO results.article(id, title, url, license, open) VALUES(:id, :title, :url, :license, :open)"),
+							text("INSERT INTO results.article(id, title, url, doi, license, open) VALUES(:id, :title, :url, :doi, :license, :open)"),
 							dict(
 								id=article_id,
 								title=article_json["title"],
 								url=article_json["article_url"],
+								doi=article_json["doi"],
 								license=article_json["license"],
 								open=article_json["open"],
 							)
@@ -361,7 +362,8 @@ class Database:
 		current_version = Version()
 
 		alembic_revision_lookup: dict[Version, str] = {
-			Version("2.5.2"): "3924f9a632d1"
+			Version("2.5.2"): "3924f9a632d1",
+			Version("2.5.3b2"): "289193e21c9c"
 		}
 
 		directory = Path(__file__).parent.parent.resolve()

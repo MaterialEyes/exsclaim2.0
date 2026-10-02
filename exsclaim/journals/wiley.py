@@ -1,4 +1,4 @@
-from .base import JournalFamilyStatic, StaticHtml, default_predicate, DOI_REGEX, Author, ORCID_REGEX
+from .base import JournalFamilyStatic, StaticHtml, default_predicate, DOI_REGEX_STRING, Author, ORCID_REGEX
 from ..config import settings
 
 import math
@@ -46,7 +46,7 @@ class Wiley(JournalFamilyStatic):
 
 	def __init__(self, search_query: dict, **kwargs):
 		name_patterns = (
-			(re.compile(fr"/doi/{DOI_REGEX}/(\d+)", re.I), 3),
+			(re.compile(fr"/doi/{DOI_REGEX_STRING}/(\d+)", re.I), 3),
 		)
 		super().__init__(search_query, name_patterns=name_patterns, **kwargs)
 
@@ -202,6 +202,10 @@ class Wiley(JournalFamilyStatic):
 		title = await super().get_title(html, url)
 		self.logger.warning(f"Could not find title for {url}.")
 		return title
+
+	async def get_doi(self, html: StaticHtml, url: str) -> Optional[str]:
+		doi = html.select_one("a.epub-doi[href]")
+		return await doi.get("href")
 
 	async def get_authors(self, html: StaticHtml) -> tuple[Author]:
 		author_line = html.select_one("div.loa-wrapper.loa-authors.hidden-xs.desktop-authors")

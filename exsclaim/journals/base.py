@@ -1,5 +1,5 @@
 from ..config import settings
-from ..db import Author, ORCID_REGEX
+from ..db import Author, ORCID_REGEX, DOI_REGEX, DOI_REGEX_STRING
 from ..exceptions import JournalScrapeError
 from ..utilities import paths
 
@@ -24,12 +24,9 @@ from playwright_stealth import Stealth
 from typing import Any, Awaitable, Callable, Collection, Iterable, Iterator, Literal, Optional, Self, Sequence, overload
 
 __all__ = ["JournalFamily", "JournalMeta", "JournalHtml", "StaticHtml", "DynamicHtml", "JournalFamilyStatic",
-		   "JournalFamilyDynamic", "URLParams", "DOI_REGEX", "ORCID_REGEX", "ResponseFunction", "default_predicate"]
+		   "JournalFamilyDynamic", "URLParams", "DOI_REGEX_STRING", "DOI_REGEX", "ORCID_REGEX", "ResponseFunction", "default_predicate"]
 
 URLParams = dict[str, Any]
-
-# language=PythonRegExp
-DOI_REGEX = r"(10\.\d{4,9})/([-.;()/:\w%]+)"
 
 ResponseFunction = str | re.Pattern[str] | Callable[[Response], bool | Awaitable[bool]]
 
@@ -851,6 +848,9 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 	async def get_title(self, html: T, url: str) -> str:
 		return (await html.select_one("title").get_text()).strip()
 
+	async def get_doi(self, html: T, url: str) -> Optional[str]:
+		return None
+
 	@staticmethod
 	def convert_svg_to_image(image_path: Path, new_extension: str = "png"):
 		new_path = image_path.with_suffix(f".{new_extension}")
@@ -891,13 +891,19 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 
 		title = await self.get_title(html, url)
 		authors = await self.get_authors(html)
+		doi = await self.get_doi(html, url)
 		figure_subtrees = await self.get_figure_list(html)
+
+		if isinstance(doi, str):
+			doi_match = DOI_REGEX.search(doi)
+			doi = f"{doi_match.group(1)}/{doi_match.group(2)}" if doi_match is not None else None
 
 		self.logger.info(f"Number of subfigures: {len(figure_subtrees):,} for {_id}.")
 		article_json = {
 			"title": title,
 			"authors": authors,
 			"article_url": url,
+			"doi": doi,
 			"license": _license,
 			"open": is_open,
 			"figures": dict()

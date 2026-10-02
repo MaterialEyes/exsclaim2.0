@@ -39,6 +39,7 @@ async def test_article_1(http_server: str, default_search_query: dict[str, Any],
 		assert author in authors, f"{author} is missing from the article JSON."
 
 	assert article_json["open"], "Article should be open access but isn't recorded as such."
+	assert article_json["doi"] == "10.1039/d6ma00179c", "Article's DOI does not match."
 
 	num_articles = len(article_json["figures"])
 	assert num_articles == 9, f"There should be 9 figures for this article, but {num_articles:,} were found."
@@ -64,6 +65,7 @@ async def test_article_2(http_server: str, default_search_query: dict[str, Any],
 		assert author in authors, f"{author} is missing from the article JSON."
 
 	assert article_json["open"], "Article should be open access but isn't recorded as such."
+	assert article_json["doi"] == "10.1039/d6ra05923f", "Article's DOI does not match."
 
 	num_articles = len(article_json["figures"])
 	assert num_articles == 7, f"There should be 7 figures for this article, but {num_articles:,} were found."
@@ -86,6 +88,7 @@ async def test_article_3(http_server: str, default_search_query: dict[str, Any],
 		assert author in authors, f"{author} is missing from the article JSON."
 
 	assert article_json["open"], "Article should be open access but isn't recorded as such."
+	assert article_json["doi"] == "10.1039/d6ra05522b", "Article's DOI does not match."
 
 	num_articles = len(article_json["figures"])
 	assert num_articles == 7, f"There should be 7 figures for this article, but {num_articles:,} were found."
