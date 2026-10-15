@@ -73,7 +73,11 @@ def create_sitemap() -> str:
 def get_app() -> dash.Dash:
 	global logger, app
 
+	if app is not None:
+		raise RuntimeError("get_app() called twice.")
+
 	logger = create_logger(ui_settings)
+
 	meta_tags = [
 		{"property": "og:url", "content": ui_settings.DOMAIN},
 	]
@@ -105,6 +109,18 @@ def get_app() -> dash.Dash:
 		show_undo_redo=True,
 	)
 
+	import callbacks # Imports the callbacks after the app is created
+
+	if ui_settings.DEBUG:
+		app.enable_dev_tools(
+			debug=True,
+			dev_tools_ui=True,
+			dev_tools_props_check=True,
+			# dev_tools_prune_errors=False,
+			# dev_tools_hot_reload=False,
+			# dev_tools_serve_dev_bundles=False
+		)
+
 	available_llms, show_api_key, required_api_key = get_llms()
 
 	fastapi_url = ui_settings.FAST_API_URL
@@ -113,7 +129,7 @@ def get_app() -> dash.Dash:
 	app.layout = dash.html.Div([
 		dash.dcc.Interval(
 			id="check-credentials",
-			interval=300_000 # Check every 5 minutes
+			interval=2_500 # Check credentials after a second. The callback disables it if the user isn't logged in.
 		),
 		dash.dcc.Store(
 			id="storage",
@@ -162,7 +178,7 @@ def favicon_png():
 
 @server.route("/logout")
 def logout():
-	return flask.redirect(f"{ui_settings.PUBLIC_API_URL}/user/logout")
+	return flask.redirect(f"{ui_settings.PUBLIC_API_URL}/user/cookie/logout")
 
 
 @server.route("/robots.txt")

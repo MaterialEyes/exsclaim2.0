@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/tmp/pip \
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
     pip install --upgrade pip --cache-dir=/tmp/pip --root-user-action ignore && \
     . ~/.bashrc && \
-    uv pip install --system --system-certs -r pyproject.toml --extra llm --cache-dir=/tmp/pip || exit 1; \
+    uv pip install --system --system-certs -r pyproject.toml --extra llm --extra telemetry --cache-dir=/tmp/pip || exit 1; \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -56,8 +56,8 @@ ARG UNAME=exsclaim
 ARG GNAME=exsclaim
 ARG DEBIAN_FRONTEND=noninteractive
 
-# This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
-ARG CHROMEDRIVER_VERSION="144.0.7559.96"
+# https://googlechromelabs.github.io/chrome-for-testing/
+ARG CHROMEDRIVER_VERSION="154.0.8037.92"
 
 ENV CUDA_LAUNCH_BLOCKING=1
 

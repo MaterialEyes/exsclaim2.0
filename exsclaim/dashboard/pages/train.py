@@ -229,8 +229,8 @@ clientside_callback(
 	),
 	[
 		Output("training_data", "rowData"),
-		Output("training_data_store", "data"),
-		Output("figure", "figure"),
+		Output("training_data_store", "data", allow_duplicate=True),
+		Output("figure", "figure", allow_duplicate=True),
 		Output("full_caption", "value"),
 		Output("article_url", "href"),
 		Output("article_button", "hidden"),
@@ -252,7 +252,7 @@ clientside_callback(
 		function_name="update_coordinates"
 	),
 	[
-		Output("figure", "figure"),
+		Output("figure", "figure", allow_duplicate=True),
 		Output("training_data_store", "data"),
 	],
 	[
@@ -272,7 +272,7 @@ clientside_callback(
 		function_name="update_full_caption"
 	),
 
-	Output("training_data_store", "data"),
+	Output("training_data_store", "data", allow_duplicate=True),
 	[
 		Input("full_caption", "value"),
 	],
@@ -301,7 +301,7 @@ clientside_callback(
 		namespace="train",
 		function_name="upload"
 	),
-	Output("training_data_store", "data"),
+	Output("training_data_store", "data", allow_duplicate=True),
 	Input("upload_data", "contents"),
 	prevent_initial_call=True
 )

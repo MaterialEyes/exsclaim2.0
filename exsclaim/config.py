@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from re import compile
 from typing import Optional, Self
 
+import ipaddress
+
 __all__ = ["ExsclaimSettings", "settings", "UISettings", "ui_settings", "get_variables", "orcid_settings", "ORCIDSettings"]
 
 
@@ -216,7 +218,7 @@ class UISettings(ExsclaimSettings):
 	DASHBOARD_URL: Optional[str] = Field(
 		default="http://localhost:3000",
 		description="The full URL that a user would use to access the UI.",
-		examples=["http://localhost:3000", "https://exsclaim.local", "https://exsclaim.materialeyes.org"],
+		examples=["http://localhost:3000", "https://exsclaim.lan", "https://exsclaim.materialeyes.org"],
 	)
 
 	DASHBOARD_PORT: int = Field(
@@ -228,7 +230,7 @@ class UISettings(ExsclaimSettings):
 	DOMAIN: str = Field(
 		default="localhost",
 		description="The domain that a user would use to access the API and Dashboard through a proxy such as NGINX.",
-		examples=["https://exsclaim.local", "https://exsclaim-dev.materialeyes.org", "http://localhost"],
+		examples=["https://exsclaim.lan", "https://exsclaim-dev.materialeyes.org", "http://localhost"],
 	)
 
 	FAST_API_URL: str = Field(
@@ -240,7 +242,7 @@ class UISettings(ExsclaimSettings):
 	PUBLIC_API_URL: str = Field(
 		default="http://localhost:8000",
 		description="The URL that any user outside of the Docker network would use to access the API, i.e. from the computer hosting the Docker Compose services or an external computer.",
-		examples=["https://api.exsclaim.local", "https://api.exsclaim-dev.materialeyes.org"],
+		examples=["https://api.exsclaim.lan", "https://api.exsclaim-dev.materialeyes.org"],
 	)
 
 	PROJECT_NAME: str = "EXSCLAIM API"
@@ -253,6 +255,16 @@ class UISettings(ExsclaimSettings):
 	JWT_PRIVATE_KEY_FILE: Optional[Path] = Field(
 		default=None,
 		description="The file containing the JWT private key to use to authenticate with the API.",
+	)
+
+	METRICS_IP: Optional[ipaddress._BaseAddress] = Field(
+		default=None,
+		description="The IP address that is allowed to view Prometheus' metrics.",
+	)
+
+	METRICS_NETWORK: Optional[ipaddress._BaseNetwork] = Field(
+		default=None,
+		description="The IP network that is allowed to view Prometheus' metrics.",
 	)
 
 	@field_validator("DOMAIN", "FAST_API_URL", "PUBLIC_API_URL", "DASHBOARD_URL")
@@ -277,6 +289,20 @@ class UISettings(ExsclaimSettings):
 	@classmethod
 	def validate_boolean(cls, value) -> bool:
 		return super().validate_boolean(value)
+
+	@field_validator("METRICS_IP", mode="before")
+	@classmethod
+	def validate_metrics_ip(cls, ip: Optional[str]) -> Optional[ipaddress._BaseAddress]:
+		if ip is None:
+			return None
+		return ipaddress.ip_address(ip)
+
+	@field_validator("METRICS_NETWORK", mode="before")
+	@classmethod
+	def validate_metrics_network(cls, ip: Optional[str]) -> Optional[ipaddress._BaseNetwork]:
+		if ip is None:
+			return None
+		return ipaddress.ip_network(ip)
 
 
 settings = ExsclaimSettings()

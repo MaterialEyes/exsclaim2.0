@@ -1,14 +1,20 @@
-from dash import html, Output, Input, State, clientside_callback, ClientsideFunction
+from dash import html
 from enum import StrEnum
 import dash_bootstrap_components as dbc
-from .common import create_header_component, create_footer_component
 
-__all__ = ["create_login_page_layout", "FormMode"]
+__all__ = ["FormMode", "create_login_form_modal", "create_signup_form_modal"]
 
 
 class FormMode(StrEnum):
 	LOGIN = "Log in"
 	SIGNUP = "Sign up"
+
+	def get_form_value(self) -> str:
+		match self:
+			case FormMode.LOGIN:
+				return "login"
+			case FormMode.SIGNUP:
+				return "signup"
 
 
 def create_username_component(debounce=True):
@@ -30,7 +36,7 @@ def create_username_component(debounce=True):
 	], className="mb-3")
 
 
-def create_email_component(debounce=True):
+def create_email_component(mode: FormMode, debounce=True):
 	"""Create user's email component."""
 	return html.Div([
 		dbc.Label(
@@ -38,7 +44,7 @@ def create_email_component(debounce=True):
 			html_for="email",
 		),
 		dbc.Input(
-			id="email",
+			id={"form": mode.get_form_value(), "field": "email"},
 			name="email",
 			type="email",
 			inputmode="email",
@@ -53,10 +59,10 @@ def create_email_component(debounce=True):
 	], className="mb-3")
 
 
-def create_password_component(debounce=False, signup: bool = False):
+def create_password_component(mode: FormMode, debounce=True):
 	"""Create number of articles input component."""
 	signup_elements = []
-	if signup:
+	if mode == FormMode.SIGNUP:
 		signup_elements = [
 			dbc.Label(
 				"Verify Password:",
@@ -86,7 +92,7 @@ def create_password_component(debounce=False, signup: bool = False):
 			html_for="password",
 		),
 		dbc.Input(
-			id="password",
+			id={"form": mode.get_form_value(), "field": "password"},
 			name="password",
 			type="password",
 			className="form-control",
@@ -128,7 +134,7 @@ def create_login_button_component(mode: FormMode = FormMode.LOGIN):
 		dbc.Button(
 			mode.value.title(),
 			type="submit",
-			id="submit-info",
+			id="signup" if mode == FormMode.SIGNUP else "login",
 			className="button-link",
 			size="lg",
 			style={"width": "200px"}
@@ -141,21 +147,18 @@ def create_login_form_component(mode: FormMode = FormMode.LOGIN, debounce=False)
 		case FormMode.LOGIN:
 			form_components = [
 				create_orcid_button_component(mode),
-				create_email_component(debounce),
-				create_password_component(debounce, signup=False),
+				create_email_component(mode, debounce),
+				create_password_component(mode, debounce),
 				create_login_button_component(mode),
 			]
 		case FormMode.SIGNUP:
 			form_components = [
 				create_orcid_button_component(mode),
 				create_username_component(debounce),
-				create_email_component(debounce),
-				create_password_component(debounce, signup=True),
+				create_email_component(mode, debounce),
+				create_password_component(mode, debounce),
 				create_login_button_component(mode)
 			]
-		case _:
-			print(f"Unknown mode: {mode}")
-			raise RuntimeError(f"Unknown mode: {mode}")
 
 	return dbc.Container(fluid=True, style={
 		"width": "95%",
@@ -170,135 +173,59 @@ def create_login_form_component(mode: FormMode = FormMode.LOGIN, debounce=False)
 	 ])
 
 
-def handle_callbacks(mode: FormMode = FormMode.LOGIN):
-	if mode == FormMode.SIGNUP:
-		clientside_callback(
-			ClientsideFunction(
-				namespace="user",
-				function_name="check_password_signup"
+def create_login_form_modal(mode: FormMode = FormMode.LOGIN, debounce=False) -> dbc.Modal:
+	return dbc.Modal(
+		[
+			dbc.ModalHeader(
+				dbc.ModalHeader(
+					dbc.ModalTitle(mode.value),
+				),
 			),
-			Output("password", "valid"),
-			Output("password", "invalid"),
-			Output("password_verify", "valid"),
-			Output("password_verify", "invalid"),
-			Input("password", "value"),
-			Input("password_verify", "value")
-		)
+			dbc.ModalBody([
+				html.P(style={"textAlign": "center", "marginBottom": "20px"}, children=[
+					"Login to your account here.",
+				]),
+				create_login_form_component(mode, debounce),
+			]),
+			dbc.ModalFooter(
+				dbc.Button(
+					"Don't have an account, sign up for one instead.",
+					id="switch-to-signup"
+				)
+			)
+		],
+		id="login-modal",
+		centered=True,
+		is_open=False,
+		size="xl"
+	)
 
-		clientside_callback(
-			ClientsideFunction(
-				namespace="user",
-				function_name="check_username"
+
+def create_signup_form_modal(mode: FormMode = FormMode.SIGNUP, debounce=False) -> dbc.Modal:
+	return dbc.Modal(
+		[
+			dbc.ModalHeader(
+				dbc.ModalHeader(
+					dbc.ModalTitle(mode.value),
+				),
 			),
-			Output("username", "valid"),
-			Output("username", "invalid"),
-			Input("username", "value"),
-			prevent_initial_call=True
-		)
-	else:
-		clientside_callback(
-			ClientsideFunction(
-				namespace="user",
-				function_name="check_password"
-			),
-			Output("password", "valid"),
-			Output("password", "invalid"),
-			Input("password", "value"),
-		)
-
-
-def create_login_page_layout(mode: FormMode = FormMode.LOGIN, debounce=False) -> html.Div:
-	match mode:
-		case FormMode.LOGIN:
-			description = [html.P(style={"textAlign": "center", "marginBottom": "20px"}, children=[
-				"Login to your account here! If you don't have an account, signup for one ",
-				html.A("here", href="/signup"),
-				"."
-			])]
-		case FormMode.SIGNUP:
-			description = [html.P(style={"textAlign": "center", "marginBottom": "20px"}, children=[
-				"Sign up for your own account here.",
-				html.Br(),
-				"Using EXSCLAIM is possible without having an account, but running queries with your account allows them to be private and only viewable by you.",
-				html.Br(),
-				"If you already have an account, ",
-				html.A("login here", href="/login"),
-				"."
-			])]
-		case _:
-			raise NotImplementedError(f"Unknown FormMode: {mode}.")
-
-	handle_callbacks(mode)
-
-	return html.Div([
-		# Header
-		create_header_component(description=description),
-
-		# Login/Signup form
-		create_login_form_component(mode, debounce),
-
-		# Footer
-		create_footer_component()
-	], id="exsclaim-app")
-
-
-clientside_callback(
-	"""
-	function(email_validity, password_validity, username_validity) {
-		if(username_validity === undefined || username_validity === null) { username_validity = true; }
-		return !(username_validity && email_validity && password_validity);
-	}
-	""",
-	Output("submit-info", "disabled"),
-	Input("email", "valid"),
-	Input("password", "valid"),
-	Input("username", "valid", allow_optional=True),
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="user",
-		function_name="check_email"
-	),
-	[
-		Output("email", "valid"),
-		Output("email", "invalid"),
-	],
-	[
-		Input("email", "value"),
-
-	],
-	prevent_initial_call=True
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="user",
-		function_name="send_form_data"
-	),
-	Output("notification", "is_open", allow_duplicate=True),
-	Output("notification", "children", allow_duplicate=True),
-	Output("notification", "color", allow_duplicate=True),
-	Output("url", "href", allow_duplicate=True),
-	Output("url", "refresh", allow_duplicate=True),
-	Input("submit-info", "n_clicks"),
-	State("username", "value", allow_optional=True),
-	State("email", "value"),
-	State("password", "value"),
-	State("exsclaim-store", "data"),
-	prevent_initial_call=True
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="user",
-		function_name="check_credentials"
-	),
-	Output("check-credentials", "disabled"),
-	Input("check-credentials", "n_intervals"),
-	State("exsclaim-store", "data"),
-	State("check-credentials", "interval"),
-)
+			dbc.ModalBody([
+				html.P(style={"textAlign": "center", "marginBottom": "20px"}, children=[
+					"Sign up for your own account here.",
+					html.Br(),
+					"Using EXSCLAIM is possible without having an account, but running queries with your account allows them to be private and only viewable by you.",
+				]),
+				create_login_form_component(mode, debounce),
+			]),
+			dbc.ModalFooter(
+				dbc.Button(
+					"Already have an account, login to it here.",
+					id="switch-to-login"
+				)
+			)
+		],
+		id="signup-modal",
+		centered=True,
+		is_open=False,
+		size="xl"
+	)

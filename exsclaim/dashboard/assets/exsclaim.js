@@ -21,12 +21,11 @@ async function api_fetch(api_url, endpoint, options = {}){
 	});
 
 	if(!refresh_response.ok){
-		window.location.href = "/login";
 		return;
 	}
 
 	const access_header = parseInt(response.headers.get("X-EXSCLAIM-Access-Minutes") ?? "30");
-	const refresh_header = parseInt(response.headers.get("X-EXSCLAIM-Refresh-Days") ?? "7");
+	// const refresh_header = parseInt(response.headers.get("X-EXSCLAIM-Refresh-Days") ?? "7");
 
 	const access_expires = Date.now() + (access_header * 60000);
 	data["access_expires"] = access_expires;
@@ -606,7 +605,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 		},
 
 		check_email: function(email){
-			let email_component = document.getElementById("email");
+			let email_component = document.querySelector("input[name=email]");
 			const valid = email_component.validity.valid;
 
 			return [valid, !valid];
@@ -622,23 +621,17 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			return [valid, !valid];
 		},
 
-		send_form_data: async function(n_clicks, username, email, password, data) {
+		send_login_data: async function(n_clicks, email, password, data){
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
-			const login_info = {
-				email: email,
-				password: password,
-			}
-			let target_link;
-			const is_login = username === undefined || username === null;
+			return await this.send_form_data(data, "/user/login", {email: email, password: password})
+		},
 
-			if(is_login){
-				target_link = "/user/login";
-			}
-			else{
-				target_link = "/user/create_user";
-				login_info.username = username;
-			}
+		send_signup_data: async function(n_clicks, username, email, password, data){
+			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
+			return await this.send_form_data(data, "/user/create_user", {email: email, password: password, username: username})
+		},
 
+		send_form_data: async function(data, target_link, login_info) {
 			try{
 				const response = await api_fetch(data.public_fastapi_url, target_link, {
 					method: "POST",
@@ -650,80 +643,70 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 				});
 
 				if(!response.ok){
-					return [true, [await response.text()], "danger", window.dash_clientside.no_update, false];
-					// Redirect back to where ever they came from
+					return [true, [await response.text()], "danger", true, window.dash_clientside.no_update, window.dash_clientside.no_update, window.dash_clientside.no_update];
 				}
 
-				// const cookieHeader = response.headers.get("Set-Cookie");
-				// if(cookieHeader){
-				// 	document.cookie = cookieHeader;
-				// }
-
-				return [false, [], "success", document.referrer, true];
+				return [false, [], "success", false, 2000, false, 0];
 			} catch(e){
-				return [true, [e], "danger", window.dash_clientside.no_update, false];
+				return [true, [e], "danger", true, window.dash_clientside.no_update, window.dash_clientside.no_update, window.dash_clientside.no_update];
 			}
 		},
 
-		check_credentials: async function(n_clicks, data, interval){
+		check_credentials: async function(n_clicks, data){
 			console.log("Check credentials was called.");
-			const current_url = window.location.href;
-			if(current_url.endsWith("/login") || current_url.endsWith("/signup")){
-				return true; // Don't need to worry about checking credentials when on these pages
+			const show_logout_button = {"display": "block"};
+			const hide_logout_button = {"display": "none"};
+
+			let user_name = window.dash_clientside.no_update;
+
+			if(!n_clicks || n_clicks === 0){
+				const response = await api_fetch(data.public_fastapi_url, "/user/name", {
+					credentials: "include"
+				});
+
+				if(response.status === 200){
+					user_name = (await response.json()).username;
+				}
+			} else {
+				await this.renew_credentials(data);
 			}
 
-			const response = await api_fetch(data.public_fastapi_url, "/user/remaining_access", {
-				credentials: "include"
-			});
-			if(response === undefined || response === null){
-				return true;
+			const token = document.cookie;
+			if(token === undefined || token.length === 0){
+				return [0, true, user_name, hide_logout_button];
 			}
 
-			const json = await response.json();
-			switch (response.status) {
-				case 200: // Access token is still usable
-					// Checks if the token expires 2 minutes before the next time this is called
-					const remaining = json.remaining * 1000;
-					if(remaining <= interval){
-						await this.renew_credentials(data);
-					}
-					throw window.dash_clientside.PreventUpdate;
-				case 400: // Not logged in
-				case 406: // Token has expired, need to renew immediately
-					await this.renew_credentials(data);
-					throw window.dash_clientside.PreventUpdate;
-				case 401:
-				default:
-					return true;
-			}
+			const base64Url = token.split('.')[1];
+			const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+			const jwt = JSON.parse(window.atob(base64));
+
+			const expires_in = (jwt.exp * 1000) - Date.now(); // Expiration time in ms
+			return [expires_in, false, user_name, show_logout_button];
 		},
 
-		renew_credentials: async function(data, go_to_login_on_error = false){
-			let response = await api_fetch(data.public_fastapi_url, "/user/refresh", {
+		renew_credentials: async function(data){
+			let response = await api_fetch(data.public_fastapi_url, "/user/cookie/refresh", {
 				method: "POST",
 				credentials: "include"
 			});
 
 			if(!response.ok){
 				console.error(`Could not automatically refresh cookies. Please log out and then log back in. ${await response.text()}`);
-				if(go_to_login_on_error) {
-					window.location.href = "/login";
-				}
 			}
 
-			return data;
+			return response.ok;
 		},
 
 		logout: async function(n_clicks, data, current_url) {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 			try{
-				const response = await api_fetch(data.public_fastapi_url, "/user/logout", {
+				const response = await api_fetch(data.public_fastapi_url, "/user/cookie/logout", {
 					method: "GET",
 					credentials: "include"
 				});
 
 				if(!response.ok){
-					return [true, [await response.text()], "danger", current_url, false];
+					return [true, [await response.text()], "danger", current_url, false, window.dash_clientside.no_update];
 				}
 
 				const cookieHeader = response.headers.get("Set-Cookie");
@@ -731,9 +714,9 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 					document.cookie = cookieHeader;
 				}
 
-				return [false, [], "success", document.referrer, true];
+				return [false, [], "success", document.referrer, true, "Login/Signup", {display: "none"}];
 			} catch(e){
-				return [true, [e], "danger", current_url, false];
+				return [true, [e], "danger", current_url, false, window.dash_clientside.no_update];
 			}
 		},
 
