@@ -1,42 +1,41 @@
 """
 Common Dash components converted from React components.
 """
+from .login_page import create_login_form_modal, create_signup_form_modal
+
 import dash_bootstrap_components as dbc
-from dash import html, clientside_callback, Output, Input, State, callback, ClientsideFunction, dcc
+from dash import html
 from dash.development.base_component import Component
 from dash_extensions import Purify
-from typing import Any, Optional
+from typing import Optional
 
 __all__ = ["create_header_component", "create_notification_component", "create_footer_component"]
 
 
-def create_login_component():
-	return [
-		dcc.Interval(
-			id="check-user",
-			max_intervals=1,
-		),
-		html.Div([
-				html.Button(children="Menu", className="dropbtn"), # TODO: Add the menu icon here
-				html.Div(children=[
-					html.Div([
-						html.P([
-							html.A("Signup", href="/signup"),
-							"|",
-							html.A("Login", href="/login"),
-						])], id="signup-banner"),
-						html.A(
-							children="See Previous Runs",
-							href="/previous"
-						)
-					],
-					className="dropdown-content",
+def create_menu_component():
+	return html.Div(
+		[
+			dbc.Button(
+				"Login/Signup",
+				id="user-button",
+				className="dropbtn"
+			),
+			html.Div(children=[
+				html.Button(
+					"Logout",
+					id="logout-button",
+					style={"display": "none"}
+				),
+				html.A(
+					children="See Previous Runs",
+					href="/previous"
 				)
-			],
-			className="dropdown"
-		),
-
-	]
+				],
+				className="dropdown-content",
+			)
+		],
+		className="dropdown"
+	)
 
 
 def create_header_component(description: Optional[list[Component]] = None):
@@ -47,7 +46,7 @@ def create_header_component(description: Optional[list[Component]] = None):
 		dbc.Container: Header component
 	"""
 	description = description or [html.P(style={"textAlign": "center", "marginBottom": "20px"}, children=[
-		"On this website, you can submit a query for EXSCLAIM to run through. ",
+		"On this website, you can submit a query for EXSCLAIM to run through.",
 		html.Br(),
 		"Once you submit, a list of subfigures will appear on the right and a menu on the left. Then, you can query through the subfigures with the left-hand menu. ",
 		html.Br(),
@@ -80,7 +79,9 @@ def create_header_component(description: Optional[list[Component]] = None):
 			id="welcome-banner"
 		),
 
-		*create_login_component(),
+		create_menu_component(),
+		create_login_form_modal(),
+		create_signup_form_modal(),
 
 		dbc.Switch(
 			id="theme-button",
@@ -96,7 +97,7 @@ def create_header_component(description: Optional[list[Component]] = None):
 			className="checkbox",
 			style={
 				"position": "fixed",
-				"z-index": "100",
+				"zIndex": "100",
 				"top": "20px",
 				"right": "20px"
 			}
@@ -208,86 +209,3 @@ def create_footer_component():
 			])
 		])
 	])
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="clientside",
-		function_name="setTheme"
-	),
-	Output("storage", "data"),
-	Input("theme-button", "value"),
-	State("storage", "data")
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="clientside",
-		function_name="update_info_banner"
-	),
-	Output("banner", "is_open"),
-	Output("banner-html", "html"),
-	Output("storage", "data"),
-	State("storage", "data"),
-	State("exsclaim-store", "data"),
-	_allow_dynamic_callbacks=True
-)
-
-
-@callback(
-	Output("signup-banner", "children"),
-	Output("welcome-banner", "children"),
-	Input("check-user", "n_intervals"),
-	State("exsclaim-store", "data"),
-	_allow_dynamic_callbacks=True
-)
-async def get_username_if_logged_in(_, data: dict[str, Any]):
-	from httpx2 import AsyncClient
-	from flask import request
-
-	cookie = request.cookies.get("access_token")
-
-	default_values = ([html.P(children=[
-		html.A("Signup", href="/signup"),
-		"  |  ",
-		html.A("Login", href="/login"),
-	])], ["Welcome to the EXSCLAIM UI!"])
-
-	if not cookie:
-		return default_values
-
-	async with AsyncClient() as client:
-		response = await client.get(f"{data['fast_api_url']}/user/name", cookies=dict(access_token=cookie))
-		if response.status_code != 200:
-			return default_values
-		else:
-			username = response.json()["username"]
-
-	return (
-		html.P("Logout", id="logout-button"),
-		f"Welcome to the EXSCLAIM UI, {username}!"
-	)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="user",
-		function_name="logout"
-	),
-	[
-		Output("notification", "is_open", allow_duplicate=True),
-		Output("notification", "children", allow_duplicate=True),
-		Output("notification", "color", allow_duplicate=True),
-		Output("url", "href", allow_duplicate=True),
-		Output("url", "refresh", allow_duplicate=True),
-	],
-	[
-		Input("logout-button", "n_clicks", allow_optional=True)
-	],
-	[
-		State("exsclaim-store", "data"),
-		State("url", "href"),
-	],
-	prevent_initial_call=True
-)

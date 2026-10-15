@@ -1,6 +1,13 @@
 # Version 2.5.3
 ## API
 - The API now displays available LLMs for the providers that don't require an API key to list their models (`/query/llms`).
+- The logout method was moved from `/user/logout` to `/user/cookie/logout`, and the refresh method was moved from `/user/refresh` to `/user/cookie/refresh`.
+- Added metrics tracking using Prometheus.
+- \[Internal\] Middlewares no longer inherit from starlette's BaseHTTPMiddleware.
+
+## Dashboard
+- Removed the login and signup pages at `/login`/`signup`. The forms were added as a modal to each page to make it easier to keep your current context when working.
+- \[Internal\] Moved all callbacks into their own submodule (`exsclaim.dashboard.callbacks`) to prevent them from being registered multiple times.
 
 # Version 2.5.2
 ## Database

@@ -2,7 +2,8 @@ import exsclaim
 import logging
 import yaml
 
-from .middleware import RequestLoggerMiddleware, PreflightCacheMiddleware
+from .exception_handlers import handler_dict
+from .middleware import RequestLoggerMiddleware, MetricsMiddleware, IPBlockerMiddleware
 from .routers import v1_router, v2_router, general_router, query_router, users_router
 
 from contextlib import asynccontextmanager
@@ -115,22 +116,32 @@ def get_middleware(settings, logger: logging.Logger) -> tuple[Middleware, ...]:
 		allowed_hosts.extend((domain, f"*.{domain}"))
 
 	return (
+		# Logs all requests
+		Middleware(RequestLoggerMiddleware, logger=logger),
+
+		# Only compresses the generated response
+		Middleware(GZipMiddleware, minimum_size=1_000),
+
+		# Checks if the request should be blocked before hitting its endpoint
 		Middleware(
 			CORSMiddleware,
 			allow_origins=origins,
 			allow_credentials=True,
 			allow_methods=["GET", "POST", "OPTIONS", "HEAD"],
-			allow_headers=["*"],
+			allow_headers=["*"], # X-Request-Id
 			expose_headers=["X-EXSCLAIM-Access-Minutes", "X-EXSCLAIM-Refresh-Days"]
 		),
-		Middleware(RequestLoggerMiddleware, logger=logger),
-		Middleware(PreflightCacheMiddleware),
 		Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts),
-		Middleware(GZipMiddleware, minimum_size=1_000),
+		Middleware(IPBlockerMiddleware, logger=logger),
+
+		Middleware(MetricsMiddleware),
 	)
 
 
 def get_app() -> FastAPI:
+	import importlib
+
+	use_prometheus = importlib.util.find_spec("prometheus_fastapi_instrumentator")
 	settings = exsclaim.ui_settings
 	logger = create_logger(settings)
 
@@ -143,6 +154,7 @@ def get_app() -> FastAPI:
 		redoc_url=None,
 		lifespan=lifespan,
 		middleware=get_middleware(settings, logger),
+		exception_handlers=handler_dict
 	)
 
 	app.logger = logger
@@ -151,6 +163,27 @@ def get_app() -> FastAPI:
 
 	for router in (general_router, query_router, users_router, v1_router, v2_router):
 		app.include_router(router)
+
+	if use_prometheus:
+		from os import getenv
+		from pathlib import Path
+
+		multiprocessing_dir = getenv("PROMETHEUS_MULTIPROC_DIR")
+		if multiprocessing_dir is not None:
+			from shutil import rmtree
+
+			multiprocessing_dir = Path(multiprocessing_dir)
+			multiprocessing_dir.mkdir(parents=True, exist_ok=True)
+			for child in multiprocessing_dir.iterdir():
+				if child.is_dir():
+					rmtree(child)
+				else:
+					child.unlink()
+
+		from prometheus_fastapi_instrumentator import Instrumentator
+
+		instrumentator = Instrumentator()
+		instrumentator.instrument(app).expose(app)
 
 	return app
 

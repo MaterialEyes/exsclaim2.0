@@ -2,7 +2,7 @@ from .caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
 from ..exceptions import PipelineConfigError, LLMException
 
 from logging import exception
-from typing import Any, Collection, Iterable, Type, Optional
+from typing import Any, Collection, Type, Optional
 
 import anthropic
 import asyncio

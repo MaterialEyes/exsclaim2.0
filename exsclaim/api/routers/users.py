@@ -2,8 +2,8 @@ from ...config import ui_settings, orcid_settings
 from ...db import get_db_session, cryptographic_hash
 from ..models import User, PasswordReset, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
 from ..dependencies.users import LoginInfo, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, ActiveUser, \
-	CurrentUser, CurrentUserId, ActiveUserId, create_access_token, create_refresh_token, extract_access_token, \
-	extract_refresh_token, AccessTokenCookie, RefreshTokenCookie
+	CurrentUser, CurrentUserId, ActiveUserId, create_access_token, create_refresh_token, extract_refresh_token, \
+	RefreshTokenCookie
 
 from datetime import datetime as dt, timezone as tz, timedelta as td
 from fastapi import APIRouter, status, HTTPException, Body, Cookie
@@ -83,7 +83,7 @@ async def create_access_token_for_cookie(user: User, response: Response) -> Resp
 	response.set_cookie(
 		key="access_token",
 		value=access_token,
-		httponly=True,
+		httponly=False,
 		secure=True,
 		domain=get_cookie_domain(),
 		samesite="lax",
@@ -108,7 +108,7 @@ async def create_refresh_token_for_cookie(user: User, response: Response) -> Res
 		domain=get_api_cookie_domain(),
 		samesite="strict",
 		max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86_400, # 86,400 seconds in a day
-		path=router.prefix + "/refresh"
+		path=f"{router.prefix}/cookie"
 	)
 
 	response.headers["X-EXSCLAIM-Refresh-Days"] = str(REFRESH_TOKEN_EXPIRE_DAYS)
@@ -174,9 +174,9 @@ async def login_user(request: Request, info: LoginInfo) -> Response:
 	if isinstance(actual_user, Response):
 		return actual_user
 
-	referer = request.headers.get("Referer")
-	response = JSONResponse({"status": "Logged in successfully!"}, status_code=status.HTTP_200_OK)
+	response = JSONResponse({"status": "Logged in successfully!", "user": actual_user.name}, status_code=status.HTTP_200_OK)
 
+	referer = request.headers.get("Referer")
 	if referer is not None:
 		response.headers["Location"] = referer
 
@@ -221,7 +221,7 @@ async def login_with_orcid(request: Request, code: str):
 	return response
 
 
-@router.post("/refresh", tags=[TAG])
+@router.post("/cookie/refresh", tags=[TAG])
 async def refresh(refresh_token: str = Cookie()):
 	payload = extract_refresh_token(refresh_token)
 
@@ -249,7 +249,7 @@ async def refresh(refresh_token: str = Cookie()):
 	return response
 
 
-@router.api_route("/logout", methods=["GET", "HEAD"], tags=[TAG])
+@router.api_route("/cookie/logout", methods=["GET", "HEAD"], tags=[TAG])
 async def logout_user(request: Request, user_id: ActiveUserId, cookie: RefreshTokenCookie) -> Response:
 	payload = extract_refresh_token(cookie)
 	await remove_user_jti(user_id, payload["jti"])
@@ -368,29 +368,6 @@ async def update_username(request: Request, user: ActiveUser, username: str = Bo
 		"old_username": old_username,
 		"new_username": username,
 	}, status_code=status.HTTP_200_OK)
-
-
-@router.api_route("/remaining_access", methods=["GET", "HEAD"], include_in_schema=False)
-async def check_access_token_remaining_time(token: AccessTokenCookie) -> JSONResponse:
-	if token is None:
-		return JSONResponse(dict(detail="Not logged in."), status_code=status.HTTP_400_BAD_REQUEST)
-
-	payload = extract_access_token(token)
-
-	expiration = payload.get("exp")
-	if expiration is None:
-		return JSONResponse({"detail": "Expiration is somehow missing from the token."},
-							status_code=status.HTTP_401_UNAUTHORIZED)
-
-	expiration = dt.fromtimestamp(expiration, tz=tz.utc)
-	diff = expiration - dt.now(tz=tz.utc)
-	seconds = diff.total_seconds()
-
-	response = {
-		"detail": f"Access token remains valid for another {seconds} seconds.",
-		"remaining": seconds,
-	}
-	return JSONResponse(response, status_code=status.HTTP_200_OK)
 
 
 @router.delete("/remove_user", tags=[TAG])

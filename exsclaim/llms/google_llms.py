@@ -107,7 +107,7 @@ class Google(LLM):
 
 		formatted_response = response.output_text
 		if formatted_response is None:
-			raise ValueError(f"Gemini response is None.")
+			raise ValueError("Gemini response is None.")
 
 		if response_format != str:
 			formatted_response = response_format.model_validate_json(formatted_response)

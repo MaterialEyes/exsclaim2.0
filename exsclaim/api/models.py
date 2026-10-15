@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from ..config import ExsclaimSettings
+from ..db.models import Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes, User, Run, \
+	SaveExtensions, Status, gen_uuid7, get_guest_uuid, RunArticles
+from ..exceptions import PipelineConfigError
 from ..journals import JournalFamily
 from ..llms import LLM
-from ..config import ExsclaimSettings
 from ..notifications import NTFY, Email, Webhook, QueryNotifications
-from ..db.models import Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes, \
-	User, Run, SaveExtensions, Status, gen_uuid7, get_guest_uuid, RunArticles
 from .json_models import Output
 
 from datetime import datetime as dt, timezone as tz

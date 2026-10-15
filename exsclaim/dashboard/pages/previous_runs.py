@@ -53,10 +53,11 @@ clientside_callback(
 		function_name="previous_runs"
 	),
 	Output("previous-runs", "html"),
-	Output("check-run-status", "disabled"),
+	Output("check-run-status", "disabled", allow_duplicate=True),
 	Output("exsclaim-runs", "display"),
 	Input("load-previous-runs", "n_intervals"),
 	State("exsclaim-store", "data"),
+	prevent_initial_call=True
 )
 
 
@@ -65,7 +66,7 @@ clientside_callback(
 		namespace="user",
 		function_name="update_data_table"
 	),
-	Output("check-run-status", "disabled"),
+	Output("check-run-status", "disabled", allow_duplicate=True),
 	Input("check-run-status", "n_intervals"),
 	State("exsclaim-store", "data"),
 	prevent_initial_call=True
