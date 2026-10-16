@@ -57,6 +57,10 @@ def format_response(_id, request: Request) -> str:
 	return log
 
 
+def run_middleware(scope: Scope) -> bool:
+	return scope["type"] in {"http", "websocket"}
+
+
 # https://medium.com/the-pythonworld/15-useful-middlewares-for-fastapi-that-you-should-know-about-8c2d67ea0d86
 class IPBlockerMiddleware:
 	"""This middleware checks the IP of the request to see if it's blocked, and blocks users if they go ..."""
@@ -65,7 +69,7 @@ class IPBlockerMiddleware:
 		self.logger = logger
 
 	async def block_request(self, scope: Scope, receive: Receive, send: Send, address: ipaddress._BaseAddress,
-							immediately_stop_request: bool = False):
+							immediately_stop_request: bool = True):
 		self.logger.warning(f"Banned IP: {address} tried to reach {scope["path"]}. Immediately stopping request: {immediately_stop_request}.")
 
 		headers = [(b"Content-Length", b"0")] if immediately_stop_request else []
@@ -98,8 +102,12 @@ class IPBlockerMiddleware:
 			})
 
 	async def __call__(self, scope: Scope, receive: Receive, send: Send):
+		if not run_middleware(scope):
+			await self.app(scope, receive, send)
+			return
+
 		headers = Headers(scope=scope)
-		address = get_ip_address(headers, scope["client"][0])
+		address = get_ip_address(headers, scope.get("client", [None])[0])
 
 		is_banned = False
 		async with get_db_session() as session:
@@ -110,7 +118,8 @@ class IPBlockerMiddleware:
 			is_banned = results.scalar()
 
 		if is_banned:
-			return await self.block_request(scope, receive, send, address)
+			await self.block_request(scope, receive, send, address)
+			return
 
 		if path_is_blocked(scope["path"]):
 			async with get_db_session() as session:
@@ -120,9 +129,11 @@ class IPBlockerMiddleware:
 				)
 				await session.commit()
 
-			return await self.block_request(scope, receive, send, address)
+			await self.block_request(scope, receive, send, address)
+			return
 
-		return await self.app(scope, receive, send)
+		await self.app(scope, receive, send)
+		return
 
 
 class RequestLoggerMiddleware:
@@ -131,6 +142,10 @@ class RequestLoggerMiddleware:
 		self.logger = logger
 
 	async def __call__(self, scope: Scope, receive: Receive, send: Send):
+		if not run_middleware(scope):
+			await self.app(scope, receive, send)
+			return
+
 		headers = Headers(scope=scope)
 
 		# Get the Request ID for logging purposes
@@ -186,7 +201,7 @@ class MetricsMiddleware:
 		self.disallow_metrics_path = self.metrics_ip is None and self.metrics_network is None
 
 	async def __call__(self, scope: Scope, receive: Receive, send: Send):
-		if scope["path"] != "/metrics":
+		if not run_middleware(scope) or scope["path"] != "/metrics":
 			await self.app(scope, receive, send)
 			return
 

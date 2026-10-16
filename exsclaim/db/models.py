@@ -13,7 +13,7 @@ from uuid import UUID
 
 __all__ = ["Author", "ORCID_REGEX", "DOI_REGEX_STRING", "DOI_REGEX", "Article", "Figure", "Subfigure", "Scale",
 		   "SubfigureLabel", "ScaleLabel", "ClassificationCodes", "User", "Run", "Status", "SaveExtensions", "gen_uuid7",
-		   "get_guest_uuid", "ArticleAuthor", "RunArticles", "cryptographic_hash"]
+		   "get_guest_uuid", "ArticleAuthor", "RunArticles", "cryptographic_hash", "ActiveUser"]
 
 if version_info >= (3, 14):
 	def gen_uuid7() -> UUID:
@@ -158,6 +158,15 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	password_hash: Optional[bytes] = sqlmodel.Field(
 		description="The user's password as a cryptographic hash.",
 		nullable=True
+	)
+
+	deleted_at: Optional[dt] = sqlmodel.Field(
+		default=None,
+		sa_column=sqlalchemy.Column(
+			sqlmodel.DateTime(timezone=True),
+			server_default=sqlalchemy.text("NULL"),
+			nullable=True,
+		)
 	)
 
 	_runs: list[Run] = sqlmodel.Relationship(
@@ -987,3 +996,7 @@ class ScaleLabel(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	@property
 	async def scale(self) -> Scale:
 		return await self.awaitable_attrs._scale
+
+
+active = sqlalchemy.select(User).where(User.deleted_at.is_(None)).subquery()
+ActiveUser = sqlalchemy.orm.aliased(User, active)

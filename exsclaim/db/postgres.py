@@ -330,6 +330,7 @@ class Database:
 				await conn.execute(insert(User).values(id=get_guest_uuid(), name="Default User"))
 
 			await api_db(conn)
+			await conn.execute(text("CREATE VIEW users.active_users AS SELECT * FROM users.users WHERE deleted_at IS NULL;"))
 
 		# Insert classification codes into the database
 		classification_codes = (
@@ -357,23 +358,45 @@ class Database:
 
 		from alembic import command
 		from alembic.config import Config
+		from io import StringIO
 		from itertools import pairwise
+
+		import re
 
 		current_version = Version()
 
 		alembic_revision_lookup: dict[Version, str] = {
 			Version("2.5.2"): "3924f9a632d1",
-			Version("2.5.3b2"): "289193e21c9c"
+			Version("2.5.3b2"): "289193e21c9c",
+			Version("2.5.3b4"): "58f3da095550"
 		}
 
+		buffer = StringIO() # TODO: Check if this works correctly
+
 		directory = Path(__file__).parent.parent.resolve()
+		connection_string = PostgresSettings().connection_string
+
 		alembic_cfg = Config(directory / "alembic.ini")
-		alembic_cfg.set_main_option("sqlalchemy.url", PostgresSettings().connection_string)
+		output_cfg = Config(directory / "alembic.ini", stdout=buffer)
+
+		for cfg in (alembic_cfg, output_cfg):
+			cfg.set_main_option("sqlalchemy.url", connection_string)
+
+		command.show(output_cfg, "current")
+		current_info = buffer.getvalue()
+		match = re.search(r"Rev: ([a-z\d]+)", current_info, re.I)
+		current_alembic_version = match.group(1) if match is not None else None
+
+		def do_upgrade(exsclaim_version: Version):
+			given_version = alembic_revision_lookup[exsclaim_version]
+
+			if current_alembic_version != given_version:
+				command.upgrade(alembic_cfg, given_version)
 
 		keys = tuple(alembic_revision_lookup.keys())
 		for version1, version2 in pairwise(keys):
 			if version1 <= current_version < version2:
-				command.upgrade(alembic_cfg, alembic_revision_lookup[version1])
+				do_upgrade(version1)
 				break
 		else:
-			command.upgrade(alembic_cfg, alembic_revision_lookup[keys[-1]])
+			do_upgrade(keys[-1])
