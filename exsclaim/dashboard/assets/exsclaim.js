@@ -928,6 +928,10 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			});
 
 			const runs = await response.json();
+			if (runs.length === 0){
+				return [window.dash_clientside.no_update, window.dash_clientside.no_update, window.dash_clientside.no_update];
+			}
+
 			let output = [];
 
 			for(const run of runs){
@@ -997,7 +1001,8 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 				if(!this.figures_per_run.includes(selected_run.id)) { // TODO: Have a set just of run ids to check against
 					let [articles, figures, subfigures] = await fetch_results(api_url, selected_run);
 
-					let response = await api_fetch(api_url, `/results/v2/${selected_run}/subfigure_labels`, init);
+					// let response = await api_fetch(api_url, `/results/v2/${selected_run}/dashboard?lowest_level=subfigure_label`, init);
+					let response = await api_fetch(api_url, `/results/v1/${selected_run}/subfigure_labels`, init);
 					let labels = await response.json();
 
 					let class_codes = await fetch_classification_codes(api_url);
@@ -1008,7 +1013,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 						id: fig.id,
 						url: fig.url,
 						caption: fig.caption,
-						run_id: fig.run_id,
+						run_id: selected_run,
 						article_url: articles[fig.article_id],
 						subfigures: []
 					}]));
@@ -1230,14 +1235,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 			const content = JSON.stringify(training_data, null, 2);
 
-			const obj = {
+			// console.log(content.length);
+			return {
 				filename: "exsclaim_training_data.json",
 				content: content,
-				base64string: false
+				base64: false
 			};
-			// console.log(content.length);
-
-			return obj;
 		},
 
 		upload: function(contents) {

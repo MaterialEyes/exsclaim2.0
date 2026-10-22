@@ -33,7 +33,7 @@ class SearchEnum(enum.IntEnum):
 	def get_level(cls, level: SearchLevels) -> "SearchEnum":
 		try:
 			return cls[level.title()]
-		except ValueError as e:
+		except (KeyError, ValueError) as e:
 			match level.lower():
 				case "subfigure_label":
 					return cls.SubfigureLabel

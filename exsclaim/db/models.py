@@ -117,6 +117,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	)
 
 	email: Optional[pydantic.EmailStr] = sqlmodel.Field(
+		default=None,
 		description="The user's email.",
 		sa_column=sqlalchemy.Column(
 			sa_psql.TEXT,
@@ -126,6 +127,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	)
 
 	orcid: ORCID_TYPE = sqlmodel.Field(
+		default=None,
 		description="The ORCID id associated with the user's login.",
 		regex=ORCID_REGEX,
 		# pattern=ORCID_REGEX,
@@ -147,6 +149,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	)
 
 	salt: Optional[bytes] = sqlmodel.Field(
+		default=None,
 		# default_factory=generate_salt,
 		description="The salt for the user's password.",
 		nullable=True,
@@ -156,6 +159,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 
 	# DO NOT ENTER RAW (CLEARTEXT) PASSWORDS INTO THE DATABASE, ONLY ENCRYPTED HASHES!
 	password_hash: Optional[bytes] = sqlmodel.Field(
+		default=None,
 		description="The user's password as a cryptographic hash.",
 		nullable=True
 	)

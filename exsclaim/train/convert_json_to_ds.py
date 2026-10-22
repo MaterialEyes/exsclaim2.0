@@ -1,14 +1,23 @@
+import importlib
+
+for module in ("datasets", "huggingface_hub"):
+	if importlib.util.find_spec(module) is None:
+		install_module = module.replace("_", "-")
+		raise ModuleNotFoundError(f"{module} is not installed. Install it with `pip install {install_module}` or `pip install exsclaim[train]`")
+
+
 from .ds_features import caption_features, image_features
 
 import datasets
+import httpx2
 import huggingface_hub as hf
+import orjson
+import re
 
 from datetime import datetime as dt, timezone as tz
-from httpx2 import Client
-from orjson import loads
+from io import BytesIO
 from pathlib import Path
 from PIL import Image
-from re import match
 from typing import Any, Collection
 
 
@@ -16,7 +25,7 @@ __all__ = ["convert_json_to_ds", "append_to_hub"]
 
 
 def get_journal_from_url(image_url) -> str:
-	if match("^https?://media.springernature.com", image_url):
+	if re.match("^https?://media.springernature.com", image_url):
 		return "Nature"
 
 	print(f"Unknown image url: {image_url}")
@@ -25,12 +34,12 @@ def get_journal_from_url(image_url) -> str:
 
 def convert_json_to_ds(exsclaim_jsons: Collection[Path | dict[str, Any]]) -> tuple[datasets.Dataset, datasets.Dataset]:
 	images, captions = [], []
-	client = Client()
+	client = httpx2.Client()
 
 	for exsclaim_json in exsclaim_jsons:
 		if isinstance(exsclaim_json, Path):
 			created_at = dt.fromtimestamp(exsclaim_json.stat().st_mtime, tz=tz.utc)
-			exsclaim_json: dict[str, Any] = loads(exsclaim_json.read_text())
+			exsclaim_json: dict[str, Any] = orjson.loads(exsclaim_json.read_text())
 		else:
 			created_at = dt.now(tz=tz.utc)
 
@@ -45,8 +54,9 @@ def convert_json_to_ds(exsclaim_jsons: Collection[Path | dict[str, Any]]) -> tup
 			subfigure_label = [dict(text=subimage["label"], geometry=dict(x0=subimage["label_x0"], y0=subimage["label_y0"], x1=subimage["label_x1"], y1=subimage["label_y1"]))
 							   for subimage in image["subfigures"]]
 			# TODO: Run this with these lines uncommented to make sure nothing crashes
-			scale_bar_labels = [dict(text=scalebar["label"]["text"], geometry=scalebar["label"]["geometry"]) for subimage in image["subfigures"] for scalebar in subimage["scale_bars"]]
-			scale_bar_lines = [dict(geometry=scalebar["geometry"]) for subimage in image["subfigures"] for scalebar in subimage["scale_bars"]]
+
+			scale_bar_labels = [dict(text=scalebar["label"]["text"], geometry=scalebar["label"]["geometry"]) for subimage in image["subfigures"] for scalebar in subimage.get("scale_bars", ())]
+			scale_bar_lines = [dict(geometry=scalebar["geometry"]) for subimage in image["subfigures"] for scalebar in subimage.get("scale_bars", ())]
 			# scale_bar_labels = []
 			# scale_bar_lines = []
 
@@ -54,7 +64,16 @@ def convert_json_to_ds(exsclaim_jsons: Collection[Path | dict[str, Any]]) -> tup
 				if response.is_error:
 					print(f"Could not get image from {image['url']}: {response.text}")
 
-				image_obj = Image.open(response)
+				content_type = response.headers.get("Content-Type", "")
+				if content_type.startswith("image/"):
+					content_type = [content_type[6:]]
+				elif len(content_type) > 0:
+					print(f"Warning, the response for {image['url']} contained a response with type {content_type}.")
+					continue
+				else:
+					content_type = tuple()
+
+				image_obj = Image.open(BytesIO(response.read()), formats=content_type)
 
 			info: dict[str, Any] = {
 				"Master Image": master_images,

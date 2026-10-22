@@ -143,7 +143,7 @@ RUN touch ~/.xinitrc && chmod +x ~/.xinitrc && \
 	curl -LsSf https://astral.sh/uv/install.sh | sh && \
 	pip install --upgrade pip --cache-dir=/tmp/pip --root-user-action ignore && \
 	. ~/.bashrc && \
-    uv pip install --system --system-certs -r pyproject.toml --extra test --extra dev --cache-dir=/tmp/pip && \
+    uv pip install --system --system-certs -r pyproject.toml --extra test --extra dev --extra train --cache-dir=/tmp/pip && \
     chmod -R 775 /opt && \
     chown -R exsclaim:root /opt && \
     mkdir -p /home/exsclaim/.cache/torch/hub/checkpoints/ && \

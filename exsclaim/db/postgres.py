@@ -330,7 +330,7 @@ class Database:
 				await conn.execute(insert(User).values(id=get_guest_uuid(), name="Default User"))
 
 			await api_db(conn)
-			await conn.execute(text("CREATE VIEW users.active_users AS SELECT * FROM users.users WHERE deleted_at IS NULL;"))
+			await conn.execute(text("CREATE OR REPLACE VIEW users.active_users AS SELECT * FROM users.users WHERE deleted_at IS NULL;"))
 
 		# Insert classification codes into the database
 		classification_codes = (

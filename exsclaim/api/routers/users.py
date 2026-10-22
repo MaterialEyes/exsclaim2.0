@@ -187,7 +187,6 @@ async def login_user(request: Request, info: LoginInfo) -> Response:
 
 @router.api_route("/login-orcid", methods=["GET", "HEAD"], tags=[TAG], include_in_schema=False)
 async def login_with_orcid(request: Request, code: str):
-	logger = request.state.logger
 	async with AsyncClient() as client:
 		headers = {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}
 		data = {
@@ -201,6 +200,7 @@ async def login_with_orcid(request: Request, code: str):
 		response = await client.post(f"{orcid_settings.URL}/oauth/token", headers=headers, data=data)
 
 		if response.status_code != 200:
+			logger = request.state.logger
 			logger.error(f"Login failed with status code {response.status_code}: {response.text}")
 			return JSONResponse({**response.json(), "status_code": response.status_code}, status_code=500)
 
@@ -215,10 +215,10 @@ async def login_with_orcid(request: Request, code: str):
 			session.add(actual_user)
 			await session.commit()
 
-	response = RedirectResponse(ui_settings.DASHBOARD_URL)
-	response = await create_access_token_for_cookie(actual_user, response)
-	response = await create_refresh_token_for_cookie(actual_user, response)
-	return response
+		response = RedirectResponse(ui_settings.DASHBOARD_URL)
+		response = await create_access_token_for_cookie(actual_user, response)
+		response = await create_refresh_token_for_cookie(actual_user, response)
+		return response
 
 
 @router.post("/cookie/refresh", tags=[TAG])
@@ -392,7 +392,7 @@ async def delete_user(request: Request, user: ActiveUser) -> JSONResponse:
 
 @router.post("/merge_accounts", tags=[TAG],
 			 description="Merges an ORCID account with an account created using email and password")
-async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUser) -> JSONResponse:
+async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUser) -> Response:
 	if orcid_user.orcid is None:
 		return JSONResponse({"detail": "You must be logged in as your ORCID account, not your account with your email and password."}, status_code=status.HTTP_409_CONFLICT)
 

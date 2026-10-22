@@ -9,6 +9,9 @@
 - Removed the login and signup pages at `/login`/`signup`. The forms were added as a modal to each page to make it easier to keep your current context when working.
 - \[Internal\] Moved all callbacks into their own submodule (`exsclaim.dashboard.callbacks`) to prevent them from being registered multiple times.
 
+## Other
+- `datasets` and `huggingface_hub` are now optional dependencies installed using `pip install exsclaim[train]`.
+
 # Version 2.5.2
 ## Database
 - Renamed the table `results.results` to `results.runs`, and the accompanying model from `exsclaim.api.models.Results` to `exsclaim.db.models.Run`.

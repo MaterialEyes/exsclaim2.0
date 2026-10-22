@@ -52,7 +52,7 @@ def create_query_component(available_llms, debounce=True):
 		"margin": "20px",
 		"justifyContent": "center",
 		"display": "flex",
-		"flex-direction": "column",
+		"flexDirection": "column",
 	}, children=[
 		# Interval to check if the results are ready
 		dcc.Interval(
