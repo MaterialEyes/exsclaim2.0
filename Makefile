@@ -34,6 +34,7 @@ build/exsclaim/dashboard: build/exsclaim build/venv
 	mkdir build/exsclaim/dashboard
 	cp -ar exsclaim/dashboard/*.py build/exsclaim/dashboard/
 	cp -ar exsclaim/dashboard/assets build/exsclaim/dashboard/
+	cp -ar exsclaim/dashboard/callbacks build/exsclaim/dashboard/
 	cp -ar exsclaim/dashboard/components build/exsclaim/dashboard/
 	cp -ar exsclaim/dashboard/pages build/exsclaim/dashboard/
 

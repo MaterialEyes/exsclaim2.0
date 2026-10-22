@@ -145,7 +145,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["exsclaim", "exsclaim.figures", "exsclaim.journals", "exsclaim.llms", "exsclaim.utilities", "exsclaim.api",
-    "exsclaim.dashboard", "exsclaim.dashboard.components", "exsclaim.dashboard.pages"]
+    "exsclaim.dashboard", "exsclaim.dashboard.callbacks", "exsclaim.dashboard.components", "exsclaim.dashboard.pages"]
 include-package-data = true
 
 [tool.setuptools.dynamic]
