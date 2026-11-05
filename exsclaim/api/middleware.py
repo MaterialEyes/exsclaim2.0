@@ -4,6 +4,7 @@ from ..config import ui_settings
 
 from contextlib import suppress
 from contextvars import ContextVar
+from enum import StrEnum
 from starlette import status
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.requests import Request
@@ -46,11 +47,47 @@ def get_log_time(diff: float) -> str:
 	return f"{diff:,.2f}s"
 
 
+class TerminalColor(StrEnum):
+	BLACK = '\033[30m'
+	RED = '\033[31m'
+	GREEN = '\033[32m'
+	YELLOW = '\033[33m' # orange on some systems
+	BLUE = '\033[34m'
+	MAGENTA = '\033[35m'
+	CYAN = '\033[36m'
+	LIGHT_GRAY = '\033[37m'
+	DARK_GRAY = '\033[90m'
+	BRIGHT_RED = '\033[91m'
+	BRIGHT_GREEN = '\033[92m'
+	BRIGHT_YELLOW = '\033[93m'
+	BRIGHT_BLUE = '\033[94m'
+	BRIGHT_MAGENTA = '\033[95m'
+	BRIGHT_CYAN = '\033[96m'
+	WHITE = '\033[97m'
+	RESET = '\033[0m' # called to return to standard terminal text color
+
+
+def color_http_method(method: str) -> str:
+	match method:
+		case "GET":
+			return TerminalColor.GREEN + method + TerminalColor.RESET
+		case "POST":
+			return TerminalColor.BLUE + method + TerminalColor.RESET
+		case "HEAD":
+			return TerminalColor.PURPLE + method + TerminalColor.RESET
+		case "OPTIONS":
+			return TerminalColor.YELLOW + method + TerminalColor.RESET
+		case "DELETE":
+			return TerminalColor.RED + method + TerminalColor.RESET
+	return method
+
+
 def format_response(_id, request: Request) -> str:
 	ip = get_ip_address(request.headers, request.client.host)
 	path = request.url.path if hasattr(request, "url") else "NULL PATH"
 	user_agent = request.headers.get("User-Agent", "Unknown User-Agent")
-	log = f"[{request_id_ctx.get()}] {{{ip} using {user_agent}}} [{request.method}] {path}"
+
+	log = f"[{request_id_ctx.get()}] {{{TerminalColor.RED}{ip}{TerminalColor.RESET} using {user_agent}}} [{color_http_method(request.method)}] {path}"
 	if request.url.query:
 		log += f"?{request.url.query}"
 
@@ -188,7 +225,7 @@ class RequestLoggerMiddleware:
 		if scope["path"] in {"/favicon.ico", "/healthcheck", "/swagger-dark-ui.css"}:
 			return
 
-		self.logger.info(f"{format_response(request_id, Request(scope=scope))} ({status_code}) in {get_log_time(diff)}.")
+		self.logger.info(f"{format_response(request_id, Request(scope=scope))} ({TerminalColor.YELLOW}{status_code}{TerminalColor.RESET}) in {get_log_time(diff)}.")
 		# for handler in self.logger.handlers:
 		# 	handler.flush()
 

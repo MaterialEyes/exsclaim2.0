@@ -842,6 +842,7 @@ class FigureSeparator(ExsclaimTool):
 			label_box = subfigures_per_class.get(cls_id, None)
 			if label_box is not None:
 				lx1, ly1, lx2, ly2 = label_box.xyxy[0].cpu().numpy()
+				lx1, ly1, lx2, ly2 = int(lx1), int(ly1), int(lx2), int(ly2)
 			else:
 				lx1, ly1, lx2, ly2 = None, None, None, None
 			conf = float(box.conf[0])
@@ -905,10 +906,10 @@ class FigureSeparator(ExsclaimTool):
 				"subfigure_label": {
 					"text": label,
 					"geometry": dict(
-						x0=int(lx1),
-						y0=int(ly1),
-						x1=int(lx2),
-						y1=int(ly2)
+						x0=lx1,
+						y0=ly1,
+						x1=lx2,
+						y1=ly2
 					)
 				}
 			}

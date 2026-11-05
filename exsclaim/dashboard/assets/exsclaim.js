@@ -15,7 +15,7 @@ async function api_fetch(api_url, endpoint, options = {}){
 		return response;
 	}
 
-	const refresh_response = await fetch(`${api_url}/user/refresh`, {
+	const refresh_response = await fetch(`${api_url}/user/protected/refresh`, {
 		method: "POST",
 		credentials: "include"
 	});
@@ -685,7 +685,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 		},
 
 		renew_credentials: async function(data){
-			let response = await api_fetch(data.public_fastapi_url, "/user/cookie/refresh", {
+			let response = await api_fetch(data.public_fastapi_url, "/user/protected/refresh", {
 				method: "POST",
 				credentials: "include"
 			});
@@ -700,7 +700,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 		logout: async function(n_clicks, data, current_url) {
 			if(n_clicks === undefined) { throw window.dash_clientside.PreventUpdate; }
 			try{
-				const response = await api_fetch(data.public_fastapi_url, "/user/cookie/logout", {
+				const response = await api_fetch(data.public_fastapi_url, "/user/protected/logout", {
 					method: "GET",
 					credentials: "include"
 				});

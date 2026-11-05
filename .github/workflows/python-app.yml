@@ -77,7 +77,7 @@ jobs:
             - test
         environment:
             name: pypi
-            url: https://pypi.org/p/exsclaim2.0
+            url: https://pypi.org/p/exsclaim
         permissions:
             id-token: write
         steps:

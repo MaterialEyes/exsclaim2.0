@@ -1,5 +1,5 @@
 from dash import ClientsideFunction, get_app, Output, Input, State
-from json import dumps
+import json
 
 app = get_app()
 
@@ -162,4 +162,4 @@ app.clientside_callback(
 	Input("training_data_store", "data")
 )
 def update_preview(data):
-	return dumps(data, indent="\t")
+	return json.dumps(data, indent="\t")

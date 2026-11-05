@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7-labs
-FROM python:3.14.8-slim AS deps
+FROM python:3.14.9-slim AS deps
 
 # This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
 ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/tmp/pip \
     rm -rf /opt/install/exsclaim
 
 # syntax=docker/dockerfile:1.7-labs
-FROM python:3.14.8-slim AS core
+FROM python:3.14.9-slim AS core
 
 ARG UID=1000
 ARG GID=1000
@@ -68,6 +68,7 @@ ENV DASHBOARD_PORT=3000
 ENV DASHBOARD_URL=http://localhost:$DASHBOARD_PORT
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+ENV PYTHON_LAZY_IMPORTS=all
 
 SHELL ["/bin/bash", "-c"]
 HEALTHCHECK --interval=20s --timeout=4s --start-period=12s --retries=8 CMD docker-healthcheck
@@ -85,7 +86,7 @@ RUN --mount=type=cache,sharing=locked,target=/var/lib/apt \
     mkdir -p /exsclaim/{logs,results,yolo}/ && \
     chown -R $UID:$GID /exsclaim && \
     apt update && \
-    apt install -y --no-install-recommends curl ffmpeg unzip libglib2.0-0 libnss3 playwright  \
+    apt install -y --no-install-recommends curl ffmpeg unzip libglib2.0-0 libnss3 playwright \
         libfontconfig1 libxcb1 libx11-6 libx11-xcb1 libxcomposite1 \
         libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 \
         libxrender1 libxss1 libxtst6 libsm6 \
@@ -94,8 +95,12 @@ RUN --mount=type=cache,sharing=locked,target=/var/lib/apt \
         libasound2 libgdk-pixbuf-xlib-2.0-0 libgtk-3-0 lsof nano \
         libdrm2 libnspr4 xvfb \
         libfreetype6 xfonts-scalable fonts-liberation fonts-ipafont-gothic \
-        fonts-wqy-zenhei fonts-tlwg-loma-otf fonts-freefont-ttf zstd \
-        libfreetype6-dev libharfbuzz-dev && \
+        fonts-wqy-zenhei fonts-tlwg-loma-otf fonts-freefont-ttf zstd npm \
+        libfreetype6-dev libharfbuzz-dev libatomic1 && \
+    npm install -g node && \
+    rm -rf /usr/bin/node* && \
+    rm -rf /lib/x86_64-linux-gnu/libnode.so && \
+    apt remove -y libnode-dev libnode115 && \
     curl -o chromedriver-linux64.zip https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip && \
     unzip -p chromedriver-linux64.zip chromedriver-linux64/chromedriver > /usr/local/bin/chromedriver && \
     curl -o chrome-linux64.zip https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chrome-linux64.zip && \
@@ -168,5 +173,4 @@ RUN pip install -r jupyter_requirements.txt --no-cache-dir && \
     ls -la /root/.nvm && \
     \. /root/.nvm/nvm.sh && \
     \. /root/.nvm/bash_completion && \
-    nvm install v20.15.0 && \
     jupyter lab build

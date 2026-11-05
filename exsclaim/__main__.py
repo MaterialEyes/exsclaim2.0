@@ -127,6 +127,7 @@ async def train_model(**kwargs):
 		("figures_output_model", "figures_save_path"),
 		("labels_output_model", "labels_save_path"),
 		("classification_output_model", "classification_save_path"),
+		("mlflow", "use_mlflow")
 	):
 		kwargs[actual_name] = kwargs[argname]
 		del kwargs[argname]
@@ -247,7 +248,8 @@ async def launch(args=None):
 	train_subparser.add_argument("-ts", "--test_size", default=0.1, help="The size of the test set.")
 	train_subparser.add_argument("-r", "--random_state", type=int, default=42, help="The random state to use.")
 	train_subparser.add_argument("-d", "--dataset_dir", default=None, help="The path to the dataset directory.")
-	train_subparser.add_argument("-p", "--project", default=None, help="The name of the wandb project.")
+	train_subparser.add_argument("-mlf", "--mlflow", action="store_true",
+								 help="If MLFlow's integration should be activated for YOLO's training. https://docs.ultralytics.com/integrations/mlflow")
 
 	dataset_subparser = subparsers.add_parser("upload_training_data",
 											  help="Uploads training data instances to a HuggingFace dataset.")

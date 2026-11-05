@@ -108,7 +108,7 @@ async def create_refresh_token_for_cookie(user: User, response: Response) -> Res
 		domain=get_api_cookie_domain(),
 		samesite="strict",
 		max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86_400, # 86,400 seconds in a day
-		path=f"{router.prefix}/cookie"
+		path=f"{router.prefix}/protected"
 	)
 
 	response.headers["X-EXSCLAIM-Refresh-Days"] = str(REFRESH_TOKEN_EXPIRE_DAYS)
@@ -118,6 +118,11 @@ async def create_refresh_token_for_cookie(user: User, response: Response) -> Res
 def is_valid_username(username: str) -> bool:
 	# TODO: Check for profanity before allowing the username
 	return True
+
+
+@router.api_route("/cookie/{path}", methods=["GET", "POST"])
+async def redirect_old_path_get(path: str) -> Response:
+	return RedirectResponse(f"/protected/{path}", status_code=301)
 
 
 @router.post("/create_user", tags=[TAG])
@@ -151,29 +156,27 @@ async def create_user(info: LoginInfo):
 	return response
 
 
-async def get_user_from_login(info: LoginInfo) -> User | Response:
+async def get_user_from_login(info: LoginInfo) -> User:
 	email = info.email.strip().lower()
 	password = info.password.strip()
 
 	async with get_db_session() as session:
 		results = await session.execute(select(User).where(User.email == email))
-		actual_user: Optional[User] = results.scalar_one_or_none()
+		user: Optional[User] = results.scalar_one_or_none()
 
-	if not actual_user:
-		return Response(content="Invalid email/password.", status_code=status.HTTP_401_UNAUTHORIZED, media_type="text/plain")
+	if user is None or not user.verify_password(password):
+		raise HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail="Invalid email/password.",
+			headers={"WWW-Authenticate": "Bearer"},
+		)
 
-	if not actual_user.verify_password(password):
-		return Response(content="Invalid email/password.", status_code=status.HTTP_401_UNAUTHORIZED, media_type="text/plain")
-
-	return actual_user
+	return user
 
 
 @router.post("/login", tags=[TAG])
 async def login_user(request: Request, info: LoginInfo) -> Response:
 	actual_user = await get_user_from_login(info)
-	if isinstance(actual_user, Response):
-		return actual_user
-
 	response = JSONResponse({"status": "Logged in successfully!", "user": actual_user.name}, status_code=status.HTTP_200_OK)
 
 	referer = request.headers.get("Referer")
@@ -221,7 +224,7 @@ async def login_with_orcid(request: Request, code: str):
 		return response
 
 
-@router.post("/cookie/refresh", tags=[TAG])
+@router.post("/protected/refresh", tags=[TAG])
 async def refresh(refresh_token: str = Cookie()):
 	payload = extract_refresh_token(refresh_token)
 
@@ -249,7 +252,7 @@ async def refresh(refresh_token: str = Cookie()):
 	return response
 
 
-@router.api_route("/cookie/logout", methods=["GET", "HEAD"], tags=[TAG])
+@router.api_route("/protected/logout", methods=["GET", "HEAD"], tags=[TAG])
 async def logout_user(request: Request, user_id: ActiveUserId, cookie: RefreshTokenCookie) -> Response:
 	payload = extract_refresh_token(cookie)
 	await remove_user_jti(user_id, payload["jti"])
@@ -370,8 +373,11 @@ async def update_username(request: Request, user: ActiveUser, username: str = Bo
 	}, status_code=status.HTTP_200_OK)
 
 
-@router.delete("/remove_user", tags=[TAG])
-async def delete_user(request: Request, user: ActiveUser) -> JSONResponse:
+@router.delete("/protected/remove_user", tags=[TAG])
+async def delete_user(request: Request, user: ActiveUser, refresh_token: RefreshTokenCookie) -> JSONResponse:
+	# Require the refresh token after the access tokens were allowed to be read by JavaScript, making them more likely
+	# to be extracted using XSS
+	extract_refresh_token(refresh_token)
 	async with get_db_session() as session:
 		try:
 			await session.execute(delete(User).where(User.id == user.id))
@@ -397,9 +403,6 @@ async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUs
 		return JSONResponse({"detail": "You must be logged in as your ORCID account, not your account with your email and password."}, status_code=status.HTTP_409_CONFLICT)
 
 	email_user = await get_user_from_login(info)
-	if isinstance(email_user, Response):
-		return email_user
-
 	if email_user.id == orcid_user.id:
 		return JSONResponse(dict(detail=f"User with email {email_user.email} and ORCID {orcid_user.orcid} are the same account, so they can't be merged."), status_code=status.HTTP_400_BAD_REQUEST)
 
