@@ -178,7 +178,7 @@ def favicon_png():
 
 @server.route("/logout")
 def logout():
-	return flask.redirect(f"{ui_settings.PUBLIC_API_URL}/user/cookie/logout")
+	return flask.redirect(f"{ui_settings.PUBLIC_API_URL}/user/protected/logout")
 
 
 @server.route("/robots.txt")
