@@ -109,19 +109,19 @@ def test_user_methods(client: TestClient, name: Optional[str] = None, email: Opt
 	assert has_cookie(client, response, "access_token"), "Access token was not provided when user was created."
 	assert has_cookie(client, response, "refresh_token"), "Refresh token was not provided when user was created."
 
-	response = client.post("/user/cookie/refresh")
+	response = client.post("/user/protected/refresh")
 	set_cookies(client, response)
 	assert has_cookie(client, response, "access_token"), "Access token was not provided when refreshed."
 
 	# Logout
-	response = client.get("/user/cookie/logout")
+	response = client.get("/user/protected/logout")
 	assert response.status_code == 200, f"Logout was not successful: {response.text}"
 	set_cookies(client, response)
 	assert not has_cookie(client, response, "access_token"), "Access token is still here even after logging out."
 	assert not has_cookie(client, response, "refresh_token"), "Refresh token is still here even after logging out."
 
 	# Logout when not logged in
-	response = client.get("/user/cookie/logout")
+	response = client.get("/user/protected/logout")
 	assert response.status_code == 401, f"Logout when not logged in did not work as expected: {response.text}"
 
 	# Get guest name
