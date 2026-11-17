@@ -62,7 +62,7 @@ jobs:
 
             - name: Remove lazy imports for versions < 3.15
               if: ${{ fromJSON(matrix.major-version) < 15 }}
-              run: find ./exsclaim -type f -name "*.py" -exec sed -i 's/lazy //g' {} +
+              run: find ./exsclaim -type f -name "*.py" -exec sed -i 's/^lazy //g' {} +
 
             - name: Test with pytest
               env:

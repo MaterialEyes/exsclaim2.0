@@ -173,7 +173,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 		)
 	)
 
-	_runs: list[Run] = sqlmodel.Relationship(
+	_runs: list["Run"] = sqlmodel.Relationship(
 		back_populates="owner",
 		sa_relationship_kwargs={
 			"collection_class": list
@@ -181,7 +181,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	)
 
 	@property
-	async def runs(self) -> list[Run]:
+	async def runs(self) -> list["Run"]:
 		return await self.awaitable_attrs._runs
 
 	@property

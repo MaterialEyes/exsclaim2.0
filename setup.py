@@ -1,10 +1,10 @@
-lazy from contextlib import suppress
-lazy from pathlib import Path
+from contextlib import suppress
+from pathlib import Path
 from setuptools import setup
 from setuptools.command.build_py import build_py
 
-lazy import re
-lazy import subprocess
+import re
+import subprocess
 
 # build with python setup.py bdist_wheel
 # upload to testpypi w/ python3 -m twine upload --repository testpypi dist/*
