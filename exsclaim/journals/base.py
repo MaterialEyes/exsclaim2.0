@@ -623,13 +623,13 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		return self.open
 
 	@staticmethod
-	async def _get_image(url: str, client: curl_cffi.AsyncClient, *args, **kwargs) -> bytes:
+	async def _get_image(url: str, client: curl_cffi.AsyncSession, *args, **kwargs) -> bytes:
 		response = await client.get(url)
 		response.raise_for_status()
 
 		return await response.aread()
 
-	async def _get_image_stream(self, client: curl_cffi.AsyncClient | httpx2.AsyncClient, image_url: str, save_file: Path, chunk_size: int = 1_024,
+	async def _get_image_stream(self, client: curl_cffi.AsyncSession | httpx2.AsyncClient, image_url: str, save_file: Path, chunk_size: int = 1_024,
 								sleep_time: float = 30, retries: int = 5):
 		for retry in range(retries):
 			async with client.stream("GET", image_url) as response:
