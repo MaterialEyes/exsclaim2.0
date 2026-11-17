@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
     "Topic :: Text Processing"
 ]
-requires-python = ">=3.13.2"
+requires-python = ">=3.14.0"
 dynamic = [
     "version",
 ]
