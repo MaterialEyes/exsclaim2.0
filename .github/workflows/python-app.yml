@@ -97,7 +97,7 @@ jobs:
               uses: actions/download-artifact@v7
               with:
                   pattern: exsclaim-wheels-*
-                  path: dist/
+                  path: dist
                   merge-multiple: true
 
             - name: Publish distribution to PyPI
