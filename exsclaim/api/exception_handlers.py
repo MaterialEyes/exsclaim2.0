@@ -49,8 +49,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 		f"{format_response(request_id, request)} sent unprocessable data that FastAPI automatically blocked.",
 		exc_info=exc
 	)
+	errors = [
+		{"field": ".".join(str(loc) for loc in err["loc"][1:]), "message": err["msg"]}
+		for err in exc.errors()
+	]
+
 	return JSONResponse(
-		dict(detail="Unprocessable Content.", request_id=request_id, args=list(exc.args)),
+		dict(detail="Unprocessable Content.", request_id=request_id, args=errors),
 		status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
 		headers={"X-Request-Id": request_id}
 	)
