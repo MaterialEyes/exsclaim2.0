@@ -1,13 +1,13 @@
 """Code for loading models from checkpoints saved in GoogleDrive
 
 Model names are mapped to GOOGLE Drive ids in model_names_to_google_ids."""
-from ..config import settings
-from .download import download_file_from_google_drive
-from pathlib import Path
-from torch import load, nn
-from typing import Literal
+lazy from ..config import settings
+lazy from .download import download_file_from_google_drive
+lazy from pathlib import Path
+lazy from typing import Literal
 
-import httpx2
+lazy import httpx2
+lazy import torch
 
 
 __all__ = ["download_model_checkpoint", "load_model_from_checkpoint", "model_names_to_googleids"]
@@ -46,9 +46,9 @@ async def download_model_checkpoint(file_path: Path, exsclaim_domain: str = "htt
 				file.write(bytes_)
 
 
-async def load_model_from_checkpoint(model: nn.Module, model_name: Literal["classifier_model.pt", "object_detection_model.pt",
+async def load_model_from_checkpoint(model: torch.nn.Module, model_name: Literal["classifier_model.pt", "object_detection_model.pt",
 									 "text_recognition_model.pt", "scale_bar_detection_model.pt", "scale_label_recognition_model.pt"],
-									 device) -> nn.Module:
+									 device) -> torch.nn.Module:
 	"""load checkpoint weights into model"""
 	checkpoints_path = settings.CHECKPOINTS_PATH
 	checkpoint = checkpoints_path / model_name
@@ -60,6 +60,6 @@ async def load_model_from_checkpoint(model: nn.Module, model_name: Literal["clas
 		file_id = model_names_to_googleids[model_name]
 		await download_file_from_google_drive(file_id, checkpoint)
 
-	model.load_state_dict(load(checkpoint, map_location=device))
+	model.load_state_dict(torch.load(checkpoint, map_location=device))
 
 	return model

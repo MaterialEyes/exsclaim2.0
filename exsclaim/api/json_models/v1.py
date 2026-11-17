@@ -1,7 +1,7 @@
-from typing import Literal
-from pydantic import BaseModel, Field
+lazy from typing import Literal
+lazy from pydantic import BaseModel, Field
 
-from .v0 import ArticleV0, GeometryV0, MasterImageV0, SubfigureLabelV0, OutputV0
+lazy from .v0 import ArticleV0, GeometryV0, MasterImageV0, SubfigureLabelV0, OutputV0
 
 __all__ = ["OutputV1", "migrate_v0_to_v1"]
 

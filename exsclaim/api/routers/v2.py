@@ -1,6 +1,6 @@
-from ..models import User, Run
-from ..dependencies import CurrentUserId
-from ...db import get_db_session
+lazy from ..models import User, Run
+lazy from ..dependencies import CurrentUserId
+lazy from ...db import get_db_session
 
 from fastapi import APIRouter, status, HTTPException
 from starlette.responses import StreamingResponse

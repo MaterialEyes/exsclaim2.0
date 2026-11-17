@@ -1,5 +1,5 @@
-from PIL import Image
-from torchvision import transforms
+lazy from PIL import Image
+lazy from torchvision import transforms
 
 
 __all__ = ["resize_transform"]

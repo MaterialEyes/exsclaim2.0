@@ -1,10 +1,10 @@
 from __future__ import division
 
-from typing import NamedTuple
+lazy from typing import NamedTuple
 
-import cv2
-import numpy as np
-import torch
+lazy import cv2
+lazy import numpy as np
+lazy import torch
 
 
 __all__ = ["label2yolobox", "yolobox2label", "nms", "postprocess", "preprocess_mask", "preprocess", "ImageInfo"]

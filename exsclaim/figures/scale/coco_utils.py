@@ -1,5 +1,5 @@
 # Acquired from https://github.com/pytorch/vision/tree/master/references/detection
-import os
+lazy import os
 
 import copy
 import torch

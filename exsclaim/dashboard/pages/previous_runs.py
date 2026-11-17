@@ -1,6 +1,6 @@
-from dash import dcc, html, Output, Input, State, clientside_callback, ClientsideFunction, register_page
-from dash_extensions import Purify
-import dash_bootstrap_components as dbc
+lazy from dash import dcc, html, Output, Input, State, clientside_callback, ClientsideFunction, register_page
+lazy from dash_extensions import Purify
+lazy import dash_bootstrap_components as dbc
 
 try:
 	from components.common import create_header_component, create_footer_component

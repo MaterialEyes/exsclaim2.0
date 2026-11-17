@@ -1,17 +1,17 @@
-from .caption import LLM, LLMOptions
-from .openai_llms import OpenAI
+lazy from .caption import LLM, LLMOptions
+lazy from .openai_llms import OpenAI
 
-from openai import AsyncOpenAI, NotGiven, NOT_GIVEN
-from os import getenv
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pathlib import Path
-from typing import Literal, Optional, Callable, Coroutine
+lazy from openai import AsyncOpenAI, NotGiven, NOT_GIVEN
+lazy from os import getenv
+lazy from pydantic import Field, field_validator
+lazy from pydantic_settings import BaseSettings, SettingsConfigDict
+lazy from pathlib import Path
+lazy from typing import Literal, Optional, Callable, Coroutine
 
-import httpx2
-import logging
-import re
-import ssl
+lazy import httpx2
+lazy import logging
+lazy import re
+lazy import ssl
 
 __all__ = ["LlamaCPP", "LlamaCPPSettings"]
 

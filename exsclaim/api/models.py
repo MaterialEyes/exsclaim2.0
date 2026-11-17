@@ -1,31 +1,31 @@
 from __future__ import annotations
 
-from ..config import ExsclaimSettings
-from ..db.models import Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes, User, Run, \
-	SaveExtensions, Status, gen_uuid7, get_guest_uuid, RunArticles
-from ..exceptions import PipelineConfigError
-from ..journals import JournalFamily
-from ..llms import LLM
-from ..notifications import NTFY, Email, Webhook, QueryNotifications
-from .json_models import Output
+lazy from ..config import ExsclaimSettings
+lazy from ..db.models import Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes, User, Run, \
+	SaveExtensions, Status, gen_uuid7, get_guest_uuid, RunArticles, QueryCache
+lazy from ..exceptions import PipelineConfigError
+lazy from ..journals import JournalFamily
+lazy from ..llms import LLM
+lazy from ..notifications import NTFY, Email, Webhook, QueryNotifications
+lazy from .json_models import Output
 
-from datetime import datetime as dt, timezone as tz
-from fastapi.responses import JSONResponse
-from orjson import dumps
-from pydantic import field_validator, model_validator
-from sqlalchemy import text
-from typing import Any, Literal, Optional, Self
-from uuid import UUID
+lazy from datetime import datetime as dt, timezone as tz
+lazy from fastapi.responses import JSONResponse
+lazy from orjson import dumps
+lazy from pydantic import field_validator, model_validator
+lazy from sqlalchemy import text
+lazy from typing import Any, Literal, Optional, Self
+lazy from uuid import UUID
 
-import pydantic
-import sqlalchemy
-import sqlalchemy.dialects.postgresql as sa_psql
-import sqlmodel
+lazy import pydantic
+lazy import sqlalchemy
+lazy import sqlalchemy.dialects.postgresql as sa_psql
+lazy import sqlmodel
 
 __all__ = ["NTFY", "Email", "Webhook", "Query", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
 		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Run", "User", "get_guest_uuid",
 		   "gen_uuid7", "PasswordReset", "ExsclaimJSONResponse", "Output", "Banner",
-		   "QueryTools", "PreviousRunFilters", "RunArticles"]
+		   "QueryTools", "PreviousRunFilters", "RunArticles", "QueryCache"]
 
 
 class PasswordReset(sqlmodel.SQLModel, table=True):

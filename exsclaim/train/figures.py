@@ -1,22 +1,22 @@
-from .ds_features import image_features, classification_labels
+lazy from .ds_features import image_features, classification_labels
 
-from collections import defaultdict
-from datetime import datetime as dt
-from datasets import load_dataset, Dataset, IterableDataset
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from textwrap import dedent
-from tqdm import tqdm
-from typing import Iterable, Literal, Optional
-from ultralytics import YOLO, settings
+lazy from collections import defaultdict
+lazy from datetime import datetime as dt
+lazy from datasets import load_dataset, Dataset, IterableDataset
+lazy from pathlib import Path
+lazy from tempfile import TemporaryDirectory
+lazy from textwrap import dedent
+lazy from tqdm import tqdm
+lazy from typing import Iterable, Literal, Optional
+lazy from ultralytics import YOLO, settings
 
-import cv2
-import logging
-import os
-import mlflow
-import re
-import shutil
-import torch
+lazy import cv2
+lazy import logging
+lazy import os
+lazy import mlflow
+lazy import re
+lazy import shutil
+lazy import torch
 
 
 Point = tuple[int | float, int | float]

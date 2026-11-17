@@ -1,4 +1,4 @@
-from dash import Output, Input, State, ClientsideFunction, get_app
+lazy from dash import Output, Input, State, ClientsideFunction, get_app
 
 app = get_app()
 

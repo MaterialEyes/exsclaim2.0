@@ -1,20 +1,20 @@
-from .config import ui_settings
+lazy from .config import ui_settings
 
-from abc import ABC, abstractmethod
-from datetime import datetime as dt, timezone as tz, timedelta as td, tzinfo
-from email.message import EmailMessage
-from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, GetCoreSchemaHandler, \
+lazy from abc import ABC, abstractmethod
+lazy from datetime import datetime as dt, timezone as tz, timedelta as td, tzinfo
+lazy from email.message import EmailMessage
+lazy from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, GetCoreSchemaHandler, \
 	field_serializer, WithJsonSchema, Field
-from smtplib import SMTP, SMTP_SSL
-from typing import Annotated, Generator, Optional, Type, Self
-from uuid import UUID
+lazy from smtplib import SMTP, SMTP_SSL
+lazy from typing import Annotated, Generator, Optional, Type, Self
+lazy from uuid import UUID
 
-import asyncio
-import httpx2
-import logging
-import re
-import ssl
-import zoneinfo
+lazy import asyncio
+lazy import httpx2
+lazy import logging
+lazy import re
+lazy import ssl
+lazy import zoneinfo
 
 __all__ = ["Notification", "SuccessNotification", "InterruptionNotification", "ErrorNotification", "Notifier",
 		   "NTFY", "Email", "Webhook", "CouldNotNotifyException", "QueryNotifications"]

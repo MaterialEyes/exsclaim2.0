@@ -1,11 +1,11 @@
-import httpx2
-import re
+lazy import httpx2
+lazy import re
 
-from dash import ctx, Output, Input, State, get_app, ClientsideFunction, no_update
-from dash.exceptions import PreventUpdate
-from exsclaim import llms
-from exsclaim.dashboard.components.query import DAGGER
-from typing import Optional
+lazy from dash import ctx, Output, Input, State, get_app, ClientsideFunction, no_update
+lazy from dash.exceptions import PreventUpdate
+lazy from exsclaim import llms
+lazy from exsclaim.dashboard.components.query import DAGGER
+lazy from typing import Optional
 
 
 name_regex = re.compile(r"^[\w_\- ]+$")

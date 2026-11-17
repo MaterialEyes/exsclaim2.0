@@ -1,7 +1,7 @@
 """Logging and sending output to stdout code"""
-import os
-import sys
-from logging import Formatter, Handler
+lazy import os
+lazy import sys
+lazy from logging import Formatter, Handler
 
 
 __all__ = ["blockPrint", "enablePrint", "Printer", "PrinterFormatter", "ExsclaimFormatter"]

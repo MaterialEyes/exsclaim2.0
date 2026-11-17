@@ -1,16 +1,16 @@
-import os
-import pathlib
-from operator import itemgetter
+lazy import os
+lazy import pathlib
+lazy from operator import itemgetter
 
-import torch
-from pytorch_model_summary import summary
-from torch import nn, optim
-from torchvision import transforms
+lazy import torch
+lazy from pytorch_model_summary import summary
+lazy from torch import nn, optim
+lazy from torchvision import transforms
 
-from ..models.crnn import CRNN
-from .ctc import ctcBeamSearch
-from .dataset import ScaleLabelDataset
-from .engine import get_epoch
+lazy from ..models.crnn import CRNN
+lazy from .ctc import ctcBeamSearch
+lazy from .dataset import ScaleLabelDataset
+lazy from .engine import get_epoch
 
 
 def convert_to_rgb(image):

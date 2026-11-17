@@ -7,7 +7,10 @@ In addition, we often want to check the relation of two bounding
 boxes and their properties (like center point)
 """
 
-import numpy as np
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 __all__ = ["convert_coords_to_labelbox", "convert_labelbox_to_coords", "find_box_center", "is_contained"]
 
@@ -38,16 +41,16 @@ def find_box_center(geometry):
     return (x1 + x2) / 2.0, (y1 + y2) / 2.0
 
 
-def crop_from_labelbox(geometry: list[dict], image: np.ndarray) -> np.ndarray:
+def crop_from_labelbox(geometry: list[dict], image: "np.ndarray") -> "np.ndarray":
     """Returns an image cropped to include coordinates in geometry
 
     Args:
         geometry (list of dicts): Geometry JSON from exsclaim JSON.
             4 dicts, each having x and y coords for corners of bounding
             box. [Top left, bottom left, top right, bottom right]
-        image (np.array): Numpy array representing an image to be cropped
+        image (np.ndarray): NumPy array representing an image to be cropped
     Returns:
-        Cropped image according to geometry given as a numpy array
+        Cropped image according to geometry given as a NumPy array
     """
     x1, y1 = geometry[0]["x"], geometry[0]["y"]
     x2, y2 = geometry[3]["x"], geometry[3]["y"]

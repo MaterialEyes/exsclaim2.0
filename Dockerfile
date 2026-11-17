@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7-labs
-FROM python:3.14.9-slim AS deps
+FROM python:3.15.2-slim AS deps
 
 # This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
 ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/tmp/pip \
     rm -rf /opt/install/exsclaim
 
 # syntax=docker/dockerfile:1.7-labs
-FROM python:3.14.9-slim AS core
+FROM python:3.15.2-slim AS core
 
 ARG UID=1000
 ARG GID=1000
@@ -57,7 +57,7 @@ ARG GNAME=exsclaim
 ARG DEBIAN_FRONTEND=noninteractive
 
 # https://googlechromelabs.github.io/chrome-for-testing/
-ARG CHROMEDRIVER_VERSION="154.0.8037.92"
+ARG CHROMEDRIVER_VERSION="158.0.8127.36"
 
 ENV CUDA_LAUNCH_BLOCKING=1
 
@@ -68,7 +68,7 @@ ENV DASHBOARD_PORT=3000
 ENV DASHBOARD_URL=http://localhost:$DASHBOARD_PORT
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
-ENV PYTHON_LAZY_IMPORTS=all
+# ENV PYTHON_LAZY_IMPORTS=all
 
 SHELL ["/bin/bash", "-c"]
 HEALTHCHECK --interval=20s --timeout=4s --start-period=12s --retries=8 CMD docker-healthcheck
@@ -83,6 +83,7 @@ RUN --mount=type=cache,sharing=locked,target=/var/lib/apt \
     usermod -aG $GID $UNAME && \
     printf "\numask 002\n" >> /home/$UNAME/.bashrc && \
     printf "\numask 002\n" >> /root/.bashrc && \
+    printf "\numask 002\n" >> /etc/environment && \
     mkdir -p /exsclaim/{logs,results,yolo}/ && \
     chown -R $UID:$GID /exsclaim && \
     apt update && \
@@ -116,7 +117,7 @@ WORKDIR /opt/exsclaim
 COPY docker-entrypoint docker-healthcheck /usr/local/bin/
 COPY --chown=$UID:$GID query ./query
 
-COPY --link --from=deps /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
+COPY --link --from=deps /usr/local/lib/python3.15/site-packages /usr/local/lib/python3.15/site-packages
 COPY --from=build /usr/local/bin/hypercorn /usr/local/bin/gunicorn /usr/local/bin/playwright /usr/local/bin/alembic /usr/local/bin/
 
 RUN --mount=type=cache,target=/var/lib/apt \
@@ -130,7 +131,7 @@ RUN --mount=type=cache,target=/var/lib/apt \
 	playwright install chromium && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --link --from=build /usr/local/lib/python3.14/site-packages/exsclaim /usr/local/lib/python3.14/site-packages/exsclaim
+COPY --link --from=build /usr/local/lib/python3.15/site-packages/exsclaim /usr/local/lib/python3.15/site-packages/exsclaim
 COPY --from=build /usr/local/bin/exsclaim /usr/local/bin/exsclaim
 COPY --from=build /opt/install/dist/ /opt/install/dist
 
@@ -146,7 +147,6 @@ COPY pyproject.toml ./
 RUN touch ~/.xinitrc && chmod +x ~/.xinitrc && \
     apt update && apt install git -y --no-install-recommends && \
 	curl -LsSf https://astral.sh/uv/install.sh | sh && \
-	pip install --upgrade pip --cache-dir=/tmp/pip --root-user-action ignore && \
 	. ~/.bashrc && \
     uv pip install --system --system-certs -r pyproject.toml --extra test --extra dev --extra train --cache-dir=/tmp/pip && \
     chmod -R 775 /opt && \

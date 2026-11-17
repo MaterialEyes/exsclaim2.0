@@ -1,20 +1,20 @@
-import argparse
-import os
-import random
+lazy import argparse
+lazy import os
+lazy import random
 
-import cv2
-import numpy as np
-import torch
-import torchvision
-from pathlib import Path
-from PIL import Image, ImageDraw
-from torch import optim
-from torchvision import transforms
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+lazy import cv2
+lazy import numpy as np
+lazy import torch
+lazy import torchvision
+lazy from pathlib import Path
+lazy from PIL import Image, ImageDraw
+lazy from torch import optim
+lazy from torchvision import transforms
+lazy from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
-from . import utils
-from .dataset import ScaleBarDataset
-from .engine import evaluate, train_one_epoch, get_epoch
+lazy from . import utils
+lazy from .dataset import ScaleBarDataset
+lazy from .engine import evaluate, train_one_epoch, get_epoch
 
 
 __all__ = ["random_gaussian_blur", "get_transform", "get_model", "train_object_detector", "run"]

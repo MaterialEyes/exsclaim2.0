@@ -1,13 +1,13 @@
-from datetime import datetime as dt
-from multiprocessing import cpu_count
-from os import getenv
-from pathlib import Path
-from pydantic import Field, field_validator, EmailStr, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from re import compile
-from typing import Optional, Self
+lazy from datetime import datetime as dt
+lazy from multiprocessing import cpu_count
+lazy from os import getenv
+lazy from pathlib import Path
+lazy from pydantic import Field, field_validator, EmailStr, model_validator
+lazy from pydantic_settings import BaseSettings, SettingsConfigDict
+lazy from re import compile
+lazy from typing import Optional, Self
 
-import ipaddress
+lazy import ipaddress
 
 __all__ = ["ExsclaimSettings", "settings", "UISettings", "ui_settings", "get_variables", "orcid_settings", "ORCIDSettings"]
 

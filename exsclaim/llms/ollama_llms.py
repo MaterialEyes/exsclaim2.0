@@ -1,12 +1,12 @@
-from .caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
-from ..config import settings
+lazy from .caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
+lazy from ..config import settings
 
-from ollama import AsyncClient, Client, ChatResponse, ResponseError
-from pydantic import ValidationError
-from re import compile
-from typing import Any, Type, Self, Collection, Optional
+lazy from ollama import AsyncClient, Client, ChatResponse, ResponseError
+lazy from pydantic import ValidationError
+lazy from re import compile
+lazy from typing import Any, Type, Self, Collection, Optional
 
-import logging
+lazy import logging
 
 __all__ = ["Ollama"]
 

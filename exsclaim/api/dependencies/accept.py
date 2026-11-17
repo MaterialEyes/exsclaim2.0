@@ -1,9 +1,9 @@
-from dataclasses import dataclass
-from typing import Annotated, Collection, Literal, overload
+lazy from dataclasses import dataclass
+lazy from typing import Annotated, Collection, Literal, overload
 
-import fastapi
-import itertools
-import re
+lazy import fastapi
+lazy import itertools
+lazy import re
 
 __all__ = ["Accept", "AcceptDirective", "AcceptHeader", "BAD_CONTENT_TYPE_EXCEPTION"]
 

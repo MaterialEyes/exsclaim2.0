@@ -1,11 +1,11 @@
-from .caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
-from ..exceptions import PipelineConfigError, LLMException
+lazy from .caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
+lazy from ..exceptions import PipelineConfigError, LLMException
 
-import logging
+lazy import logging
 
-from google import genai
-from google.genai._gaos import types
-from typing import Optional, Type, Collection, Iterable
+lazy from google import genai
+lazy from google.genai._gaos import types
+lazy from typing import Optional, Type, Collection, Iterable
 
 __all__ = ["Google"]
 

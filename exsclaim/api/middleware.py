@@ -1,22 +1,22 @@
-from .models import gen_uuid7
-from ..db import get_db_session
-from ..config import ui_settings
+lazy from .models import gen_uuid7
+lazy from ..db import get_db_session
+lazy from ..config import ui_settings
 
-from contextlib import suppress
-from contextvars import ContextVar
-from enum import StrEnum
-from starlette import status
-from starlette.datastructures import Headers, MutableHeaders
-from starlette.requests import Request
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
-from sqlalchemy import text
-from time import perf_counter
-from uuid import UUID
+lazy from contextlib import suppress
+lazy from contextvars import ContextVar
+lazy from enum import StrEnum
+lazy from starlette import status
+lazy from starlette.datastructures import Headers, MutableHeaders
+lazy from starlette.requests import Request
+lazy from starlette.types import ASGIApp, Message, Receive, Scope, Send
+lazy from sqlalchemy import text
+lazy from time import perf_counter
+lazy from uuid import UUID
 
-import asyncio
-import ipaddress
-import logging
-import re
+lazy import asyncio
+lazy import ipaddress
+lazy import logging
+lazy import re
 
 __all__ = ["RequestLoggerMiddleware", "MetricsMiddleware", "IPBlockerMiddleware"]
 

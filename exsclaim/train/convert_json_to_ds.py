@@ -6,19 +6,19 @@ for module in ("datasets", "huggingface_hub"):
 		raise ModuleNotFoundError(f"{module} is not installed. Install it with `pip install {install_module}` or `pip install exsclaim[train]`")
 
 
-from .ds_features import caption_features, image_features
+lazy from .ds_features import caption_features, image_features
 
-import datasets
-import httpx2
-import huggingface_hub as hf
-import orjson
-import re
+lazy import datasets
+lazy import httpx2
+lazy import huggingface_hub as hf
+lazy import orjson
+lazy import re
 
-from datetime import datetime as dt, timezone as tz
-from io import BytesIO
-from pathlib import Path
-from PIL import Image
-from typing import Any, Collection
+lazy from datetime import datetime as dt, timezone as tz
+lazy from io import BytesIO
+lazy from pathlib import Path
+lazy from PIL import Image
+lazy from typing import Any, Collection
 
 
 __all__ = ["convert_json_to_ds", "append_to_hub"]

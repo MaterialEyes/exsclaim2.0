@@ -2,9 +2,9 @@
 ResultPage component - the results page that uses Layout.
 Converted from React ResultPage.js component.
 """
-from dash import html, register_page
-from typing import Optional
-from uuid import UUID
+lazy from dash import html, register_page
+lazy from typing import Optional
+lazy from uuid import UUID
 
 try:
 	from components.common import create_header_component, create_footer_component

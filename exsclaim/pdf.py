@@ -1,13 +1,13 @@
-import pymupdf
+lazy import pymupdf
 
-from .llms import LLM, ChatMessage, Captions, CaptionEntry
-from .exceptions import PDFScrapeException
-from .tool import ExsclaimTool
+lazy from .llms import LLM, ChatMessage, Captions, CaptionEntry
+lazy from .exceptions import PDFScrapeException
+lazy from .tool import ExsclaimTool
 
-from asyncio import gather, Lock
-from io import BytesIO
-from pathlib import Path
-from typing import Any, Optional
+lazy from asyncio import gather, Lock
+lazy from io import BytesIO
+lazy from pathlib import Path
+lazy from typing import Any, Optional
 
 
 __all__ = ["PDFScraper"]

@@ -1,14 +1,14 @@
-from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX_STRING, Author, ORCID_REGEX
-from ..exceptions import JournalScrapeError
+lazy from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX_STRING, Author, ORCID_REGEX
+lazy from ..exceptions import JournalScrapeError
 
-import math
-import re
+lazy import math
+lazy import re
 
-from contextlib import suppress
-from bs4 import BeautifulSoup
-from playwright.async_api import Response
-from playwright._impl import _errors as playwright_errors
-from typing import Optional
+lazy from contextlib import suppress
+lazy from bs4 import BeautifulSoup
+lazy from playwright.async_api import Response
+lazy from playwright._impl import _errors as playwright_errors
+lazy from typing import Optional
 
 __all__ = ["ACS"]
 

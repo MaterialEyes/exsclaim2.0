@@ -1,10 +1,10 @@
-from .base import JournalFamilyStatic, StaticHtml, ORCID_REGEX, Author
+lazy from .base import JournalFamilyStatic, StaticHtml, ORCID_REGEX, Author
 
-import json
-import re
+lazy import json
+lazy import re
 
-from datetime import datetime
-from typing import Optional
+lazy from datetime import datetime
+lazy from typing import Optional
 
 __all__ = ["Nature"]
 

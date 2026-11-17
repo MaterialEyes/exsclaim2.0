@@ -1,31 +1,31 @@
-from .config import settings
-from .pdf import PDFScraper
-from .exceptions import PipelineInterruptionException, PipelineConfigError
-from .notifications import SuccessNotification, InterruptionNotification, ErrorNotification, QueryNotifications, \
+lazy from .config import settings
+lazy from .pdf import PDFScraper
+lazy from .exceptions import PipelineInterruptionException, PipelineConfigError
+lazy from .notifications import SuccessNotification, InterruptionNotification, ErrorNotification, QueryNotifications, \
 	CouldNotNotifyException
-from .tool import ExsclaimTool, CaptionDistributor, JournalScraper, ExsclaimEncoder, FigureSeparator
-from .figures.geometry_boxes import convert_geometry_to_coords
-from .utilities import paths, PrinterFormatter, ExsclaimFormatter
-from .db import Database, gen_uuid7
+lazy from .tool import ExsclaimTool, CaptionDistributor, JournalScraper, ExsclaimEncoder, FigureSeparator
+lazy from .figures.geometry_boxes import convert_geometry_to_coords
+lazy from .utilities import paths, PrinterFormatter, ExsclaimFormatter
+lazy from .db import Database, gen_uuid7
 
-import asyncio
-import cv2
-import enum
-import functools
-import json
-import logging
-import numpy as np
-import re
-import shutil
+lazy import asyncio
+lazy import cv2
+lazy import enum
+lazy import functools
+lazy import json
+lazy import logging
+lazy import numpy as np
+lazy import re
+lazy import shutil
 
-from csv import writer
-from os.path import isfile, splitext
-from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
-from sqlalchemy.exc import SQLAlchemyError
-from textwrap import wrap, dedent
-from typing import Any, Callable, Optional
-from uuid import UUID
+lazy from csv import writer
+lazy from os.path import isfile, splitext
+lazy from pathlib import Path
+lazy from PIL import Image, ImageDraw, ImageFont
+lazy from sqlalchemy.exc import SQLAlchemyError
+lazy from textwrap import wrap, dedent
+lazy from typing import Any, Callable, Optional
+lazy from uuid import UUID
 
 
 __all__ = ["Pipeline", "SaveMethods", "PipelineInterruptionException"]
@@ -627,7 +627,7 @@ class Pipeline:
 		"""
 		def append_bbox(geometry, lst: list):
 			coords = convert_geometry_to_coords(geometry)
-			bounding_box = tuple(map(int, coords))
+			bounding_box = tuple(int(coord) if coord is not None else None for coord in coords)
 			lst.append(bounding_box)
 
 		boxes_directory = self.results_directory / "boxes"
@@ -840,8 +840,8 @@ class Pipeline:
 
 		# Cleanup leftover log files, making sure that all results aren't accidentally erased
 		if parent == settings.RESULTS_PATH or settings.RESULTS_PATH.is_relative_to(parent):
-			self.logger.warning(f"Almost removed {settings.RESULTS_PATH=} when removing results directory {parent=}.")
-			return
+			self.logger.warning(f"Almost removed {settings.RESULTS_PATH=} when removing results directory {parent=}. Instead removing {results_directory=}.")
+			parent = results_directory
 
 		shutil.rmtree(parent)
 		if parent.is_dir():

@@ -1,23 +1,23 @@
-import cv2
-import json
-import numpy as np
-import random
-import torch
-import torchvision
-import warnings
+lazy import cv2
+lazy import json
+lazy import numpy as np
+lazy import random
+lazy import torch
+lazy import torchvision
+lazy import warnings
 
-from os import path, PathLike, listdir
-from pathlib import Path
-from PIL import Image
-from torchvision.transforms import ToTensor
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+lazy from os import path, PathLike, listdir
+lazy from pathlib import Path
+lazy from PIL import Image
+lazy from torchvision.transforms import ToTensor
+lazy from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
-from .ctc import ctcBeamSearch, postprocess_ctc
-from .lm import LanguageModel
-from .process import non_max_suppression_malisiewicz
-from ..models import CRNN
-from ..transformations import resize_transform
-from ...figures import geometry_boxes as boxes
+lazy from .ctc import ctcBeamSearch, postprocess_ctc
+lazy from .lm import LanguageModel
+lazy from .process import non_max_suppression_malisiewicz
+lazy from ..models import CRNN
+lazy from ..transformations import resize_transform
+lazy from ...figures import geometry_boxes as boxes
 
 
 __all__ = ["create_scale_bar_objects", "detect_scale_objects", "determine_scale", "match_scale_bars", "super_resolution",

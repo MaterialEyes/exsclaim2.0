@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
-from ..exceptions import ExsclaimToolException
+lazy from ..exceptions import ExsclaimToolException
 
-from abc import ABC, abstractmethod, ABCMeta
-from asyncio import Semaphore
-from base64 import b64encode
-from dataclasses import dataclass
-from io import BytesIO
-from logging import Logger
-from PIL import Image
-from pydantic import BaseModel, Field
-from pydantic_core import ValidationError
-from textwrap import dedent
-from typing import Any, Collection, Iterable, Literal, NamedTuple, Optional, Self, Type, TypeVar
-from uuid import UUID
+lazy from abc import ABC, abstractmethod, ABCMeta
+lazy from asyncio import Semaphore
+lazy from base64 import b64encode
+lazy from dataclasses import dataclass
+lazy from io import BytesIO
+lazy from logging import Logger
+lazy from PIL import Image
+lazy from pydantic import BaseModel, Field
+lazy from pydantic_core import ValidationError
+lazy from textwrap import dedent
+lazy from typing import Any, Collection, Iterable, Literal, NamedTuple, Optional, Self, Type, TypeVar
+lazy from uuid import UUID
 
-import json
-import numpy as np
+lazy import json
+lazy import numpy as np
 
 
 __all__ = ["ChatMessage", "LLMOptions", "LLMMeta", "LLMUsage", "LLM", "CaptionEntry", "Captions", "Keywords",

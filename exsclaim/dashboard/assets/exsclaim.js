@@ -15,6 +15,9 @@ async function api_fetch(api_url, endpoint, options = {}){
 		return response;
 	}
 
+	if(endpoint === "/user/protected/refresh"){
+		return [data, response];
+	}
 	const refresh_response = await fetch(`${api_url}/user/protected/refresh`, {
 		method: "POST",
 		credentials: "include"
@@ -24,7 +27,7 @@ async function api_fetch(api_url, endpoint, options = {}){
 		return;
 	}
 
-	const access_header = parseInt(response.headers.get("X-EXSCLAIM-Access-Minutes") ?? "30");
+	const access_header = parseInt(refresh_response.headers.get("X-EXSCLAIM-Access-Minutes") ?? "30");
 	// const refresh_header = parseInt(response.headers.get("X-EXSCLAIM-Refresh-Days") ?? "7");
 
 	const access_expires = Date.now() + (access_header * 60000);
@@ -685,16 +688,18 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 		},
 
 		renew_credentials: async function(data){
-			let response = await api_fetch(data.public_fastapi_url, "/user/protected/refresh", {
-				method: "POST",
-				credentials: "include"
-			});
+			await navigator.locks.request("renew_exsclaim_credentials", async (lock) => {
+				let response = await api_fetch(data.public_fastapi_url, "/user/protected/refresh", {
+					method: "POST",
+					credentials: "include"
+				});
 
-			if(!response.ok){
-				console.error(`Could not automatically refresh cookies. Please log out and then log back in. ${await response.text()}`);
-			}
+				if(!response.ok){
+					console.error(`Could not automatically refresh cookies. Please log out and then log back in. ${await response.text()}`);
+				}
 
-			return response.ok;
+				return response.ok;
+			})
 		},
 
 		logout: async function(n_clicks, data, current_url) {
@@ -867,6 +872,8 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			}
 
 			const api_url = stored_data.public_fastapi_url;
+			// Ensures that the query isn't run multiple times if the client sends it multiple times
+			const uuid = crypto.randomUUID();
 
 			try{
 				const response = await api_fetch(api_url, "/query", {
@@ -878,6 +885,7 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 						"Access-Control-Allow-Origin": "*",
 						"Access-Control-Allow-Headers": "Accept, Content-Type, mode",
 						"Content-Type": "application/json",
+						"Idempotency-Key": uuid
 					}
 				});
 

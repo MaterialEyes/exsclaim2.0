@@ -3,11 +3,11 @@ Layout component - the results page with menu and figure display.
 Converted from React Layout.js component.
 """
 
-import dash_bootstrap_components as dbc
-import httpx2
+lazy import dash_bootstrap_components as dbc
+lazy import httpx2
 
-from dash import html, dcc
-from uuid import UUID
+lazy from dash import html, dcc
+lazy from uuid import UUID
 
 
 def create_layout_component(result_id: UUID, base_url: str, public_api_url: str):

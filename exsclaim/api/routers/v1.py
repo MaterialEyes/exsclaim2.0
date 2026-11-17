@@ -1,13 +1,13 @@
-from ..models import Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, User, Run
-from ..dependencies import AcceptHeader, BAD_CONTENT_TYPE_EXCEPTION, CurrentUserId
-from ...db import get_db_session
+lazy from ..models import Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, User, Run
+lazy from ..dependencies import AcceptHeader, BAD_CONTENT_TYPE_EXCEPTION, CurrentUserId
+lazy from ...db import get_db_session
 
-from fastapi import APIRouter, status, HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.responses import JSONResponse, StreamingResponse
-from typing import Any, Callable, Optional, Sequence, Type
-from uuid import UUID
+lazy from fastapi import APIRouter, status, HTTPException
+lazy from sqlalchemy import select
+lazy from sqlalchemy.ext.asyncio import AsyncSession
+lazy from starlette.responses import JSONResponse, StreamingResponse
+lazy from typing import Any, Callable, Optional, Sequence, Type
+lazy from uuid import UUID
 
 __all__ = ["router", "get_items_responses", "articles", "figures", "subfigures", "article", "figure", "subfigure"]
 

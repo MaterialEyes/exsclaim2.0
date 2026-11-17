@@ -1,6 +1,6 @@
-from sqlalchemy.ext.asyncio import AsyncConnection
-from sqlalchemy.schema import CreateSchema
-from sqlalchemy.sql import text
+lazy from sqlalchemy.ext.asyncio import AsyncConnection
+lazy from sqlalchemy.schema import CreateSchema
+lazy from sqlalchemy.sql import text
 
 
 async def initialize_db(conn: AsyncConnection):

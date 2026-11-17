@@ -1,6 +1,6 @@
-from dash import html
-from enum import StrEnum
-import dash_bootstrap_components as dbc
+lazy from dash import html
+lazy from enum import StrEnum
+lazy import dash_bootstrap_components as dbc
 
 __all__ = ["FormMode", "create_login_form_modal", "create_signup_form_modal"]
 

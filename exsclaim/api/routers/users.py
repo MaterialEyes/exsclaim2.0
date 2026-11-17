@@ -1,25 +1,26 @@
-from ...config import ui_settings, orcid_settings
-from ...db import get_db_session, cryptographic_hash
-from ..models import User, PasswordReset, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
-from ..dependencies.users import LoginInfo, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, ActiveUser, \
+lazy from ...config import ui_settings, orcid_settings
+lazy from ...db import get_db_session, cryptographic_hash
+lazy from ..models import User, PasswordReset, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
+lazy from ..dependencies.users import LoginInfo, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, ActiveUser, \
 	CurrentUser, CurrentUserId, ActiveUserId, create_access_token, create_refresh_token, extract_refresh_token, \
 	RefreshTokenCookie
 
-from datetime import datetime as dt, timezone as tz, timedelta as td
-from fastapi import APIRouter, status, HTTPException, Body, Cookie
-from httpx2 import AsyncClient
-from starlette.requests import Request
-from starlette.responses import Response, HTMLResponse, RedirectResponse
-from pydantic import EmailStr
-from sqlalchemy import text, delete, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
-from typing import Optional
-from uuid import uuid4, UUID
+lazy from datetime import datetime as dt, timezone as tz, timedelta as td
+lazy from fastapi import APIRouter, status, HTTPException, Body, Cookie
+lazy from httpx2 import AsyncClient
+lazy from starlette.requests import Request
+lazy from starlette.responses import Response, HTMLResponse, RedirectResponse
+lazy from pydantic import EmailStr
+lazy from sqlalchemy import text, delete, update
+lazy from sqlalchemy.ext.asyncio import AsyncSession
+lazy from sqlmodel import select
+lazy from typing import Optional
+lazy from uuid import uuid4, UUID
 
-import asyncpg
-import re
-import sqlalchemy.exc as sql_exc
+lazy import asyncpg
+lazy import html
+lazy import re
+lazy import sqlalchemy.exc as sql_exc
 
 __all__ = ["router"]
 
@@ -144,6 +145,7 @@ async def create_user(info: LoginInfo):
 	salt = User.generate_salt()
 	password_hash = cryptographic_hash(password, salt=salt)
 
+	username = html.escape(username)
 	user = User(name=username, email=email, salt=salt, password_hash=password_hash)
 
 	async with get_db_session(expire_on_commit=False) as session:
@@ -352,6 +354,7 @@ async def update_username(request: Request, user: ActiveUser, username: str = Bo
 		return JSONResponse({"detail": "Username not valid.", "requested_username": username}, status_code=status.HTTP_400_BAD_REQUEST)
 
 	old_username = user.name
+	username = html.escape(username)
 
 	try:
 		async with get_db_session() as session:
@@ -375,8 +378,6 @@ async def update_username(request: Request, user: ActiveUser, username: str = Bo
 
 @router.delete("/protected/remove_user", tags=[TAG])
 async def delete_user(request: Request, user: ActiveUser, refresh_token: RefreshTokenCookie) -> JSONResponse:
-	# Require the refresh token after the access tokens were allowed to be read by JavaScript, making them more likely
-	# to be extracted using XSS
 	extract_refresh_token(refresh_token)
 	async with get_db_session() as session:
 		try:
@@ -385,7 +386,10 @@ async def delete_user(request: Request, user: ActiveUser, refresh_token: Refresh
 		except sql_exc.SQLAlchemyError as e:
 			await session.rollback()
 			request.state.logger.exception(f"Could not successfully delete user {user.id}.", exc_info=e)
-			return JSONResponse({"detail": "An error occurred while trying to delete user."}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+			return JSONResponse(
+				{"detail": "An error occurred while trying to delete user."},
+				status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+			)
 
 	return JSONResponse(dict(detail="Successfully deleted user from database.", user=user.name, id=str(user.id)),
 						status_code=status.HTTP_200_OK)

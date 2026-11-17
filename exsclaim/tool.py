@@ -7,29 +7,29 @@ package. All the model classes are independent of each
 other, but they expose the same interface, so they are
 interchangeable.
 """
-from .llms import LLM, LLMUsage, OptionalSemaphore
-from .config import settings
-from .exceptions import PipelineInterruptionException, JournalScrapeError, ExsclaimToolException, PipelineConfigError
-from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform, \
+lazy from .llms import LLM, LLMUsage, OptionalSemaphore
+lazy from .config import settings
+lazy from .exceptions import PipelineInterruptionException, JournalScrapeError, ExsclaimToolException, PipelineConfigError
+lazy from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform, \
 	geometry_boxes as boxes
-from .journals import JournalFamily
-from .utilities import initialize_results_dir, PrinterFormatter, load_model_from_checkpoint, download_model_checkpoint
+lazy from .journals import JournalFamily
+lazy from .utilities import initialize_results_dir, PrinterFormatter, load_model_from_checkpoint, download_model_checkpoint
 
-from abc import ABC, abstractmethod
-from logging import getLogger, StreamHandler
-from os import PathLike
-from pathlib import Path
-from PIL import Image
-from time import time_ns as timer
-from typing import Any, Callable, Collection, Iterable, Optional
+lazy from abc import ABC, abstractmethod
+lazy from logging import getLogger, StreamHandler
+lazy from os import PathLike
+lazy from pathlib import Path
+lazy from PIL import Image
+lazy from time import time_ns as timer
+lazy from typing import Any, Callable, Collection, Iterable, Optional
 
-import asyncio
-import cv2
-import json
-import numpy as np
-import pydantic
-import re
-import torch
+lazy import asyncio
+lazy import cv2
+lazy import json
+lazy import numpy as np
+lazy import pydantic
+lazy import re
+lazy import torch
 
 if settings.DISPLAY_TQDM:
 	from tqdm.asyncio import tqdm_asyncio

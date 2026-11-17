@@ -3,10 +3,10 @@ Query component - the main form for EXSCLAIM queries.
 Converted from React Query.js component.
 """
 
-import dash_bootstrap_components as dbc
+lazy import dash_bootstrap_components as dbc
 
-from dash import html, dcc
-from exsclaim import llms
+lazy from dash import html, dcc
+lazy from exsclaim import llms
 
 
 DAGGER = "\u2020"

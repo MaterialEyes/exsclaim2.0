@@ -1,4 +1,4 @@
-from typing import Collection, Optional
+lazy from typing import Collection, Optional
 
 __all__ = ["ExsclaimError", "ExsclaimToolException", "JournalScrapeError", "PDFScrapeException", "PipelineInterruptionException",
 		   "PipelineConfigError", "LLMException"]

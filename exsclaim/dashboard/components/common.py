@@ -1,13 +1,13 @@
 """
 Common Dash components converted from React components.
 """
-from .login_page import create_login_form_modal, create_signup_form_modal
+lazy from .login_page import create_login_form_modal, create_signup_form_modal
 
-import dash_bootstrap_components as dbc
-from dash import html
-from dash.development.base_component import Component
-from dash_extensions import Purify
-from typing import Optional
+lazy import dash_bootstrap_components as dbc
+lazy from dash import html
+lazy from dash.development.base_component import Component
+lazy from dash_extensions import Purify
+lazy from typing import Optional
 
 __all__ = ["create_header_component", "create_notification_component", "create_footer_component"]
 

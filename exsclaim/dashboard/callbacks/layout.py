@@ -1,9 +1,9 @@
-import dash_bootstrap_components as dbc
-import re
+lazy import dash_bootstrap_components as dbc
+lazy import re
 
-from dash import html, ClientsideFunction, Output, Input, State, no_update, ALL, get_app
-from dash_extensions import Purify
-from exsclaim.api import Status
+lazy from dash import html, ClientsideFunction, Output, Input, State, no_update, ALL, get_app
+lazy from dash_extensions import Purify
+lazy from exsclaim.api import Status
 
 app = get_app()
 

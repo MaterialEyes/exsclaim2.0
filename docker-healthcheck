@@ -10,14 +10,21 @@ function dashboard_failed() {
 	exit 2;
 }
 
-RESPONSE=$(curl -fs "http://localhost:$FAST_API_PORT/healthcheck")
+RESPONSE=$(curl -fsk "https://localhost:$FAST_API_PORT/healthcheck")
 if [[ "$?" -ne 0 ]]; then
-	api_failed "$RESPONSE"
+	RESPONSE=$(curl -fs "http://localhost:$FAST_API_PORT/healthcheck")
+	if [[ "$?" -ne 0 ]]; then
+		api_failed "$RESPONSE"
+	fi
 fi
+
 
 RESPONSE=$(curl -fs "http://localhost:$DASHBOARD_PORT/healthcheck")
 if [[ "$?" -ne 0 ]]; then
-	dashboard_failed "$RESPONSE"
+	RESPONSE=$(curl -fsk "https://localhost:$DASHBOARD_PORT/healthcheck")
+	if [[ "$?" -ne 0 ]]; then
+		dashboard_failed "$RESPONSE"
+	fi
 fi
 
 exit 0

@@ -1,12 +1,12 @@
 # Acquired from https://github.com/pytorch/vision/tree/master/references/detection
-import datetime
-import pathlib
-import pickle
-import time
-from collections import defaultdict, deque
+lazy import datetime
+lazy import pathlib
+lazy import pickle
+lazy import time
+lazy from collections import defaultdict, deque
 
-import torch
-import torch.distributed as dist
+lazy import torch
+lazy import torch.distributed as dist
 
 
 class SmoothedValue(object):

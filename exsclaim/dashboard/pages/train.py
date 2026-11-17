@@ -1,15 +1,11 @@
-try:
-	from ... import ui_settings
-	from components.common import create_header_component, create_footer_component
-except ImportError:
-	from exsclaim import ui_settings
-	from exsclaim.dashboard.components import create_header_component, create_footer_component
+lazy from exsclaim import ui_settings
+lazy from exsclaim.dashboard.components import create_header_component, create_footer_component
 
-from dash import html, dcc, register_page
+lazy from dash import html, dcc, register_page
 
-import dash_ag_grid as dag
-import dash_bootstrap_components as dbc
-import plotly.graph_objs as go
+lazy import dash_ag_grid as dag
+lazy import dash_bootstrap_components as dbc
+lazy import plotly.graph_objs as go
 
 register_page(__name__, path="/train", title="Training", description="Use previous EXSCLAIM runs to create training data.")
 

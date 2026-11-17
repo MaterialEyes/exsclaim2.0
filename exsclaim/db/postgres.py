@@ -1,18 +1,18 @@
-"""Functions for interacting with postgres database"""
-from .models import Author, ClassificationCodes, ArticleAuthor, Figure, Subfigure, SubfigureLabel, Scale, ScaleLabel
+"""Functions for interacting with PostgreSQL database"""
+lazy from .models import Author, ClassificationCodes, ArticleAuthor, Figure, Subfigure, SubfigureLabel, Scale, ScaleLabel
 
-from contextlib import asynccontextmanager
-from pathlib import Path
-from pydantic import Field, computed_field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy import select, text, insert
-from typing import Any, AsyncGenerator, Optional
-from uuid import UUID, uuid4
+lazy from contextlib import asynccontextmanager
+lazy from pathlib import Path
+lazy from pydantic import Field, computed_field, field_validator
+lazy from pydantic_settings import BaseSettings, SettingsConfigDict
+lazy from sqlalchemy import select, text, insert
+lazy from typing import Any, AsyncGenerator, Optional
+lazy from uuid import UUID, uuid4
 
-import logging
-import sqlalchemy
-import sqlalchemy.exc as sql_exc
-import sqlalchemy.ext.asyncio as sql_async
+lazy import logging
+lazy import sqlalchemy
+lazy import sqlalchemy.exc as sql_exc
+lazy import sqlalchemy.ext.asyncio as sql_async
 import sqlalchemy.dialects.postgresql as sa_psql
 
 
@@ -313,7 +313,8 @@ class Database:
 
 	async def initialize_database(self):
 		from sqlalchemy.schema import CreateSchema
-		from ..api.models import Run, User, get_guest_uuid # These models need to be imported before SQLModel.metadata.create_all
+		from .models import QueryCache # These models need to be imported before SQLModel.metadata.create_all
+		from ..api.models import Run, User, get_guest_uuid
 		from ..api.db import initialize_db as api_db
 
 		import sqlmodel
@@ -328,6 +329,12 @@ class Database:
 			result = await conn.execute(text("SELECT COUNT(id) FROM users.users WHERE email IS NULL;"))
 			if not result.fetchone()[0]:
 				await conn.execute(insert(User).values(id=get_guest_uuid(), name="Default User"))
+
+			await conn.execute(text("""CREATE OR REPLACE PROCEDURE results.expire_query_cache() AS $$
+				BEGIN
+					DELETE FROM results.query_cache WHERE created_at > (NOW() + INTERVAL '4 hours');
+				END;
+			$$ LANGUAGE plpgsql;"""))
 
 			await api_db(conn)
 			await conn.execute(text("CREATE OR REPLACE VIEW users.active_users AS SELECT * FROM users.users WHERE deleted_at IS NULL;"))
@@ -368,7 +375,8 @@ class Database:
 		alembic_revision_lookup: dict[Version, str] = {
 			Version("2.5.2"): "3924f9a632d1",
 			Version("2.5.3b2"): "289193e21c9c",
-			Version("2.5.3b4"): "58f3da095550"
+			Version("2.5.3b4"): "58f3da095550",
+			Version("2.5.3b8"): "581ca3d69c77",
 		}
 
 		buffer = StringIO() # TODO: Check if this works correctly

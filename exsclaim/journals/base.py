@@ -1,27 +1,27 @@
-from ..config import settings
-from ..db import Author, ORCID_REGEX, DOI_REGEX, DOI_REGEX_STRING
-from ..exceptions import JournalScrapeError
-from ..utilities import paths
+lazy from ..config import settings
+lazy from ..db import Author, ORCID_REGEX, DOI_REGEX, DOI_REGEX_STRING
+lazy from ..exceptions import JournalScrapeError
+lazy from ..utilities import paths
 
-import asyncio
-import bs4
-import cairosvg
-import curl_cffi
-import httpx2
-import inspect
-import logging
-import re
-import sys
-import urllib.parse
+lazy import asyncio
+lazy import bs4
+lazy import cairosvg
+lazy import curl_cffi
+lazy import httpx2
+lazy import inspect
+lazy import logging
+lazy import re
+lazy import sys
+lazy import urllib.parse
 
-from abc import ABC, abstractmethod, ABCMeta
-from bs4 import BeautifulSoup
-from itertools import product
-from pathlib import Path
-from playwright.async_api import BrowserContext, Locator, async_playwright, Response, PlaywrightContextManager, Page
-from playwright._impl import _errors as playwright_errors
-from playwright_stealth import Stealth
-from typing import Any, Awaitable, Callable, Collection, Iterable, Iterator, Literal, Optional, Self, Sequence, overload
+lazy from abc import ABC, abstractmethod, ABCMeta
+lazy from bs4 import BeautifulSoup
+lazy from itertools import product
+lazy from pathlib import Path
+lazy from playwright.async_api import BrowserContext, Locator, async_playwright, Response, PlaywrightContextManager, Page
+lazy from playwright._impl import _errors as playwright_errors
+lazy from playwright_stealth import Stealth
+lazy from typing import Any, Awaitable, Callable, Collection, Iterable, Iterator, Literal, Optional, Self, Sequence, overload
 
 __all__ = ["JournalFamily", "JournalMeta", "JournalHtml", "StaticHtml", "DynamicHtml", "JournalFamilyStatic",
 		   "JournalFamilyDynamic", "URLParams", "DOI_REGEX_STRING", "DOI_REGEX", "ORCID_REGEX", "ResponseFunction", "default_predicate"]

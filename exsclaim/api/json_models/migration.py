@@ -1,8 +1,8 @@
-from pydantic import Field
-from typing import Annotated, Union, Optional
+lazy from pydantic import Field
+lazy from typing import Annotated, Union, Optional
 
-from .v0 import OutputV0
-from .v1 import OutputV1, migrate_v0_to_v1
+lazy from .v0 import OutputV0
+lazy from .v1 import OutputV1, migrate_v0_to_v1
 
 __all__ = ["Output", "CurrentStructure", "VERSION_REGISTRY", "model_validate", "migrate"]
 

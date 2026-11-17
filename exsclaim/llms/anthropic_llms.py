@@ -1,11 +1,11 @@
-from .caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
-from ..exceptions import PipelineConfigError, LLMException
+lazy from .caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
+lazy from ..exceptions import PipelineConfigError, LLMException
 
-from logging import exception
-from typing import Any, Collection, Type, Optional
+lazy from logging import exception
+lazy from typing import Any, Collection, Type, Optional
 
-import anthropic
-import asyncio
+lazy import anthropic
+lazy import asyncio
 
 
 class Anthropic(LLM):

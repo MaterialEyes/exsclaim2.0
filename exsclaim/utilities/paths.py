@@ -1,8 +1,8 @@
 """Handles location of output files"""
 
-from ..config import settings
-from pathlib import Path
-from typing import Any
+lazy from ..config import settings
+lazy from pathlib import Path
+lazy from typing import Any
 
 
 __all__ = ["initialize_results_dir"]

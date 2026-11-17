@@ -1,22 +1,19 @@
-from werkzeug.middleware.proxy_fix import ProxyFix
+lazy from werkzeug.middleware.proxy_fix import ProxyFix
 
-try:
-	from ..config import ui_settings
-	from ..utilities import PrinterFormatter, ExsclaimFormatter
-except ImportError:
-	from exsclaim import PrinterFormatter, ExsclaimFormatter, ui_settings
+lazy from exsclaim.config import ui_settings
+lazy from exsclaim.utilities import PrinterFormatter, ExsclaimFormatter
 
-from .components.query import get_llms
+lazy from .components.query import get_llms
 
-import dash
-import dash_bootstrap_components as dbc
-import flask
-import logging
+lazy import dash
+lazy import dash_bootstrap_components as dbc
+lazy import flask
+lazy import logging
 
-from datetime import datetime as dt, timezone as tz
-from textwrap import dedent
-from typing import Optional
-from pathlib import Path
+lazy from datetime import datetime as dt, timezone as tz
+lazy from textwrap import dedent
+lazy from typing import Optional
+lazy from pathlib import Path
 
 
 __all__ = ["app", "server"]

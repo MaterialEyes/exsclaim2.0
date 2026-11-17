@@ -1,19 +1,19 @@
-import pydantic
-import re
-import sqlalchemy
-import sqlalchemy.dialects.postgresql as sa_psql
-import sqlmodel
+lazy import pydantic
+lazy import re
+lazy import sqlalchemy
+lazy import sqlalchemy.dialects.postgresql as sa_psql
+lazy import sqlmodel
 
-from datetime import datetime as dt, timezone as tz
-from enum import StrEnum
-from sqlalchemy.ext.asyncio import AsyncAttrs
-from sys import version_info
-from typing import Annotated, Optional
-from uuid import UUID
+lazy from datetime import datetime as dt, timezone as tz
+lazy from enum import StrEnum
+lazy from sqlalchemy.ext.asyncio import AsyncAttrs
+lazy from sys import version_info
+lazy from typing import Annotated, Optional
+lazy from uuid import UUID
 
 __all__ = ["Author", "ORCID_REGEX", "DOI_REGEX_STRING", "DOI_REGEX", "Article", "Figure", "Subfigure", "Scale",
 		   "SubfigureLabel", "ScaleLabel", "ClassificationCodes", "User", "Run", "Status", "SaveExtensions", "gen_uuid7",
-		   "get_guest_uuid", "ArticleAuthor", "RunArticles", "cryptographic_hash", "ActiveUser"]
+		   "get_guest_uuid", "ArticleAuthor", "RunArticles", "cryptographic_hash", "ActiveUser", "QueryCache"]
 
 if version_info >= (3, 14):
 	def gen_uuid7() -> UUID:
@@ -518,6 +518,7 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		)
 	)
+
 	user_id: UUID = sqlmodel.Field(
 		default_factory=get_guest_uuid,
 		description="The ID of the user that requested this run.",
@@ -527,6 +528,7 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		)
 	)
+
 	start_time: dt = sqlmodel.Field(
 		default_factory=lambda: dt.now(tz.utc),
 		sa_column=sqlalchemy.Column(
@@ -535,6 +537,7 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		)
 	)
+
 	end_time: Optional[dt] = sqlmodel.Field(
 		sa_column=sqlalchemy.Column(
 			sqlmodel.DateTime(timezone=True),
@@ -542,10 +545,12 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=True,
 		)
 	)
+
 	search_query: dict = sqlmodel.Field(
 		nullable=False,
 		sa_type=sa_psql.JSONB
 	)
+
 	extension: SaveExtensions = sqlmodel.Field(
 		default=SaveExtensions.TAR,
 		sa_column=sqlalchemy.Column(
@@ -559,6 +564,7 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		),
 	)
+
 	status: Status = sqlmodel.Field(
 		default=Status.RUNNING,
 		sa_column=sqlalchemy.Column(
@@ -572,6 +578,7 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		),
 	)
+
 	publicize_results: bool = sqlmodel.Field(
 		default=False,
 		sa_column_kwargs=dict(
@@ -592,6 +599,41 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	@property
 	async def articles(self) -> list["Article"]:
 		return [link.article for link in await self.awaitable_attrs._article_links]
+
+
+class QueryCache(sqlmodel.SQLModel):
+	__tablename__ = "query_cache"
+	__table_args__ = (
+		sqlalchemy.PrimaryKeyConstraint("run_id"),
+		dict(schema="results", prefixes=["UNLOGGED"])
+	)
+
+	run_id: UUID = sqlmodel.Field(
+		description="The run ID that was created for this query.",
+		sa_column=sqlalchemy.Column(
+			sa_psql.UUID(as_uuid=True),
+			unique=True,
+			nullable=False,
+		)
+	)
+
+	idempotency_key: UUID = sqlmodel.Field(
+		description="The idempotency key sent by the client to ensure this query isn't submitted multiple times.",
+		sa_column=sqlalchemy.Column(
+			sa_psql.UUID(as_uuid=True),
+			unique=True,
+			nullable=False,
+		)
+	)
+
+	created_at: dt = sqlmodel.Field(
+		default_factory=lambda: dt.now(tz.utc),
+		sa_column=sqlalchemy.Column(
+			sqlmodel.DateTime(timezone=True),
+			server_default=sqlalchemy.text("NOW()"),
+			nullable=False,
+		)
+	)
 
 
 class RunArticles(AsyncAttrs, sqlmodel.SQLModel, table=True):

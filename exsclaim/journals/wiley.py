@@ -1,16 +1,16 @@
-from .base import JournalFamilyStatic, StaticHtml, default_predicate, DOI_REGEX_STRING, Author, ORCID_REGEX
-from ..config import settings
+lazy from .base import JournalFamilyStatic, StaticHtml, default_predicate, DOI_REGEX_STRING, Author, ORCID_REGEX
+lazy from ..config import settings
 
-import math
-import re
+lazy import math
+lazy import re
 
-from bs4 import BeautifulSoup
-from datetime import datetime as dt
-from contextlib import asynccontextmanager
-from playwright.async_api import async_playwright, Cookie, Response
-from playwright._impl import _errors as playwright_errors
-from playwright_stealth import Stealth
-from typing import Any, Optional, Sequence
+lazy from bs4 import BeautifulSoup
+lazy from datetime import datetime as dt
+lazy from contextlib import asynccontextmanager
+lazy from playwright.async_api import async_playwright, Cookie, Response
+lazy from playwright._impl import _errors as playwright_errors
+lazy from playwright_stealth import Stealth
+lazy from typing import Any, Optional, Sequence
 
 __all__ = ["Wiley"]
 

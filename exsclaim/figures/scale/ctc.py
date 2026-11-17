@@ -2,14 +2,14 @@
 #  https://github.com/githubharald/CTCDecoder/blob/master/src/BeamSearch.py
 from __future__ import division, print_function
 
-from .lm import LanguageModel
+lazy from .lm import LanguageModel
 
-from pathlib import Path
-from typing import Optional, Generator
+lazy from pathlib import Path
+lazy from typing import Optional, Generator
 
-import logging
-import torch
-import re
+lazy import logging
+lazy import torch
+lazy import re
 
 
 __all__ = ["BeamEntry", "BeamState", "applyLM", "addBeam", "ctcBeamSearch", "postprocess_ctc", "run_ctc", "CTC_Results"]

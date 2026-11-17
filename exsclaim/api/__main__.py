@@ -1,19 +1,20 @@
-import exsclaim
-import logging
-import yaml
+lazy import exsclaim
+lazy import logging
+lazy import yaml
 
-from .exception_handlers import handler_dict
-from .middleware import RequestLoggerMiddleware, MetricsMiddleware, IPBlockerMiddleware
-from .routers import v1_router, v2_router, general_router, query_router, users_router
+lazy from .exception_handlers import handler_dict
+lazy from .middleware import RequestLoggerMiddleware, MetricsMiddleware, IPBlockerMiddleware
+lazy from .routers import v1_router, v2_router, general_router, query_router, users_router
 
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.openapi.utils import get_openapi
-from logging.handlers import TimedRotatingFileHandler
-from starlette.middleware import Middleware
-from starlette.middleware.cors import CORSMiddleware
-from starlette.middleware.gzip import GZipMiddleware
-from starlette.middleware.trustedhost import TrustedHostMiddleware
+lazy from contextlib import asynccontextmanager
+lazy from fastapi import FastAPI
+lazy from fastapi.openapi.utils import get_openapi
+lazy from logging.handlers import TimedRotatingFileHandler
+lazy from starlette.middleware import Middleware
+lazy from starlette.middleware.cors import CORSMiddleware
+lazy from starlette.middleware.gzip import GZipMiddleware
+lazy from starlette.middleware.trustedhost import TrustedHostMiddleware
+from typing import TYPE_CHECKING
 
 
 __all__ = ["get_app"]
@@ -58,17 +59,25 @@ def create_logger(settings):
 	printer_handler.setFormatter(exsclaim.PrinterFormatter())
 	printer_handler.setLevel(logging.INFO)
 
-	file_handler = TimedRotatingFileHandler(settings.LOGS_PATH / "exsclaim-api.log", backupCount=14,
+	logs_path = settings.LOGS_PATH / "api"
+	logs_path.mkdir(parents=True, exist_ok=True)
+
+	file_handler = TimedRotatingFileHandler(logs_path / "exsclaim-api.log", backupCount=14,
 											interval=1, when="D")
 	file_handler.setFormatter(exsclaim.ExsclaimFormatter())
 	file_handler.setLevel(logging.INFO)
 
-	debug_file_handler = TimedRotatingFileHandler(settings.LOGS_PATH / "exsclaim-api-debug.log", backupCount=14,
+	debug_file_handler = TimedRotatingFileHandler(logs_path / "exsclaim-api-debug.log", backupCount=14,
 											interval=1, when="D")
 	debug_file_handler.setFormatter(exsclaim.ExsclaimFormatter())
 	debug_file_handler.setLevel(logging.DEBUG)
 
-	handlers = (file_handler, debug_file_handler)
+	error_file_handler = TimedRotatingFileHandler(logs_path / "exsclaim-api-errors.log", backupCount=14,
+											interval=7, when="D")
+	error_file_handler.setFormatter(exsclaim.ExsclaimFormatter())
+	error_file_handler.setLevel(logging.ERROR)
+
+	handlers = (file_handler, debug_file_handler, error_file_handler)
 	logging.basicConfig(level=logging.INFO, force=True, handlers=[printer_handler])
 	logger = logging.getLogger("exsclaim.api")
 	for handler in handlers:
@@ -188,7 +197,10 @@ def get_app() -> FastAPI:
 	return app
 
 
-app = None
+if TYPE_CHECKING:
+	app = get_app()
+else:
+	app = None
 
 # if __name__ == "__main__":
 # 	from asyncio import run

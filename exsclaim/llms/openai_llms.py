@@ -1,13 +1,13 @@
-from .caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
-from ..exceptions import PipelineConfigError
+lazy from .caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
+lazy from ..exceptions import PipelineConfigError
 
-from logging import exception
-from os import getenv
-from openai.types.shared.chat_model import ChatModel
-from pydantic import ValidationError
-from typing import get_args, Any, Collection, Literal, Type, Optional
+lazy from logging import exception
+lazy from os import getenv
+lazy from openai.types.shared.chat_model import ChatModel
+lazy from pydantic import ValidationError
+lazy from typing import get_args, Any, Collection, Literal, Type, Optional
 
-import openai
+lazy import openai
 
 __all__ = ["OpenAI", "OPEN_AI_LLMs"]
 

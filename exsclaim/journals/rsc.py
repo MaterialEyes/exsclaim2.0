@@ -1,11 +1,11 @@
-from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX_STRING, ORCID_REGEX, Author
-from ..exceptions import JournalScrapeError
+lazy from .base import JournalFamilyDynamic, DynamicHtml, DOI_REGEX_STRING, ORCID_REGEX, Author
+lazy from ..exceptions import JournalScrapeError
 
-import math
-import re
+lazy import math
+lazy import re
 
-from playwright._impl import _errors as playwright_errors
-from typing import Optional
+lazy from playwright._impl import _errors as playwright_errors
+lazy from typing import Optional
 
 __all__ = ["RSC"]
 

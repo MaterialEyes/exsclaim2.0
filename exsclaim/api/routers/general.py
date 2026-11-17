@@ -1,26 +1,26 @@
-from ..models import Banner, Run
-from ..dependencies import AcceptHeader
+lazy from ..models import Banner, Run
+lazy from ..dependencies import AcceptHeader
 
-from ...config import ui_settings
-from ...db import get_db_session
+lazy from ...config import ui_settings
+lazy from ...db import get_db_session
 
-import exsclaim
-import httpx2
-import logging
+lazy import exsclaim
+lazy import httpx2
+lazy import logging
 
-from asyncpg import UndefinedTableError
-from datetime import datetime as dt, timezone as tz
-from fastapi import APIRouter, status
-from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
-from fastapi.responses import JSONResponse
-from hashlib import sha256
-from sqlalchemy import select
-from starlette.requests import Request
-from starlette.responses import Response, HTMLResponse
-from starlette.routing import BaseRoute
-from textwrap import dedent
-from typing import Optional
-from uuid import UUID
+lazy from asyncpg import UndefinedTableError
+lazy from datetime import datetime as dt, timezone as tz
+lazy from fastapi import APIRouter, status
+lazy from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+lazy from fastapi.responses import JSONResponse
+lazy from hashlib import sha256
+lazy from sqlalchemy import select
+lazy from starlette.requests import Request
+lazy from starlette.responses import Response, HTMLResponse
+lazy from starlette.routing import BaseRoute
+lazy from textwrap import dedent
+lazy from typing import Optional
+lazy from uuid import UUID
 
 __all__ = ["router"]
 

@@ -1,4 +1,4 @@
-import numpy as np
+lazy import numpy as np
 
 
 __all__ = ["non_max_suppression_malisiewicz"]

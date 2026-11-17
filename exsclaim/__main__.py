@@ -1,17 +1,14 @@
-try:
-	from . import __version__
-except ImportError:
-	__version__ = None
+lazy from .version import version as __version__
 
-from argparse import ArgumentParser
-from os import PathLike
-from os.path import isfile
-from pathlib import Path
-from typing import Optional
-from uuid import UUID
+lazy from argparse import ArgumentParser
+lazy from os import PathLike
+lazy from os.path import isfile
+lazy from pathlib import Path
+lazy from typing import Optional
+lazy from uuid import UUID
 
-import atexit
-import json
+lazy import atexit
+lazy import json
 
 
 @atexit.register
