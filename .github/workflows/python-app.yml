@@ -14,7 +14,7 @@ permissions:
 
 jobs:
     build_wheels:
-        name: Build wheels for EXSCLAIM! on ${{ matrix.os }}
+        name: Build wheels for EXSCLAIM! on ${{ matrix.os }} for 3.${{ matrix.major-version }}
         runs-on: ${{ matrix.os }}
         services:
             postgres:
@@ -33,7 +33,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                major-version: [15]
+                major-version: [13, 14, 15]
 #                os: [ubuntu-latest, windows-latest, windows-11-arm, macos-15-intel, macos-15]
                 os: [ubuntu-latest]
         steps:
@@ -96,7 +96,9 @@ jobs:
             - name: Download all the dists
               uses: actions/download-artifact@v7
               with:
-                  name: exsclaim-wheels-*
+                  pattern: exsclaim-wheels-*
                   path: dist/
+                  merge-multiple: true
+
             - name: Publish distribution to PyPI
               uses: pypa/gh-action-pypi-publish@release/v1
