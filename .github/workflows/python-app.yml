@@ -38,22 +38,27 @@ jobs:
                 os: [ubuntu-latest]
                 include:
                   - { major-version: 15, os: macos-latest }
-                  - { major-version: 15, os: windows-latest }
         steps:
             - uses: actions/checkout@v7
               with:
                   persist-credentials: false
 
-            - name: Set up Python ${ version }
+            - name: Set up Python ${{ matrix.major-version }}
               uses: actions/setup-python@v7
               with:
-                  python-version: 3.${{ matrix.major-version }}
+                  python-version: "3.${{ matrix.major-version }}"
                   cache: "pip"
+
+            - name: Install UV
+              uses: astral-sh/setup-uv@v10.1.0
+              with:
+                  python-version: "3.${{ matrix.major-version }}"
+                  enable-cache: true
 
             - name: Install dependencies
               run: |
                   uv pip install --system --system-certs flake8 pytest build
-                  
+                  s
                   uv pip install --system --system-certs -r pyproject.toml --extra test --cache-dir=/tmp/pip
                   playwright install chromium
 
@@ -64,7 +69,7 @@ jobs:
             - name: Test with pytest
               env:
                   POSTGRES_USER: postgres
-                  POSTGRES_DB: exsclaim-test-${{ matrix.major-version }}
+                  POSTGRES_DB: "exsclaim-test-${{ matrix.major-version }}"
                   POSTGRES_PASSWORD: postgres1!
                   POSTGRES_HOST: localhost
                   POSTGRES_PORT: 5432

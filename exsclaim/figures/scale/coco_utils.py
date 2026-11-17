@@ -1,13 +1,13 @@
 # Acquired from https://github.com/pytorch/vision/tree/master/references/detection
 lazy import os
 
-import copy
-import torch
-import torch.utils.data
-from torchvision.datasets import CocoDetection
-from torchvision.transforms import Compose
-from pycocotools import mask as coco_mask
-from pycocotools.coco import COCO
+lazy import copy
+lazy import torch
+lazy import torch.utils.data
+lazy from torchvision.datasets import CocoDetection
+lazy from torchvision.transforms import Compose
+lazy from pycocotools import mask as coco_mask
+lazy from pycocotools.coco import COCO
 
 
 __all__ = ["FilterAndRemapCocoCategories", "ConvertCocoPolysToMask", "CocoDetection", "convert_coco_poly_to_mask",
