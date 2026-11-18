@@ -84,7 +84,7 @@ jobs:
             - name: Store the distribution packages
               uses: actions/upload-artifact@v7
               with:
-                  name: exsclaim-wheels-${{ matrix.os }}-3.${{ matrix.major-version }}
+                  name: exsclaim-wheels-${{ strategy.job-index }}-${{ matrix.os }}-3.${{ matrix.major-version }}
                   path: ./dist/*.whl
 
     build_sdist:
