@@ -1,7 +1,7 @@
 lazy from exsclaim.config import settings
 lazy from exsclaim.db import get_db_session
 lazy from exsclaim.api.models import Run, User, ExsclaimJSONResponse, Status, get_guest_uuid, ClassificationCodes, \
-	PreviousRunFilters, QueryTools, Query, gen_uuid7, SaveExtensions, QueryCache
+	PreviousRunFilters, QueryTools, Query, gen_uuid7, SaveExtensions
 lazy from exsclaim.api.dependencies import ActiveUserId, CurrentUserId, IdempotencyHeader, AcceptHeader
 
 lazy import fastapi
