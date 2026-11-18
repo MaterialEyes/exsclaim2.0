@@ -84,7 +84,7 @@ jobs:
             - name: Store the distribution packages
               uses: actions/upload-artifact@v7
               with:
-                  name: exsclaim-wheels-${{ strategy.job-index }}-${{ matrix.os }}-3.${{ matrix.major-version }}
+#                  name: exsclaim-wheels-${{ strategy.job-index }}-${{ matrix.os }}-3.${{ matrix.major-version }}
                   path: ./dist/*
 
     build_sdist:
@@ -98,8 +98,8 @@ jobs:
 
             - uses: actions/upload-artifact@v7
               with:
-                name: exsclaim-sdist
-                path: dist/*.tar.gz
+#                name: exsclaim-sdist
+                path: ./dist/*
 
     pypi-publish:
         name: Upload to PyPI
@@ -114,7 +114,7 @@ jobs:
             - name: Download all the dists
               uses: actions/download-artifact@v7
               with:
-                  pattern: exsclaim-*
+                  pattern: exsclaim*
                   path: dist
                   merge-multiple: true
 
