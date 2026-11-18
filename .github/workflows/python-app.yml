@@ -6,6 +6,7 @@ name: Python application
 on:
     push:
         branches: [ "main", "dev" ]
+        tags: ["v*"]
     pull_request:
         branches: [ "main" ]
 
@@ -74,7 +75,12 @@ jobs:
               run: pytest tests
 
             - name: Build a binary wheel and a source tarball
-              run: python3 -m build  --outdir dist
+              run: python3 -m build --wheel --outdir dist
+
+            - name: Tag wheel with Python version that built it
+              run: |
+                  python3 -m wheel tags --python-tag "cp3${{ matrix.major-version }}" --remove dist/*.whl
+                  ls -l dist/
 
             - name: Verify the dist file isn't corrupted
               run: |
@@ -85,7 +91,7 @@ jobs:
               uses: actions/upload-artifact@v7
               with:
                   name: exsclaim-wheels-${{ matrix.os }}-3.${{ matrix.major-version }}-${{ strategy.job-index }}
-                  path: ./dist/*
+                  path: ./dist/*.whl
 
     build_sdist:
         name: Build source distribution
@@ -121,5 +127,4 @@ jobs:
             - name: Publish distribution to PyPI
               uses: pypa/gh-action-pypi-publish@release/v1
               with:
-                  skip-existing: true
                   verbose: true
