@@ -79,7 +79,7 @@ jobs:
             - name: Verify the dist file isn't corrupted
               run: |
                   python -c "import zipfile, sys; zipfile.ZipFile(sys.argv[1]).close()" dist/*.whl
-                  python -c "import zipfile, sys; zipfile.ZipFile(sys.argv[1]).close()" dist/*.tar.gz
+                  python -c "import tarfile, sys; sys.exit(0 if tarfile.is_tarfile(sys.argv[1]) else 1)" dist/*.tar.gz
 
             - name: Store the distribution packages
               uses: actions/upload-artifact@v7
