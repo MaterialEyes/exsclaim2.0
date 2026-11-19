@@ -9,6 +9,7 @@ lazy from .utilities import paths, PrinterFormatter, ExsclaimFormatter
 lazy from .db import Database, gen_uuid7
 
 lazy import asyncio
+lazy import copy
 lazy import cv2
 lazy import enum
 lazy import functools
@@ -39,7 +40,7 @@ class SaveMethods(enum.Flag):
 	CSV = enum.auto()
 
 	@classmethod
-	def from_str(cls, string: str):
+	def from_str(cls, string: str) -> "SaveMethods":
 		match string.lower():
 			case "save_subfigures" | "subfigures":
 				return cls.SUBFIGURES
@@ -55,7 +56,7 @@ class SaveMethods(enum.Flag):
 				raise ValueError(f"There is no corresponding save_method to: {string}.")
 
 	@classmethod
-	def from_list(cls, lst: list[str]):
+	def from_list(cls, lst: list[str]) -> "SaveMethods":
 		from operator import or_
 
 		def get_values(value: str):
@@ -64,7 +65,10 @@ class SaveMethods(enum.Flag):
 			except ValueError:
 				return None
 
-		return functools.reduce(or_, filter(lambda x: x is not None, map(get_values, lst)))
+		value = functools.reduce(or_, filter(lambda x: x is not None, map(get_values, lst)))
+		if value is None:
+			return cls(0)
+		return value
 
 
 class Pipeline:
@@ -414,9 +418,6 @@ class Pipeline:
 		self.display_info("Matching Image Objects to Caption Text\n")
 		figures = len(self.exsclaim_dict)
 
-		with open(self.results_directory / "pre-grouped.json", "w") as f:
-			json.dump(self.exsclaim_dict, f, indent='\t', cls=ExsclaimEncoder)
-
 		for counter, (article_id, article_json) in enumerate(self.exsclaim_dict.items(), start=1):
 			self.display_info(f">>> ({counter:,} of {figures:,}) Matching objects from figure: {article_id}")
 
@@ -641,6 +642,7 @@ class Pipeline:
 		scale_objects = []
 		subfigure_labels = []
 		subfigures = []
+
 		for subfigure_json in master_images:
 			# collect subfigures
 			subfigures.append(convert_geometry_to_coords(subfigure_json["geometry"]))

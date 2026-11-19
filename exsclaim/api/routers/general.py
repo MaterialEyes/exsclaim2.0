@@ -88,6 +88,8 @@ async def dark_theme(request: Request):
 		swagger_favicon_url="/favicon.ico"
 	)
 
+	response.headers["Content-Security-Policy"] = f"default-src 'self' {ui_settings.DOMAIN}; script-src 'unsafe-inline' https://cdn.jsdelivr.net/; img-src 'unsafe-inline' 'self' data: {ui_settings.DOMAIN};"
+
 	return response
 
 
@@ -97,14 +99,18 @@ async def docs_redirect() -> Response:
 
 
 @router.api_route("/redoc", methods=["GET", "HEAD"], include_in_schema=False)
-async def redoc(request: Request) -> Response:
+async def redoc(request: Request) -> HTMLResponse:
 	app = request.app
 	schema = app.openapi()
-	return get_redoc_html(
+	response = get_redoc_html(
 		openapi_url=app.openapi_url,
 		title=schema["info"]["title"],
 		redoc_favicon_url="/favicon.ico",
 	)
+
+	response.headers["Content-Security-Policy"] = f"default-src 'self' {ui_settings.DOMAIN}; script-src 'unsafe-inline' https://cdn.jsdelivr.net/; img-src 'unsafe-inline' 'self' data: {ui_settings.DOMAIN} https://cdn.redoc.ly/; style-src 'unsafe-inline' 'self' {ui_settings.DOMAIN} https://fonts.googleapis.com/css; font-src 'unsafe-inline' 'self' {ui_settings.DOMAIN} https://fonts.gstatic.com/; connect-src 'unsafe-inline' 'self' {ui_settings.DOMAIN} https://cdn.jsdelivr.net/; worker-src 'unsafe-inline' 'self' {ui_settings.DOMAIN} blob:;"
+
+	return response
 
 
 @router.api_route("/openapi.yaml", methods=["GET"], include_in_schema=False)

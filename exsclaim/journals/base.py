@@ -24,7 +24,8 @@ lazy from playwright_stealth import Stealth
 lazy from typing import Any, Awaitable, Callable, Collection, Iterable, Iterator, Literal, Optional, Self, Sequence, overload
 
 __all__ = ["JournalFamily", "JournalMeta", "JournalHtml", "StaticHtml", "DynamicHtml", "JournalFamilyStatic",
-		   "JournalFamilyDynamic", "URLParams", "DOI_REGEX_STRING", "DOI_REGEX", "ORCID_REGEX", "ResponseFunction", "default_predicate"]
+		   "JournalFamilyDynamic", "URLParams", "DOI_REGEX_STRING", "DOI_REGEX", "ORCID_REGEX", "ResponseFunction",
+		   "default_predicate"]
 
 URLParams = dict[str, Any]
 

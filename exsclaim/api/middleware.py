@@ -1,6 +1,5 @@
-lazy from .models import gen_uuid7
-lazy from ..db import get_db_session
-lazy from ..config import ui_settings
+lazy from exsclaim.config import ui_settings
+lazy from exsclaim.db import get_db_session, gen_uuid7
 
 lazy from contextlib import suppress
 lazy from contextvars import ContextVar
@@ -177,6 +176,7 @@ class RequestLoggerMiddleware:
 	def __init__(self, app: ASGIApp, logger: logging.Logger):
 		self.app = app
 		self.logger = logger
+		self._csp_header = f"default-src 'self' {ui_settings.DOMAIN}"
 
 	async def __call__(self, scope: Scope, receive: Receive, send: Send):
 		if not run_middleware(scope):
@@ -207,11 +207,28 @@ class RequestLoggerMiddleware:
 				status_code = message["status"]
 				response_headers = MutableHeaders(raw=message["headers"])
 				response_headers.setdefault("X-Request-Id", request_id)
-				response_headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")  # Max-age is 1 year
+
+				# Controls what the browser can load
+				response_headers.setdefault("Content-Security-Policy", self._csp_header)
+
 				response_headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+				response_headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")  # Max-age is 1 year
+
+				# Prevent MIME type sniffing
 				response_headers.setdefault("X-Content-Type", "nosniff")
+				response_headers.setdefault("X-Content-Type-Options", "nosniff")
+
+				# Prevent clickjacking
 				response_headers.setdefault("X-Frame-Options", "SAMEORIGIN")
 				response_headers.setdefault("X-Xss-Protection", "1; mode=block")
+
+				# Explicitly deny browser features that aren't used
+				response_headers.setdefault("Permissions-Policy",
+											"camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), accelerometer=(), gyroscope=(), magnetometer=(), display-capture=(), screen-wake-lock=(), autoplay=(self), fullscreen=(self)")
+
+				response_headers["Server"] = ""
+				response_headers["X-Powered-By"] = ""
+
 				message["headers"] = response_headers.raw
 
 			await send(message)

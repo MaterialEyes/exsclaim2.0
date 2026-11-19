@@ -126,7 +126,7 @@ def get_app() -> dash.Dash:
 	app.layout = dash.html.Div([
 		dash.dcc.Interval(
 			id="check-credentials",
-			interval=2_500 # Check credentials after a second. The callback disables it if the user isn't logged in.
+			interval=2_500 # Check credentials after 2.5 seconds. The callback disables it if the user isn't logged in.
 		),
 		dash.dcc.Store(
 			id="storage",

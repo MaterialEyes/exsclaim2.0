@@ -115,7 +115,7 @@ RUN --mount=type=cache,sharing=locked,target=/var/lib/apt \
 WORKDIR /opt/exsclaim
 
 COPY docker-entrypoint docker-healthcheck /usr/local/bin/
-COPY --chown=$UID:$GID query ./query
+#COPY --chown=$UID:$GID query ./query
 
 COPY --link --from=deps /usr/local/lib/python3.15/site-packages /usr/local/lib/python3.15/site-packages
 COPY --from=build /usr/local/bin/hypercorn /usr/local/bin/gunicorn /usr/local/bin/playwright /usr/local/bin/alembic /usr/local/bin/
@@ -133,7 +133,7 @@ RUN --mount=type=cache,target=/var/lib/apt \
 
 COPY --link --from=build /usr/local/lib/python3.15/site-packages/exsclaim /usr/local/lib/python3.15/site-packages/exsclaim
 COPY --from=build /usr/local/bin/exsclaim /usr/local/bin/exsclaim
-COPY --from=build /opt/install/dist/ /opt/install/dist
+COPY --from=build /opt/install/dist/exsclaim* /opt/install/dist/
 
 USER $UID
 

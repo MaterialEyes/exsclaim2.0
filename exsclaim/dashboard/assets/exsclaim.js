@@ -655,6 +655,12 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 			}
 		},
 
+		extract_jwt_data: function(){
+			const base64Url = document.cookie.split('.')[1];
+			const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+			return JSON.parse(window.atob(base64));
+		},
+
 		check_credentials: async function(n_clicks, data){
 			console.log("Check credentials was called.");
 			const show_logout_button = {"display": "block"};
@@ -670,25 +676,30 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 				if(response.status === 200){
 					user_name = (await response.json()).username;
 				}
-			} else {
-				await this.renew_credentials(data);
 			}
 
 			const token = document.cookie;
 			if(token === undefined || token.length === 0){
-				return [0, true, user_name, hide_logout_button];
+				// Access token may have expired (so it won't be here anymore), but the refresh token may still be here
+				if(!await this.renew_credentials(data)){
+					return [0, true, user_name, hide_logout_button];
+				}
 			}
 
-			const base64Url = token.split('.')[1];
-			const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-			const jwt = JSON.parse(window.atob(base64));
+			let jwt = this.extract_jwt_data();
+			let expires_in = (jwt.exp * 1000) - Date.now(); // Expiration time in ms
 
-			const expires_in = (jwt.exp * 1000) - Date.now(); // Expiration time in ms
+			if(expires_in <= 0){
+				await this.renew_credentials(data);
+				jwt = this.extract_jwt_data();
+				expires_in = (jwt.exp * 1000) - Date.now();
+			}
+
 			return [expires_in, false, user_name, show_logout_button];
 		},
 
 		renew_credentials: async function(data){
-			await navigator.locks.request("renew_exsclaim_credentials", async (lock) => {
+			return await navigator.locks.request("renew_exsclaim_credentials", async (lock) => {
 				let response = await api_fetch(data.public_fastapi_url, "/user/protected/refresh", {
 					method: "POST",
 					credentials: "include"

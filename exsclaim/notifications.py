@@ -187,6 +187,11 @@ class NTFY(Notifier):
 			from traceback import format_exception
 			data = f"An error occurred at {finished_at} running{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}.\n"
 			data += ' '.join(format_exception(notification.exception))
+			log_link = self._get_logs_link(notification.run_id)
+			if log_link is not None:
+				headers["Actions"] = f"view, View Logs, {ui_link}"
+			else:
+				del headers["Actions"]
 
 		async with httpx2.AsyncClient() as client:
 			try:
@@ -330,7 +335,7 @@ class Slack(Webhook):
 							"type": "section",
 							"text": {
 								"type": "mrkdwn",
-								"text": f"Results for <{logs_link}|{notification.name}> failed at{timestamp}. "
+								"text": f"Results for <{logs_link}|{notification.name}> failed {timestamp}. "
 										f"Logs are available at <{logs_link}|{logs_link}>."
 							}
 						},
@@ -468,7 +473,7 @@ class QueryNotifications(BaseModel):
 	webhooks: list[Webhook] = Field(description="A list of webhooks that the system will POST to when EXSCLAIM has finished running.",
 									default_factory=list)
 
-	def __iter__(self) -> Generator[Notification, None, None]:
+	def __iter__(self) -> Generator[Notifier, None, None]:
 		for notifiers in (self.ntfy, self.webhooks):
 			for notifier in notifiers:
 				yield notifier

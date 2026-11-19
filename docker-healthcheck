@@ -19,9 +19,9 @@ if [[ "$?" -ne 0 ]]; then
 fi
 
 
-RESPONSE=$(curl -fs "http://localhost:$DASHBOARD_PORT/healthcheck")
+RESPONSE=$(curl -fsk "https://localhost:$DASHBOARD_PORT/healthcheck")
 if [[ "$?" -ne 0 ]]; then
-	RESPONSE=$(curl -fsk "https://localhost:$DASHBOARD_PORT/healthcheck")
+	RESPONSE=$(curl -fs "http://localhost:$DASHBOARD_PORT/healthcheck")
 	if [[ "$?" -ne 0 ]]; then
 		dashboard_failed "$RESPONSE"
 	fi
