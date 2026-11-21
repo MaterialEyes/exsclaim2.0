@@ -1,5 +1,5 @@
-lazy import json
-lazy from dash import ClientsideFunction, get_app, Output, Input, State, no_update
+import json
+from dash import ClientsideFunction, get_app, Output, Input, State, no_update
 
 app = get_app()
 

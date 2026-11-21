@@ -1,11 +1,11 @@
-lazy import httpx2
-lazy import re
+import httpx2
+import re
 
-lazy from dash import ctx, Output, Input, State, get_app, ClientsideFunction, no_update
-lazy from dash.exceptions import PreventUpdate
-lazy from exsclaim import llms
-lazy from exsclaim.dashboard.components.query import DAGGER
-lazy from typing import Optional
+from dash import ctx, Output, Input, State, get_app, ClientsideFunction, no_update
+from dash.exceptions import PreventUpdate
+from exsclaim import llms
+from exsclaim.dashboard.components.query import DAGGER
+from typing import Optional
 
 
 name_regex = re.compile(r"^[\w_\- ]+$")
@@ -56,6 +56,8 @@ def collapse_advanced_options(n_clicks, is_open):
 	State("exsclaim-store", "data")
 )
 def update_model_list(current_provider, api_key, data):
+	from settrace import settrace
+	settrace()
 	# If the provider was just changed, remove the value in the API key input so it isn't sent to a remote provider
 	if ctx.triggered_id == "model-provider":
 		new_api_key_value = ""
@@ -68,7 +70,7 @@ def update_model_list(current_provider, api_key, data):
 			continue
 
 		if cls._api_key_needed_for_list():
-			if api_key is None:
+			if api_key is None or len(api_key) == 0:
 				return [], True, None, new_api_key_value
 
 			models = cls.available_models(api_key)
@@ -79,8 +81,8 @@ def update_model_list(current_provider, api_key, data):
 
 		default = models[0]["value"] if len(models) > 0 else None
 		return models, False, default, new_api_key_value
-	else:
-		raise PreventUpdate
+
+	raise PreventUpdate
 
 
 @app.callback(

@@ -358,7 +358,7 @@ def create_model_component(available_llms, debounce=True):
 			type="password",
 			placeholder="API Key *",
 			className="form-control mt-2",
-			debounce=debounce,
+			debounce=True,
 		)
 	], className="mb-3")
 

@@ -29,15 +29,12 @@ router = APIRouter(prefix="/user")
 TAG = "User Management"
 
 
-DOMAIN_REGEX = re.compile("https?://")
-
-
 def get_cookie_domain() -> str:
-	return DOMAIN_REGEX.sub("", ui_settings.DOMAIN)
+	return ui_settings.DOMAIN.domain
 
 
 def get_api_cookie_domain() -> str:
-	return DOMAIN_REGEX.sub("", ui_settings.PUBLIC_API_URL)
+	return ui_settings.PUBLIC_API_URL.domain
 
 
 async def add_user_jti(user: User | UUID, jti: UUID):

@@ -10,7 +10,7 @@ lazy from ..notifications import NTFY, Email, Webhook, QueryNotifications
 lazy from .json_models import Output
 
 lazy from datetime import datetime as dt, timezone as tz
-lazy from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse
 lazy from orjson import dumps
 lazy from pydantic import field_validator, model_validator
 lazy from sqlalchemy import text

@@ -88,7 +88,7 @@ async def dark_theme(request: Request):
 		swagger_favicon_url="/favicon.ico"
 	)
 
-	response.headers["Content-Security-Policy"] = f"default-src 'self' {ui_settings.DOMAIN}; script-src 'unsafe-inline' https://cdn.jsdelivr.net/; img-src 'unsafe-inline' 'self' data: {ui_settings.DOMAIN};"
+	response.headers["Content-Security-Policy"] = f"default-src 'self' {ui_settings.DOMAIN.domain_with_scheme}; script-src 'unsafe-inline' https://cdn.jsdelivr.net/; img-src 'unsafe-inline' 'self' data: {ui_settings.DOMAIN.domain_with_scheme};"
 
 	return response
 

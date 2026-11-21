@@ -93,10 +93,10 @@ async def ui(dashboard_configuration: Optional[PathLike[str]] = None, api_config
 			pid_folder = None
 
 	if pid_folder is not None:
-		with open(pid_folder / "exsclaim-dashboard.pid", 'w') as f:
+		with open(pid_folder / "exsclaim-dashboard.pid", 'w', encoding="utf-8") as f:
 			f.write(f"{dashboard.pid}")
 
-		with open(pid_folder / "exsclaim-api.pid", 'w') as f:
+		with open(pid_folder / "exsclaim-api.pid", 'w', encoding="utf-8") as f:
 			f.write(f"{api.pid}")
 
 	if not blocking:

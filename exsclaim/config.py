@@ -8,11 +8,22 @@ lazy from re import compile
 lazy from typing import Optional, Self
 
 lazy import ipaddress
+from starlette.datastructures import URL as StarletteURL
 
 __all__ = ["ExsclaimSettings", "settings", "UISettings", "ui_settings", "get_variables", "orcid_settings", "ORCIDSettings"]
 
 
 BOOL_REGEX = compile("^0?$")
+
+
+class URL(StarletteURL):
+	@property
+	def domain(self) -> str:
+		return self.netloc
+
+	@property
+	def domain_with_scheme(self) -> str:
+		return self.components.geturl()
 
 
 class EmailSettings(BaseSettings):
@@ -215,8 +226,8 @@ class UISettings(ExsclaimSettings):
 		description="Whether or not to allow reloading the UI even if it's debugging.",
 	)
 
-	DASHBOARD_URL: Optional[str] = Field(
-		default="http://localhost:3000",
+	DASHBOARD_URL: URL = Field(
+		default=URL("http://localhost:3000"),
 		description="The full URL that a user would use to access the UI.",
 		examples=["http://localhost:3000", "https://exsclaim.lan", "https://exsclaim.materialeyes.org"],
 	)
@@ -227,20 +238,20 @@ class UISettings(ExsclaimSettings):
 		examples=[3000, 80, 8080],
 	)
 
-	DOMAIN: str = Field(
-		default="localhost",
+	DOMAIN: URL = Field(
+		default=URL("localhost"),
 		description="The domain that a user would use to access the API and Dashboard through a proxy such as NGINX.",
 		examples=["https://exsclaim.lan", "https://exsclaim-dev.materialeyes.org", "http://localhost"],
 	)
 
-	FAST_API_URL: str = Field(
-		default="http://localhost:8000",
+	FAST_API_URL: URL = Field(
+		default=URL("http://localhost:8000"),
 		description="The URL that a user inside the docker network would use to access the API i.e. from another service within Docker Compose.",
 		examples=["http://localhost:8000", "http://python:8000"],
 	)
 
-	PUBLIC_API_URL: str = Field(
-		default="http://localhost:8000",
+	PUBLIC_API_URL: URL = Field(
+		default=URL("http://localhost:8000"),
 		description="The URL that any user outside of the Docker network would use to access the API, i.e. from the computer hosting the Docker Compose services or an external computer.",
 		examples=["https://api.exsclaim.lan", "https://api.exsclaim-dev.materialeyes.org"],
 	)
@@ -267,10 +278,10 @@ class UISettings(ExsclaimSettings):
 		description="The IP network that is allowed to view Prometheus' metrics.",
 	)
 
-	@field_validator("DOMAIN", "FAST_API_URL", "PUBLIC_API_URL", "DASHBOARD_URL")
+	@field_validator("DOMAIN", "FAST_API_URL", "PUBLIC_API_URL", "DASHBOARD_URL", mode="before")
 	@classmethod
-	def domain_has_no_trailing_slash(cls, url: str) -> str:
-		return url.rstrip("/")
+	def domain_has_no_trailing_slash(cls, url: str) -> URL:
+		return URL(url)
 
 	@field_validator("JWT_PUBLIC_KEY_FILE", "JWT_PRIVATE_KEY_FILE")
 	@classmethod

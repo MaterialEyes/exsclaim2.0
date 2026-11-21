@@ -1,15 +1,16 @@
 lazy from exsclaim.config import ui_settings
 lazy from exsclaim.db import get_db_session, gen_uuid7
+lazy from exsclaim.utilities import TerminalColor
 
 lazy from contextlib import suppress
 lazy from contextvars import ContextVar
-lazy from enum import StrEnum
 lazy from starlette import status
 lazy from starlette.datastructures import Headers, MutableHeaders
 lazy from starlette.requests import Request
 lazy from starlette.types import ASGIApp, Message, Receive, Scope, Send
 lazy from sqlalchemy import text
 lazy from time import perf_counter
+lazy from typing import Optional
 lazy from uuid import UUID
 
 lazy import asyncio
@@ -17,7 +18,7 @@ lazy import ipaddress
 lazy import logging
 lazy import re
 
-__all__ = ["RequestLoggerMiddleware", "MetricsMiddleware", "IPBlockerMiddleware"]
+__all__ = ["RequestLoggerMiddleware", "MetricsMiddleware", "IPBlockerMiddleware", "SecurityMiddleware"]
 
 
 request_id_ctx = ContextVar("request_id")
@@ -46,26 +47,6 @@ def get_log_time(diff: float) -> str:
 	return f"{diff:,.2f}s"
 
 
-class TerminalColor(StrEnum):
-	BLACK = '\033[30m'
-	RED = '\033[31m'
-	GREEN = '\033[32m'
-	YELLOW = '\033[33m' # orange on some systems
-	BLUE = '\033[34m'
-	MAGENTA = '\033[35m'
-	CYAN = '\033[36m'
-	LIGHT_GRAY = '\033[37m'
-	DARK_GRAY = '\033[90m'
-	BRIGHT_RED = '\033[91m'
-	BRIGHT_GREEN = '\033[92m'
-	BRIGHT_YELLOW = '\033[93m'
-	BRIGHT_BLUE = '\033[94m'
-	BRIGHT_MAGENTA = '\033[95m'
-	BRIGHT_CYAN = '\033[96m'
-	WHITE = '\033[97m'
-	RESET = '\033[0m' # called to return to standard terminal text color
-
-
 def color_http_method(method: str) -> str:
 	match method:
 		case "GET":
@@ -73,7 +54,7 @@ def color_http_method(method: str) -> str:
 		case "POST":
 			return TerminalColor.BLUE + method + TerminalColor.RESET
 		case "HEAD":
-			return TerminalColor.PURPLE + method + TerminalColor.RESET
+			return TerminalColor.MAGENTA + method + TerminalColor.RESET
 		case "OPTIONS":
 			return TerminalColor.YELLOW + method + TerminalColor.RESET
 		case "DELETE":
@@ -176,7 +157,6 @@ class RequestLoggerMiddleware:
 	def __init__(self, app: ASGIApp, logger: logging.Logger):
 		self.app = app
 		self.logger = logger
-		self._csp_header = f"default-src 'self' {ui_settings.DOMAIN}"
 
 	async def __call__(self, scope: Scope, receive: Receive, send: Send):
 		if not run_middleware(scope):
@@ -205,8 +185,37 @@ class RequestLoggerMiddleware:
 			if message["type"] == "http.response.start":
 				nonlocal status_code
 				status_code = message["status"]
+
 				response_headers = MutableHeaders(raw=message["headers"])
 				response_headers.setdefault("X-Request-Id", request_id)
+
+				message["headers"] = response_headers.raw
+
+			await send(message)
+
+		start_time = perf_counter()
+		await self.app(scope, receive, send_wrapper)
+		end_time = perf_counter()
+		diff = end_time - start_time
+
+		# Don't care about logging these
+		if scope["path"] in {"/favicon.ico", "/healthcheck", "/swagger-dark-ui.css"}:
+			return
+
+		self.logger.info(f"{format_response(request_id, Request(scope=scope))} ({TerminalColor.YELLOW}{status_code}{TerminalColor.RESET}) in {get_log_time(diff)}.")
+		# for handler in self.logger.handlers:
+		# 	handler.flush()
+
+
+class SecurityMiddleware:
+	def __init__(self, app: ASGIApp, csp_header: Optional[str] = None):
+		self.app = app
+		self._csp_header = csp_header or f"default-src 'self' {ui_settings.DOMAIN.domain_with_scheme}"
+
+	async def __call__(self, scope: Scope, receive: Receive, send: Send):
+		async def send_wrapper(message: Message):
+			if message["type"] == "http.response.start":
+				response_headers = MutableHeaders(raw=message["headers"])
 
 				# Controls what the browser can load
 				response_headers.setdefault("Content-Security-Policy", self._csp_header)
@@ -226,25 +235,14 @@ class RequestLoggerMiddleware:
 				response_headers.setdefault("Permissions-Policy",
 											"camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), accelerometer=(), gyroscope=(), magnetometer=(), display-capture=(), screen-wake-lock=(), autoplay=(self), fullscreen=(self)")
 
-				response_headers["Server"] = ""
-				response_headers["X-Powered-By"] = ""
+				del response_headers["Server"]
+				del response_headers["X-Powered-By"]
 
 				message["headers"] = response_headers.raw
 
 			await send(message)
 
-		start_time = perf_counter()
 		await self.app(scope, receive, send_wrapper)
-		end_time = perf_counter()
-		diff = end_time - start_time
-
-		# Don't care about logging these
-		if scope["path"] in {"/favicon.ico", "/healthcheck", "/swagger-dark-ui.css"}:
-			return
-
-		self.logger.info(f"{format_response(request_id, Request(scope=scope))} ({TerminalColor.YELLOW}{status_code}{TerminalColor.RESET}) in {get_log_time(diff)}.")
-		# for handler in self.logger.handlers:
-		# 	handler.flush()
 
 
 class MetricsMiddleware:

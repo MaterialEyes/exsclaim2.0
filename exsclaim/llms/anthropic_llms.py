@@ -58,6 +58,15 @@ class Anthropic(LLM):
 		new_messages: list[anthropic.types.MessageParam] = [None] * len(messages)
 
 		cache = anthropic.types.CacheControlEphemeralParam(type="ephemeral")
+		param_lookup: dict[str, type[anthropic.types.MessageParam]] = {
+			"user": anthropic.types.UserMessageParam,
+			"assistant": anthropic.types.AssistantMessageParam,
+			"system": anthropic.types.SystemMessageParam
+		}
+
+		def lookup_error(role: str):
+			raise ValueError(f"Could not find Anthropic's message type for role: {role}")
+
 		for i, message in enumerate(messages):
 			use_cache = cache if message.cache else None
 			if message.images is not None:
@@ -67,9 +76,17 @@ class Anthropic(LLM):
 					for image in message.images
 				])
 
-				formatted_message = anthropic.types.MessageParam(content=content, role=message.role)
+				message_class = param_lookup.get(message.role)
+				if message_class is None:
+					lookup_error(message.role)
+
+				formatted_message = message_class(content=content)
 			else:
-				formatted_message = anthropic.types.MessageParam(
+				message_class = param_lookup.get(message.role)
+				if message_class is None:
+					lookup_error(message.role)
+
+				formatted_message = message_class(
 					content=[anthropic.types.TextBlockParam(type="text", text=message.content, cache_control=use_cache)],
 					role=message.role
 				)

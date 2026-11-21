@@ -34,7 +34,7 @@ def get_article_button():
 def get_data_table():
 	import httpx2
 
-	client = httpx2.Client(base_url=ui_settings.FAST_API_URL)
+	client = httpx2.Client(base_url=ui_settings.FAST_API_URL.domain_with_scheme)
 	try:
 		response = client.get("/classification_codes")
 	except httpx2.ConnectError:
