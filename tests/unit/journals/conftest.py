@@ -10,7 +10,7 @@ from pathlib import Path
 
 class Handler(SimpleHTTPRequestHandler):
 	def __init__(self, *args, **kwargs):
-		kwargs["directory"] = Path(__file__).parent.parent / "http_data"
+		kwargs["directory"] = Path(__file__).parent.parent.parent.resolve() / "http_data"
 		super().__init__(*args, **kwargs)
 
 
