@@ -58,7 +58,7 @@ jobs:
               run: |
                   uv pip install --system --system-certs flake8 pytest build wheel
                   
-                  uv pip install --system --system-certs -r pyproject.toml --extra test --cache-dir=/tmp/pip
+                  uv pip install --system --system-certs -r pyproject.toml --extra test --extra llm --cache-dir=/tmp/pip
                   playwright install chromium
 
             - name: Remove lazy imports for versions < 3.15
