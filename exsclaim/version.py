@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-version = "2.5.3b9"
+version = "2.5.3b10"
 VERSION_REGEX = re.compile(r"(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)(b(?P<beta>\d+))?")
 
 
