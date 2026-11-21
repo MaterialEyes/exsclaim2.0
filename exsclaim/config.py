@@ -281,6 +281,8 @@ class UISettings(ExsclaimSettings):
 	@field_validator("DOMAIN", "FAST_API_URL", "PUBLIC_API_URL", "DASHBOARD_URL", mode="before")
 	@classmethod
 	def domain_has_no_trailing_slash(cls, url: str) -> URL:
+		if isinstance(url, URL):
+			return url
 		return URL(url)
 
 	@field_validator("JWT_PUBLIC_KEY_FILE", "JWT_PRIVATE_KEY_FILE")

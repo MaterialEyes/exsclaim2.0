@@ -14,7 +14,7 @@ class Handler(SimpleHTTPRequestHandler):
 		super().__init__(*args, **kwargs)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def http_server(server_address: str = "127.0.0.1", server_port: int = 8079):
 	server = HTTPServer((server_address, server_port), Handler)
 	thread = threading.Thread(target=server.serve_forever)
