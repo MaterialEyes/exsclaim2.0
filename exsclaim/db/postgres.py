@@ -335,7 +335,6 @@ class Database:
 			$$ LANGUAGE plpgsql;"""))
 
 			await api_db(conn)
-			await conn.execute(text("CREATE OR REPLACE VIEW users.active_users AS SELECT * FROM users.users WHERE deleted_at IS NULL;"))
 
 		# Insert classification codes into the database
 		classification_codes = (
