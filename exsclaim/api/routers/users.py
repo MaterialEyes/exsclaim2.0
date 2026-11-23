@@ -19,7 +19,6 @@ lazy from uuid import uuid4, UUID
 
 lazy import asyncpg
 lazy import html
-lazy import re
 lazy import sqlalchemy.exc as sql_exc
 
 __all__ = ["router"]

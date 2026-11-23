@@ -876,7 +876,10 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		try:
 			html = await self.get(url)
 		except JournalScrapeError as e:
-			self.logger.error(f"Could not scrape {url} (HTTP Status Code: {e.status}). Reason: \"{e.message}\".")
+			self.logger.error(
+				f"Could not scrape {url} (HTTP Status Code: {e.status}). Reason: \"{e.message}\".",
+				exc_info=e
+			)
 			return dict()
 
 		_id = self.get_article_name_from_url(url)
@@ -887,7 +890,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		try:
 			is_open, _license = await self.get_license(html)
 		except playwright_errors.TimeoutError as e:
-			self.logger.error(f"Could not get license for {url}.")
+			self.logger.error(f"Could not get license for {url}.", exc_info=e)
 			raise JournalScrapeError(f"Could not get license for: {url}.", url=url, html=html) from e
 
 		title = await self.get_title(html, url)
@@ -949,7 +952,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 					except BaseException as e:
 						self.logger.error(f"An error occurred when trying to convert {saved_image} into a(n) {image_extension} file.", exc_info=e)
 			except JournalScrapeError as e:
-				self.logger.error(f"Could not download figure \"{figure_name}\" from {image_url} (HTTP Status Code: {e.status}). Reason: {e.message}")
+				self.logger.error(f"Could not download figure \"{figure_name}\" from {image_url} (HTTP Status Code: {e.status}). Reason: {e.message}", exc_info=e)
 				continue
 
 			article_json["figures"][figure_name] = figure_json

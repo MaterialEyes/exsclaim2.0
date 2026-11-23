@@ -131,68 +131,65 @@ class Database:
 
 			for article_num, (article_id, article_json) in enumerate(exsclaim_json.items()):
 				async with session.begin():
-					results = await session.execute(
-						text("SELECT EXISTS (SELECT 1 FROM results.article WHERE id=:id)"),
-						dict(id=article_id)
-					)
-					article_in_database: bool = results.scalar()
-
-					if not article_in_database:
-						authors: tuple[Author] = article_json["authors"]
-						author_ids = [None] * len(authors)
-						for i, author in enumerate(authors):
-							if isinstance(author, dict):
-								author = Author.model_validate({**author, "id": uuid4()})
-							if author.orcid is not None:
-								results = await session.execute(
-									text("SELECT id FROM results.authors WHERE orcid=:orcid"),
-									dict(orcid=author.orcid)
-								)
-								author_id: Optional[UUID] = results.scalar_one_or_none()
-
-								if author_id is not None:
-									author_ids[i] = author_id
-									continue
-
+					authors: tuple[Author] = article_json["authors"]
+					author_ids = [None] * len(authors)
+					for i, author in enumerate(authors):
+						if isinstance(author, dict):
+							author = Author.model_validate({**author, "id": uuid4()})
+						if author.orcid is not None:
 							results = await session.execute(
-								text("INSERT INTO results.authors(name, orcid) VALUES(:name, :orcid) RETURNING id"),
-								dict(name=author.name, orcid=author.orcid)
+								text("SELECT id FROM results.authors WHERE orcid=:orcid"),
+								dict(orcid=author.orcid)
 							)
-							author_id = results.scalar_one_or_none()
-							author_ids[i] = author_id
+							author_id: Optional[UUID] = results.scalar_one_or_none()
 
-						# Upload the article json
-						await session.execute(
-							text("INSERT INTO results.article(id, title, url, doi, license, open) VALUES(:id, :title, :url, :doi, :license, :open)"),
-							dict(
-								id=article_id,
-								title=article_json["title"],
-								url=article_json["article_url"],
-								doi=article_json["doi"],
-								license=article_json["license"],
-								open=article_json["open"],
-							)
+							if author_id is not None:
+								author_ids[i] = author_id
+								continue
+
+						results = await session.execute(
+							text("INSERT INTO results.authors(name, orcid) VALUES(:name, :orcid) ON CONFLICT (id) DO NOTHING RETURNING id"),
+							dict(name=author.name, orcid=author.orcid)
 						)
+						author_id = results.scalar_one_or_none()
+						author_ids[i] = author_id
 
-						# Upload mapping of authors to the article
-						author_ids = [
-							dict(article_id=article_id, author_id=author_id, author_order=i)
-							for i, author_id in enumerate(author_ids)
-						]
-						await session.execute(insert(ArticleAuthor).values(author_ids))
+					# Upload the article json
+					await session.execute(
+						text("INSERT INTO results.article(id, title, url, doi, license, open) VALUES(:id, :title, :url, :doi, :license, :open) ON CONFLICT (id) DO NOTHING"),
+						dict(
+							id=article_id,
+							title=article_json["title"],
+							url=article_json["article_url"],
+							doi=article_json["doi"],
+							license=article_json["license"],
+							open=article_json["open"],
+						)
+					)
 
-						# Upload the figure JSONs
-						figures = [dict(
-							# run_id=run_id,
-							caption=figure_json["full_caption"],
-							url=figure_json["image_url"],
-							figure_path=figure_json["figure_path"],
-							article_id=article_id,
-							id=figure_id.replace("_", "-").split(".")[0]
-						) for figure_id, figure_json in article_json["figures"].items()]
+					# Upload mapping of authors to the article
+					author_ids = [
+						dict(article_id=article_id, author_id=author_id, author_order=i)
+						for i, author_id in enumerate(author_ids)
+					]
+					statement = sa_psql.insert(ArticleAuthor)\
+						.values(author_ids)\
+						.on_conflict_do_nothing(index_elements=["article_id", "author_id"])
+					await session.execute(statement)
 
-						if len(figures) > 0:
-							await session.execute(insert(Figure).values(figures))
+					# Upload the figure JSONs
+					figures = [dict(
+						# run_id=run_id,
+						caption=figure_json["full_caption"],
+						url=figure_json["image_url"],
+						figure_path=figure_json["figure_path"],
+						article_id=article_id,
+						id=figure_id.replace("_", "-").split(".")[0]
+					) for figure_id, figure_json in article_json["figures"].items()]
+
+					if len(figures) > 0:
+						statement = sa_psql.insert(Figure).values(figures).on_conflict_do_nothing(index_elements=["id"])
+						await session.execute(statement)
 
 					# Upload mapping of article to run id
 					await session.execute(
@@ -281,14 +278,15 @@ class Database:
 									scale_bar_id=scale_bar_id,
 								))
 
-					for cls, values in (
-						(Subfigure, subfigures),
-						(SubfigureLabel, subfigure_labels),
-						(Scale, scales),
-						(ScaleLabel, scale_labels),
+					for cls, values, fkey in (
+						(Subfigure, subfigures, "subfigure_pkey"),
+						(SubfigureLabel, subfigure_labels, "subfigurelabel_pkey"),
+						(Scale, scales, "scale_pkey"),
+						(ScaleLabel, scale_labels, "scalelabel_pkey"),
 					):
 						if len(values) > 0:
-							await session.execute(insert(cls).values(values))
+							statement = sa_psql.insert(cls).values(values).on_conflict_do_nothing(constraint=fkey)
+							await session.execute(statement)
 
 					try:
 						# session.add_all(objects)
@@ -361,7 +359,7 @@ class Database:
 
 	@staticmethod
 	def run_alembic():
-		from ..version import Version
+		from exsclaim.version import Version
 
 		from alembic import command
 		from alembic.config import Config
@@ -377,9 +375,10 @@ class Database:
 			Version("2.5.3b2"): "289193e21c9c",
 			Version("2.5.3b4"): "58f3da095550",
 			Version("2.5.3b8"): "581ca3d69c77",
+			Version("2.5.3"): "c2fc8367b354",
 		}
 
-		buffer = StringIO() # TODO: Check if this works correctly
+		buffer = StringIO()
 
 		directory = Path(__file__).parent.parent.resolve()
 		connection_string = PostgresSettings().connection_string

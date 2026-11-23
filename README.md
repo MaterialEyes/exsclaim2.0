@@ -44,7 +44,7 @@ More extensive guides can be found within the [wiki](https://github.com/Material
 ### Using Docker Compose
 To use Docker Compose to host the service, run the following commands in the base directory:
 ```shell
-docker compose up --build python
+docker compose up --build exsclaim
 ```
 
 ## Upgrading the Database

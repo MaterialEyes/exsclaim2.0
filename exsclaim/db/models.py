@@ -13,7 +13,7 @@ lazy from uuid import UUID
 
 __all__ = ["Author", "ORCID_REGEX", "DOI_REGEX_STRING", "DOI_REGEX", "Article", "Figure", "Subfigure", "Scale",
 		   "SubfigureLabel", "ScaleLabel", "ClassificationCodes", "User", "Run", "Status", "SaveExtensions", "gen_uuid7",
-		   "get_guest_uuid", "ArticleAuthor", "RunArticles", "cryptographic_hash", "ActiveUser", "QueryCache"]
+		   "get_guest_uuid", "ArticleAuthor", "RunArticles", "cryptographic_hash", "QueryCache"]
 
 if version_info >= (3, 14):
 	def gen_uuid7() -> UUID:
@@ -162,15 +162,6 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 		default=None,
 		description="The user's password as a cryptographic hash.",
 		nullable=True
-	)
-
-	deleted_at: Optional[dt] = sqlmodel.Field(
-		default=None,
-		sa_column=sqlalchemy.Column(
-			sqlmodel.DateTime(timezone=True),
-			server_default=sqlalchemy.text("NULL"),
-			nullable=True,
-		)
 	)
 
 	_runs: list["Run"] = sqlmodel.Relationship(
@@ -432,6 +423,7 @@ class Article(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	)
 
 	doi: DOI_TYPE = sqlmodel.Field(
+		default=None,
 		description="The DOI of the article.",
 		sa_column=sqlalchemy.Column(
 			sa_psql.TEXT,
@@ -1042,7 +1034,3 @@ class ScaleLabel(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	@property
 	async def scale(self) -> Scale:
 		return await self.awaitable_attrs._scale
-
-
-active = sqlalchemy.select(User).where(User.deleted_at.is_(None)).subquery()
-ActiveUser = sqlalchemy.orm.aliased(User, active)

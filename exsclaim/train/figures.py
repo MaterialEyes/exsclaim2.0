@@ -154,7 +154,7 @@ def process_data_split(data_split: Dataset | IterableDataset, split_name: Litera
 								image.crop((ix1, iy1, ix2, iy2)).save(img_path / f"{img_num}.png") # image[iy1:iy2, ix1:ix2]
 							except cv2.error as e:
 								pbar.write(f"Error saving {classification} image for {image_id}: {e}")
-								logger.exception(f"Error saving {classification} image for {image_id}.", exc_info=True)
+								logger.exception(f"Error saving {classification} image for {image_id}.", exc_info=e)
 							classifications[classification] += 1
 
 							detect_file.write(f"{class_id} {x_center} {y_center} {width} {height}\n")

@@ -238,7 +238,7 @@ class JournalScraper(ExsclaimTool):
 					self._update_exsclaim(exsclaim_json, name, article_dict)
 			self.new_articles_visited.add(article)
 		except JournalScrapeError as e:
-			self.logger.exception(f"Could not scrape the details for {url}.")
+			self.logger.exception(f"Could not scrape the details for {url}.", exc_info=e)
 			await self._handle_scrape_error(e)
 			raise e
 		except Exception as e:
@@ -492,8 +492,8 @@ class FigureSeparator(ExsclaimTool):
 			self.classification_model = YOLO(self._yolov11_classifier_path)
 			self.classification_model.to(self.device)
 			self.logger.info("Subfigure classification model has been loaded.")
-		except BaseException as e:
-			self.logger.exception("Error loading YOLO models.")
+		except Exception as e:
+			self.logger.exception("Error loading YOLO models.", exc_info=e)
 			raise ExsclaimToolException from e
 
 		# Common YOLO settings if needed

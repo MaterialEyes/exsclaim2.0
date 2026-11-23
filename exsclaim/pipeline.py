@@ -9,7 +9,6 @@ lazy from .utilities import paths, PrinterFormatter, ExsclaimFormatter
 lazy from .db import Database, gen_uuid7
 
 lazy import asyncio
-lazy import copy
 lazy import cv2
 lazy import enum
 lazy import functools
@@ -65,9 +64,12 @@ class SaveMethods(enum.Flag):
 			except ValueError:
 				return None
 
-		value = functools.reduce(or_, filter(lambda x: x is not None, map(get_values, lst)))
-		if value is None:
-			return cls(0)
+		value = functools.reduce(
+			or_,
+			filter(lambda x: x is not None, map(get_values, lst)),
+			cls(0)
+		)
+
 		return value
 
 
@@ -148,7 +150,7 @@ class Pipeline:
 		"""
 		self.logger.info(info)
 
-	async def run(self, tools: list[type[ExsclaimTool]] = None, journal_scraper=True, pdf_scraper=True,
+	async def run(self, tools: list[type[ExsclaimTool]] | None = None, journal_scraper=True, pdf_scraper=True,
 				  caption_distributor=True, figure_separator=True) -> dict:
 		"""Run EXSCLAIM pipeline on Pipeline instance's query path
 
@@ -328,8 +330,10 @@ class Pipeline:
 				try:
 					await notifier.notify(notification, self.logger)
 				except CouldNotNotifyException as e:
-					self.logger.exception(f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".",
-										  exc_info=e)
+					self.logger.exception(
+						f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".",
+						exc_info=e
+					)
 
 		return self.exsclaim_dict
 
@@ -469,8 +473,8 @@ class Pipeline:
 
 			try:
 				cv2.imwrite(str(directory / _name), patch)
-			except Exception as err:
-				self.logger.exception((f"Error in saving cropped master image of figure: {figure_root_name}. {err}"))
+			except Exception as e:
+				self.logger.exception(f"Error in saving cropped master image of figure: {figure_root_name}.", exc_info=e)
 
 		self.display_info(f"Printing Master Image Objects to: {self.results_directory / 'images'}\n")
 		for figure_name in self.exsclaim_dict:

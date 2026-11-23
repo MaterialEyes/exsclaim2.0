@@ -1254,7 +1254,6 @@ window.dash_clientside = Object.assign({}, window.dash_clientside, {
 
 			const content = JSON.stringify(training_data, null, 2);
 
-			// console.log(content.length);
 			return {
 				filename: "exsclaim_training_data.json",
 				content: content,

@@ -56,8 +56,6 @@ def collapse_advanced_options(n_clicks, is_open):
 	State("exsclaim-store", "data")
 )
 def update_model_list(current_provider, api_key, data):
-	from settrace import settrace
-	settrace()
 	# If the provider was just changed, remove the value in the API key input so it isn't sent to a remote provider
 	if ctx.triggered_id == "model-provider":
 		new_api_key_value = ""
