@@ -2,11 +2,11 @@
 
 Adapted from `this StackOverflow <https://stackoverflow.com/questions/38511444/>`_
 """
-from bs4 import BeautifulSoup
-from os import PathLike
-from typing import Optional
+lazy from bs4 import BeautifulSoup
+lazy from os import PathLike
+lazy from typing import Optional
 
-import httpx2
+lazy import httpx2
 
 __all__ = ["download_file_from_google_drive", "get_confirm_token", "save_response_content"]
 

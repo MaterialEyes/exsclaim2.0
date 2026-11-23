@@ -1,20 +1,20 @@
-from .config import ui_settings
+lazy from .config import ui_settings
 
-from abc import ABC, abstractmethod
-from datetime import datetime as dt, timezone as tz, timedelta as td, tzinfo
-from email.message import EmailMessage
-from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, GetCoreSchemaHandler, \
+lazy from abc import ABC, abstractmethod
+lazy from datetime import datetime as dt, timezone as tz, timedelta as td, tzinfo
+lazy from email.message import EmailMessage
+lazy from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, GetCoreSchemaHandler, \
 	field_serializer, WithJsonSchema, Field
-from smtplib import SMTP, SMTP_SSL
-from typing import Annotated, Generator, Optional, Type, Self
-from uuid import UUID
+lazy from smtplib import SMTP, SMTP_SSL
+lazy from typing import Annotated, Generator, Optional, Type, Self
+lazy from uuid import UUID
 
-import asyncio
-import httpx2
-import logging
-import re
-import ssl
-import zoneinfo
+lazy import asyncio
+lazy import httpx2
+lazy import logging
+lazy import re
+lazy import ssl
+lazy import zoneinfo
 
 __all__ = ["Notification", "SuccessNotification", "InterruptionNotification", "ErrorNotification", "Notifier",
 		   "NTFY", "Email", "Webhook", "CouldNotNotifyException", "QueryNotifications"]
@@ -187,6 +187,11 @@ class NTFY(Notifier):
 			from traceback import format_exception
 			data = f"An error occurred at {finished_at} running{' the' if notification.run_id is None else ''} EXSCLAIM! query{f' `{notification.run_id}`' if notification.run_id is not None else ''}.\n"
 			data += ' '.join(format_exception(notification.exception))
+			log_link = self._get_logs_link(notification.run_id)
+			if log_link is not None:
+				headers["Actions"] = f"view, View Logs, {ui_link}"
+			else:
+				del headers["Actions"]
 
 		async with httpx2.AsyncClient() as client:
 			try:
@@ -330,7 +335,7 @@ class Slack(Webhook):
 							"type": "section",
 							"text": {
 								"type": "mrkdwn",
-								"text": f"Results for <{logs_link}|{notification.name}> failed at{timestamp}. "
+								"text": f"Results for <{logs_link}|{notification.name}> failed {timestamp}. "
 										f"Logs are available at <{logs_link}|{logs_link}>."
 							}
 						},
@@ -468,7 +473,7 @@ class QueryNotifications(BaseModel):
 	webhooks: list[Webhook] = Field(description="A list of webhooks that the system will POST to when EXSCLAIM has finished running.",
 									default_factory=list)
 
-	def __iter__(self) -> Generator[Notification, None, None]:
+	def __iter__(self) -> Generator[Notifier, None, None]:
 		for notifiers in (self.ntfy, self.webhooks):
 			for notifier in notifiers:
 				yield notifier

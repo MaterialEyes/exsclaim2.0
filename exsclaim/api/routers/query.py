@@ -1,32 +1,34 @@
-from ...config import settings
-from ...db import get_db_session
-from ..models import Run, User, ExsclaimJSONResponse, Status, get_guest_uuid, ClassificationCodes, PreviousRunFilters, QueryTools, Query, gen_uuid7, SaveExtensions
-from ..dependencies import ActiveUserId, CurrentUserId
+lazy from exsclaim.config import settings
+lazy from exsclaim.db import get_db_session
+lazy from exsclaim.api.models import Run, User, ExsclaimJSONResponse, Status, get_guest_uuid, ClassificationCodes, \
+	PreviousRunFilters, QueryTools, Query, gen_uuid7, SaveExtensions
+lazy from exsclaim.api.dependencies import ActiveUserId, CurrentUserId, IdempotencyHeader, AcceptHeader
 
-import fastapi
-import json
-import logging
-import tarfile
+lazy import fastapi
+lazy import html
+lazy import json
+lazy import logging
+lazy import tarfile
 
-from asyncio import all_tasks, create_task, CancelledError, Task
-from base64 import b64encode
-from datetime import datetime as dt
-from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
-from fastapi import Body, Depends, status
-from hashlib import sha256
-from os import listdir
-from pathlib import Path
-from sqlalchemy import select, update, insert, delete
-from shutil import make_archive, get_archive_formats
-from starlette.requests import Request
-from starlette.responses import Response, FileResponse, JSONResponse
-from sqlalchemy import text
-from tarfile import open as tar_open
-from tempfile import TemporaryDirectory
-from textwrap import dedent
-from typing import Annotated, Literal, Optional
-from uuid import UUID
-from zoneinfo import ZoneInfo
+lazy from asyncio import all_tasks, create_task, CancelledError, Task
+lazy from base64 import b64encode
+lazy from datetime import datetime as dt
+lazy from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
+lazy from exsclaim import llms
+lazy from fastapi import Body, Depends, status
+lazy from hashlib import sha256
+lazy from os import listdir
+lazy from pathlib import Path
+lazy from sqlalchemy import select, update, insert, delete, text
+lazy from shutil import make_archive, get_archive_formats
+lazy from starlette.requests import Request
+lazy from starlette.responses import Response, FileResponse, JSONResponse
+lazy from tarfile import open as tar_open
+lazy from tempfile import TemporaryDirectory
+lazy from textwrap import dedent
+lazy from typing import Annotated, Literal, Optional
+lazy from uuid import UUID
+lazy from zoneinfo import ZoneInfo
 
 
 router = fastapi.APIRouter()
@@ -155,14 +157,50 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, logger: logging.L
 		}
 	}
 }, tags=["Using EXSCLAIM"])
-async def query(request: Request, search_query: Query, background_tasks: fastapi.BackgroundTasks, user_id: CurrentUserId) -> Response:
+async def query(request: Request, search_query: Query, background_tasks: fastapi.BackgroundTasks, user_id: CurrentUserId,
+				accept_header: AcceptHeader, idempotency_key: IdempotencyHeader = None) -> Response:
 	logger: logging.Logger = request.state.logger
+	headers = dict()
 
-	send_json = request.headers.get("accept", "").lower() == "application/json"
+	if "application/json" not in accept_header:
+		return ExsclaimJSONResponse(
+			{"message": "This endpoint only sends application/json responses."},
+			status_code=status.HTTP_406_NOT_ACCEPTABLE
+		)
+
+	uuid = gen_uuid7()
+	str_uuid = str(uuid)
+
+	if idempotency_key is not None:
+		async with get_db_session() as session:
+			results = await session.execute(
+				text("SELECT run_id FROM results.query_cache WHERE idempotency_key = :key"),
+				dict(key=idempotency_key)
+			)
+			existing_run_id = results.scalar_one_or_none()
+
+			if existing_run_id is not None:
+				return ExsclaimJSONResponse(
+					{
+						"message": f"This query has already been submitted and the run id is {existing_run_id}.",
+						"run_id": existing_run_id
+					},
+					status_code=status.HTTP_208_ALREADY_REPORTED,
+					media_type="application/json"
+				)
+
+			await session.execute(
+				text("INSERT INTO results.query_cache(run_id, idempotency_key) VALUES(:run_id, :idempotency_key)"),
+				dict(
+					run_id=uuid,
+					idempotency_key=idempotency_key,
+				)
+			)
+			await session.commit()
+	else:
+		headers = {"Warning": "Add the Idempotency-Key with a UUID to ensure that your request is only submitted once."}
+
 	try:
-		uuid = gen_uuid7()
-		str_uuid = str(uuid)
-
 		exsclaim_input = {
 			"name": search_query.name if search_query else "exsclaim_results",
 			"run_id": str_uuid,
@@ -182,6 +220,7 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			"logging": ["exsclaim.log"],
 			"notifications": search_query.notifications.model_dump(),
 			"base_run_id": str(search_query.base_run_id) if search_query.base_run_id is not None else None,
+			"model_provider": search_query.model_provider,
 		}
 
 		results_dir = settings.RESULTS_PATH / str_uuid
@@ -190,16 +229,15 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 		with open(results_dir / "search_query.json", "w") as f:
 			json.dump(exsclaim_input, f, indent='\t')
 
-		background_tasks.add_task(run_exsclaim, uuid, results_dir / "search_query.json", logger, search_query.tools)
-
 		db_json = exsclaim_input.copy()
 		db_json["model_key"] = "model_key" in db_json.keys()
 		for unnecessary_key in ["notifications", "results_dir", "logging"]:
 			if unnecessary_key in db_json:
 				db_json.pop(unnecessary_key)
 
-		for sanitized_keys in ("name", "term", "synonyms"):
-			...  # TODO: Sanitize these user inputs
+		db_json["name"] = html.escape(db_json["name"])
+		db_json["query"]["search_field_1"]["term"] = html.escape(db_json["query"]["search_field_1"]["term"])
+		db_json["query"]["search_field_1"]["synonyms"] = [html.escape(synonym) for synonym in db_json["query"]["search_field_1"]["synonyms"]]
 
 		async with get_db_session() as session:
 			await session.execute(insert(Run).values(
@@ -210,34 +248,37 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			)
 			await session.commit()
 
-		if send_json:
-			response = ExsclaimJSONResponse(
-				{"message": "Thank you, your request is currently being processed.", "result_id": str_uuid},
-				status_code=status.HTTP_202_ACCEPTED, media_type="application/json")
-		else:
-			response = Response(
-				f"Thank you, your request is currently being processed, and the results can be found using id: {str_uuid}.",
-				status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
+		background_tasks.add_task(run_exsclaim, uuid, results_dir / "search_query.json", logger, search_query.tools)
+
+		return ExsclaimJSONResponse(
+			{
+				"message": "Thank you, your request is currently being processed.",
+				"result_id": str_uuid,
+				"run_id": str_uuid
+			},
+			status_code=status.HTTP_202_ACCEPTED,
+			media_type="application/json",
+			headers=headers
+		)
 	except OSError as e:
-		logger.exception(e)
-		message = "An error occurred connecting to the database. Please try again later."
-		if send_json:
-			response = ExsclaimJSONResponse({"message": message}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="application/json")
-		else:
-			response = Response(message, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="text/plain")
+		logger.exception(f"An OSError occurred when query {uuid} was submitted.", exc_info=e)
+		return ExsclaimJSONResponse(
+			{"message": "An error occurred connecting to the database. Please try again later."},
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			media_type="application/json",
+			headers=headers
+		)
 	except Exception as e:
-		print(f"{e}")
 		logger.exception("An unknown error occurred when querying.", exc_info=e)
-		message = "An unknown error occurred within the EXSCLAIM! API. Please try again later."
-		if send_json:
-			response = ExsclaimJSONResponse({"message": message}, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="application/json")
-		else:
-			response = Response(message, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, media_type="text/plain")
+		return ExsclaimJSONResponse(
+			{"message": "An unknown error occurred within the EXSCLAIM! API. Please try again later."},
+			status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+			media_type="application/json",
+			headers=headers
+		)
 
-	return response
 
-
-@router.api_route("/status/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
+@router.api_route("/status/{run_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
 		responses={
 			200: {
 				"description": "Status Found for ID.",
@@ -370,16 +411,16 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 				}
 			},
 		})
-async def status_def(request: Request, result_id: UUID, user_id: CurrentUserId):
+async def status_def(request: Request, run_id: UUID, user_id: CurrentUserId):
 	logger: logging.Logger = request.state.logger
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == result_id))
+		results = await session.execute(select(Run).where(Run.id == run_id))
 		result: Run = results.scalar_one_or_none()
 
 	if not User.has_permission(user_id, result):
 		return ExsclaimJSONResponse({
 			"results_status": "Not Found",
-			"message": f"There is no query recorded in our database with id: {result_id}."
+			"message": f"There is no query recorded in our database with id: {run_id}."
 		}, status_code=status.HTTP_404_NOT_FOUND, media_type="application/json")
 
 	results_status, start_time, end_time = result.status, result.start_time, result.end_time
@@ -396,7 +437,7 @@ async def status_def(request: Request, result_id: UUID, user_id: CurrentUserId):
 		case Status.ERROR:
 			status_code = 210
 		case _:
-			logger.exception(f"Unknown results_status {results_status} when checking results_status of {result_id}.")
+			logger.exception(f"Unknown results_status {results_status} when checking results_status of {run_id}.")
 			return ExsclaimJSONResponse(dict(message="An unknown results_status was saved in our database. Try again later."),
 						 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="application/json")
 
@@ -409,58 +450,58 @@ async def status_def(request: Request, result_id: UUID, user_id: CurrentUserId):
 
 	headers = dict()
 	if results_status == Status.FINISHED:
-		headers = {"Location": f"/results/{result_id}"}
+		headers = {"Location": f"/results/{run_id}"}
 
 	return ExsclaimJSONResponse(info, status_code=status_code, media_type="application/json", headers=headers)
 
 
-@router.api_route("/stop/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
-async def stop_run(result_id: UUID, user_id: CurrentUserId):
+@router.api_route("/stop/{run_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
+async def stop_run(run_id: UUID, user_id: CurrentUserId):
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == result_id))
+		results = await session.execute(select(Run).where(Run.id == run_id))
 		result: Run = results.scalar_one_or_none()
 
 	if result.user_id != user_id:
 		return ExsclaimJSONResponse({
 			"status": "Not Found",
-			"message": f"There is no query recorded in our database with id: {result_id}."
+			"message": f"There is no query recorded in our database with id: {run_id}."
 		}, status_code=status.HTTP_404_NOT_FOUND)
 
 	match result.status:
 		case Status.FINISHED:
 			return ExsclaimJSONResponse({
-				"message": f"Run {result_id} has already finished running."
+				"message": f"Run {run_id} has already finished running."
 			}, status_code=status.HTTP_406_NOT_ACCEPTABLE)
 		case Status.ERROR:
 			return ExsclaimJSONResponse({
-				"message": f"Run {result_id} has already stopped running due to an error."
+				"message": f"Run {run_id} has already stopped running due to an error."
 			}, status_code=status.HTTP_412_PRECONDITION_FAILED)
 		case Status.STOPPED:
 			return ExsclaimJSONResponse({
-				"message": f"Run {result_id} has already stopped early."
+				"message": f"Run {run_id} has already stopped early."
 			}, status_code=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 	# The pipeline is still running for the pipeline
-	task_name = get_pipeline_task_name(result_id)
+	task_name = get_pipeline_task_name(run_id)
 	tasks = tuple(filter(lambda task: task.get_name() == task_name, all_tasks()))
 
 	if len(tasks) == 0:
 		return ExsclaimJSONResponse({
-			"message": f"Could not find a running pipeline for {result_id}. Please try again later."
+			"message": f"Could not find a running pipeline for {run_id}. Please try again later."
 		}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 	elif len(tasks) > 1:
 		return ExsclaimJSONResponse({
-			"message": f"Found too many running pipelines for {result_id}. Please try again later."
+			"message": f"Found too many running pipelines for {run_id}. Please try again later."
 		}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 	task: Task = tasks[0]
 	task.cancel("Pipeline stopped upon user request.")
 	return ExsclaimJSONResponse({
-		"message": f"Stopped the pipeline for {result_id}."
+		"message": f"Stopped the pipeline for {run_id}."
 	}, status_code=status.HTTP_200_OK)
 
 
-@router.api_route("/results/{result_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"], responses={
+@router.api_route("/results/{run_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"], responses={
 	200: {
 		"description": "Results Compressed and Included.",
 		"content": {
@@ -528,15 +569,15 @@ async def stop_run(result_id: UUID, user_id: CurrentUserId):
 		}
 	},
 })
-async def download(request: Request, result_id: UUID, user_id: CurrentUserId, compression: str = "default",
-                   filename: Literal["name", "id"] = "id", tmp_dir_name: str = Depends(get_temp_dir)) -> Response:
+async def download(request: Request, run_id: UUID, user_id: CurrentUserId, compression: str = "default",
+				   filename: Literal["name", "id"] = "id", tmp_dir_name: str = Depends(get_temp_dir)) -> Response:
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == result_id))
+		results = await session.execute(select(Run).where(Run.id == run_id))
 		result: Run = results.scalar_one_or_none()
 
 	if not User.has_permission(user_id, result):
-		return Response(f"There is no query recorded in our database with id: {result_id}.", status_code=status.HTTP_404_NOT_FOUND,
-		                media_type="text/plain")
+		return Response(f"There is no query recorded in our database with id: {run_id}.", status_code=status.HTTP_404_NOT_FOUND,
+						media_type="text/plain")
 
 	# Set the filename to be id by default
 	if compression != "default":
@@ -572,10 +613,10 @@ async def download(request: Request, result_id: UUID, user_id: CurrentUserId, co
 			...
 		case _:
 			return Response(
-				f"The database has an unknown status for id \"{result_id}\" and cannot send the results at this time.",
+				f"The database has an unknown status for id \"{run_id}\" and cannot send the results at this time.",
 				status_code=status.HTTP_501_NOT_IMPLEMENTED, media_type="text/plain")
 
-	results_file = (settings.RESULTS_PATH / str(result_id)).with_suffix(".tar.gz")
+	results_file = (settings.RESULTS_PATH / str(run_id)).with_suffix(".tar.gz")
 	if not results_file.exists():
 		return Response(
 			"The result id was found in our database, but the corresponding results file could not be found. Please try again later.",
@@ -592,7 +633,7 @@ async def download(request: Request, result_id: UUID, user_id: CurrentUserId, co
 	name = [file for file in listdir(tmp_dir) if "." not in file][0]
 
 	results_file = Path(
-		make_archive(str(tmp_dir / str(result_id)), compression, root_dir=str(tmp_dir), base_dir=name)
+		make_archive(str(tmp_dir / str(run_id)), compression, root_dir=str(tmp_dir), base_dir=name)
 	)
 
 	if filename == "name":
@@ -604,37 +645,52 @@ async def download(request: Request, result_id: UUID, user_id: CurrentUserId, co
 	                    headers={"Content-Disposition": f"inline ; filename = \"{filename}\""})
 
 
-@router.delete("/results/{result_id}", tags=["Using EXSCLAIM"])
-async def delete_results(result_id: UUID, user_id: CurrentUserId) -> Response:
+@router.delete("/results/{run_id}", tags=["Using EXSCLAIM"])
+async def delete_results(run_id: UUID, user_id: CurrentUserId) -> Response:
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == result_id))
+		results = await session.execute(select(Run).where(Run.id == run_id))
 		result: Run = results.scalar_one_or_none()
 
 		if result is None or not User.has_permission(user_id, result):
-			return JSONResponse(dict(detail=f"There is no query recorded in our database with id: {result_id}.", result_id=str(result_id)),
-								status_code=status.HTTP_404_NOT_FOUND)
+			return JSONResponse(
+				dict(
+					detail=f"There is no query recorded in our database with id: {run_id}.",
+					result_id=str(run_id),
+					run_id=str(run_id),
+				),
+				status_code=status.HTTP_404_NOT_FOUND
+			)
 		if result.user_id == get_guest_uuid():
-			return JSONResponse(dict(detail="Runs started by guest users (anonymous/not logged in) cannot be deleted."),
-								status_code=status.HTTP_401_UNAUTHORIZED)
+			return JSONResponse(
+				dict(detail="Runs started by guest users (anonymous/not logged in) cannot be deleted."),
+				status_code=status.HTTP_401_UNAUTHORIZED
+			)
 
-		await session.execute(delete(Run).where(Run.id == result_id))
-	return JSONResponse(dict(detail="Run deleted", result_id=str(result_id)), status_code=status.HTTP_200_OK)
+		await session.execute(delete(Run).where(Run.id == run_id))
+	return JSONResponse(
+		dict(
+			detail="Run deleted",
+			result_id=str(run_id),
+			run_id=str(run_id)
+		),
+		status_code=status.HTTP_200_OK
+	)
 
 
 STARTED_BACKING_UP_LOGS = dt(2026, 7, 8, 9, 30, tzinfo=ZoneInfo("America/Chicago"))
 
 
-@router.api_route("/results/{result_id}/logs", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
-async def download_logs(request: Request, result_id: UUID, user_id: CurrentUserId):
+@router.api_route("/results/{run_id}/logs", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
+async def download_logs(request: Request, run_id: UUID, user_id: CurrentUserId):
 	logger = request.state.logger
 
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == result_id))
+		results = await session.execute(select(Run).where(Run.id == run_id))
 		result: Optional[Run] = results.scalar_one_or_none()
 
 	if result is None or not User.has_permission(user_id, result):
-		return Response(f"There is no query recorded in our database with id: {result_id}.",
-		                status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
+		return Response(f"There is no query recorded in our database with id: {run_id}.",
+						status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
 	name = result.search_query["name"]
 	if result.start_time < STARTED_BACKING_UP_LOGS:
@@ -645,17 +701,17 @@ async def download_logs(request: Request, result_id: UUID, user_id: CurrentUserI
 								status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
 	if result.status == Status.RUNNING:
-		logs_path = settings.RESULTS_PATH / str(result_id) / name / "exsclaim.log"
+		logs_path = settings.RESULTS_PATH / str(run_id) / name / "exsclaim.log"
 		if not logs_path.exists():
-			logger.error(f"Could not find the log file for run \"{result_id}\" in {logs_path}.")
+			logger.error(f"Could not find the log file for run \"{run_id}\" in {logs_path}.")
 			return missing_logs
 
 		with open(logs_path, "rb") as f:
 			logs = f.read()
 	else:
-		results_path = settings.RESULTS_PATH / f"{result_id}.tar.gz"
+		results_path = settings.RESULTS_PATH / f"{run_id}.tar.gz"
 		if not (results_path.exists() and tarfile.is_tarfile(results_path)):
-			logger.error(f"Could not find the log file for run \"{result_id}\" in {results_path}.")
+			logger.error(f"Could not find the log file for run \"{run_id}\" in {results_path}.")
 			return missing_logs
 
 		with tarfile.open(results_path, "r:gz") as tar:
@@ -663,7 +719,7 @@ async def download_logs(request: Request, result_id: UUID, user_id: CurrentUserI
 				f = tar.extractfile(f"{name}/exsclaim.log")
 				logs: bytes = f.read().strip()
 			except KeyError as e:
-				logger.exception(f"Could not find the log file for run \"{result_id}\" in {results_path}.", exc_info=e)
+				logger.exception(f"Could not find the log file for run \"{run_id}\" in {results_path}.", exc_info=e)
 				return Response("Could not find log file in the saved results file.", status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
 	digest = sha256(logs).hexdigest()
@@ -671,14 +727,14 @@ async def download_logs(request: Request, result_id: UUID, user_id: CurrentUserI
 	                media_type="text/plain")
 
 
-@router.api_route("/results/{result_id}/publicize", methods=["POST", "HEAD"], tags=["Using EXSCLAIM"])
-async def publicize_result(result_id: UUID, user_id: ActiveUserId, publicize: bool = Body(...)):
+@router.api_route("/results/{run_id}/publicize", methods=["POST", "HEAD"], tags=["Using EXSCLAIM"])
+async def publicize_result(run_id: UUID, user_id: ActiveUserId, publicize: bool = Body(...)):
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == result_id))
+		results = await session.execute(select(Run).where(Run.id == run_id))
 		results: Optional[Run] = results.scalar_one_or_none()
 
 		if results is None or results.user_id != user_id:
-			return Response(f"There is no query recorded in our database with id: {result_id}.",
+			return Response(f"There is no query recorded in our database with id: {run_id}.",
 							status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
 		if results.user_id == get_guest_uuid():
@@ -686,10 +742,11 @@ async def publicize_result(result_id: UUID, user_id: ActiveUserId, publicize: bo
 							status_code=status.HTTP_403_FORBIDDEN, media_type="text/plain")
 
 		if publicize == results.publicize_results:
-			return Response(f"Publicization status for {result_id} is already {publicize}.",
+			return Response(f"Publicization status for {run_id} is already {publicize}.",
 							status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
 
-		await session.execute(update(Run).where(Run.id == result_id).values(publicize_results=publicize))
+		await session.execute(update(Run).where(Run.id == run_id).values(publicize_results=publicize))
+		await session.commit()
 	return Response("Publicization status updated.", status_code=status.HTTP_200_OK, media_type="text/plain")
 
 
@@ -819,7 +876,7 @@ async def download_checkpoint(checkpoint: str) -> Response:
 						stat_result=checkpoint_path.stat())
 
 
-@router.api_route("/previous_runs", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
+@router.api_route("/previous_runs", methods=["GET", "QUERY", "HEAD"], tags=["Using EXSCLAIM"])
 async def previous_runs(user_id: CurrentUserId, conditions: Annotated[PreviousRunFilters, fastapi.Query()]) -> JSONResponse:
 	query = dedent(f"""
 		SELECT {conditions.selection} FROM (
@@ -865,3 +922,18 @@ async def previous_runs(user_id: CurrentUserId, conditions: Annotated[PreviousRu
 		output[i] = run
 
 	return JSONResponse(fastapi.encoders.jsonable_encoder(output), status_code=status.HTTP_200_OK)
+
+
+@router.api_route("/query/llms", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
+async def get_available_llms() -> JSONResponse:
+	info = dict()
+	for provider, cls in llms.LLM.classes.items():
+		requires_api = cls._api_key_needed_for_list()
+		available_models = [model[-1] for model in cls.available_models(silent_fail=True)] if not requires_api else []
+
+		info[provider] = {
+			"requires_api": requires_api,
+			"available_llms": available_models
+		}
+
+	return JSONResponse(info, status_code=status.HTTP_200_OK)

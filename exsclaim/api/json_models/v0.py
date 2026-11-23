@@ -1,6 +1,6 @@
-from pathlib import Path
-from pydantic import BaseModel, RootModel, Field
-from typing import Any, TypeVar, Generic
+lazy from pathlib import Path
+lazy from pydantic import BaseModel, RootModel, Field
+lazy from typing import Any, TypeVar, Generic
 
 
 __all__ = ["OutputV0"]

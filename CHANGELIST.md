@@ -1,3 +1,33 @@
+# Version 2.5.3
+## API
+- The API now displays available LLMs for the providers that don't require an API key to list their models (`/query/llms`).
+- The logout method was moved from `/user/logout` to `/user/cookie/logout`, and the refresh method was moved from `/user/refresh` to `/user/cookie/refresh`.
+- Added metrics tracking using Prometheus.
+- \[Internal\] Middlewares no longer inherit from starlette's BaseHTTPMiddleware.
+
+## Dashboard
+- Removed the login and signup pages at `/login`/`/signup`. The forms were added as a modal to each page to make it easier to keep your current context when working.
+- \[Internal\] Moved all callbacks into their own submodule (`exsclaim.dashboard.callbacks`) to prevent them from being registered multiple times.
+- Dashboard users now select the LLM provider that they'd like to use, and now have the ability to input their API key to see what LLMs they can use.
+
+## Pipeline
+- Runs submitted to `/query` can now have the `Idempotency-Key` header set with a UUID to prevent duplicate runs.
+- The database will now upload article metadata even if the article is already there, in case a previous run missed something.
+
+### Journal
+- Started recording Digital Object Identifiers (DOIs) for articles.
+
+### LLM
+- Added support for [Google's GenAI](./exsclaim/llms/google_llms.py) models.
+- LLM classes now indicate if an API key is needed to list available models.
+
+## Other
+- `datasets` and `huggingface_hub` are now optional dependencies installed using `pip install exsclaim[train]`.
+
+### Training
+- Added logging to the training process.
+- Add MLFlow tracking capabilities to the training process.
+
 # Version 2.5.2
 ## Database
 - Renamed the table `results.results` to `results.runs`, and the accompanying model from `exsclaim.api.models.Results` to `exsclaim.db.models.Run`.

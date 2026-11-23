@@ -1,19 +1,19 @@
-import pydantic
-import re
-import sqlalchemy
-import sqlalchemy.dialects.postgresql as sa_psql
-import sqlmodel
+lazy import pydantic
+lazy import re
+lazy import sqlalchemy
+lazy import sqlalchemy.dialects.postgresql as sa_psql
+lazy import sqlmodel
 
-from datetime import datetime as dt, timezone as tz
-from enum import StrEnum
-from sqlalchemy.ext.asyncio import AsyncAttrs
-from sys import version_info
-from typing import Annotated, Optional
-from uuid import UUID
+lazy from datetime import datetime as dt, timezone as tz
+lazy from enum import StrEnum
+lazy from sqlalchemy.ext.asyncio import AsyncAttrs
+lazy from sys import version_info
+lazy from typing import Annotated, Optional
+lazy from uuid import UUID
 
-__all__ = ["Author", "ORCID_REGEX", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel", "ScaleLabel",
-		   "ClassificationCodes", "User", "Run", "Status", "SaveExtensions", "gen_uuid7", "get_guest_uuid",
-		   "ArticleAuthor", "RunArticles", "cryptographic_hash"]
+__all__ = ["Author", "ORCID_REGEX", "DOI_REGEX_STRING", "DOI_REGEX", "Article", "Figure", "Subfigure", "Scale",
+		   "SubfigureLabel", "ScaleLabel", "ClassificationCodes", "User", "Run", "Status", "SaveExtensions", "gen_uuid7",
+		   "get_guest_uuid", "ArticleAuthor", "RunArticles", "cryptographic_hash", "QueryCache"]
 
 if version_info >= (3, 14):
 	def gen_uuid7() -> UUID:
@@ -60,9 +60,14 @@ class Status(StrEnum):
 
 
 # language=PythonRegExp
+DOI_REGEX_STRING = r"(10\.\d{4,9})/([-.;()/:\w%]+)"
+DOI_REGEX = re.compile(DOI_REGEX_STRING)
+
+# language=PythonRegExp
 ORCID_REGEX_STRING = r"([\dX]{4}-[\dX]{4}-[\dX]{4}-[\dX]{4})"
 ORCID_REGEX = re.compile(ORCID_REGEX_STRING)
 
+DOI_TYPE = Annotated[Optional[str], pydantic.StringConstraints(pattern=DOI_REGEX_STRING)]
 ORCID_TYPE = Annotated[Optional[str], pydantic.StringConstraints(pattern=ORCID_REGEX_STRING)]
 """A temporary fix while SQLModel is missing the pattern kwarg."""
 
@@ -112,6 +117,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	)
 
 	email: Optional[pydantic.EmailStr] = sqlmodel.Field(
+		default=None,
 		description="The user's email.",
 		sa_column=sqlalchemy.Column(
 			sa_psql.TEXT,
@@ -121,6 +127,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	)
 
 	orcid: ORCID_TYPE = sqlmodel.Field(
+		default=None,
 		description="The ORCID id associated with the user's login.",
 		regex=ORCID_REGEX,
 		# pattern=ORCID_REGEX,
@@ -142,6 +149,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	)
 
 	salt: Optional[bytes] = sqlmodel.Field(
+		default=None,
 		# default_factory=generate_salt,
 		description="The salt for the user's password.",
 		nullable=True,
@@ -151,11 +159,12 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 
 	# DO NOT ENTER RAW (CLEARTEXT) PASSWORDS INTO THE DATABASE, ONLY ENCRYPTED HASHES!
 	password_hash: Optional[bytes] = sqlmodel.Field(
+		default=None,
 		description="The user's password as a cryptographic hash.",
 		nullable=True
 	)
 
-	_runs: list[Run] = sqlmodel.Relationship(
+	_runs: list["Run"] = sqlmodel.Relationship(
 		back_populates="owner",
 		sa_relationship_kwargs={
 			"collection_class": list
@@ -163,7 +172,7 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	)
 
 	@property
-	async def runs(self) -> list[Run]:
+	async def runs(self) -> list["Run"]:
 		return await self.awaitable_attrs._runs
 
 	@property
@@ -412,6 +421,18 @@ class Article(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=True,
 		)
 	)
+
+	doi: DOI_TYPE = sqlmodel.Field(
+		default=None,
+		description="The DOI of the article.",
+		sa_column=sqlalchemy.Column(
+			sa_psql.TEXT,
+			default=None,
+			nullable=True,
+			unique=True
+		)
+	)
+
 	open: bool = sqlmodel.Field(
 		default=False,
 		description="If the article is open access."
@@ -489,6 +510,7 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		)
 	)
+
 	user_id: UUID = sqlmodel.Field(
 		default_factory=get_guest_uuid,
 		description="The ID of the user that requested this run.",
@@ -498,6 +520,7 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		)
 	)
+
 	start_time: dt = sqlmodel.Field(
 		default_factory=lambda: dt.now(tz.utc),
 		sa_column=sqlalchemy.Column(
@@ -506,6 +529,7 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		)
 	)
+
 	end_time: Optional[dt] = sqlmodel.Field(
 		sa_column=sqlalchemy.Column(
 			sqlmodel.DateTime(timezone=True),
@@ -513,10 +537,12 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=True,
 		)
 	)
+
 	search_query: dict = sqlmodel.Field(
 		nullable=False,
 		sa_type=sa_psql.JSONB
 	)
+
 	extension: SaveExtensions = sqlmodel.Field(
 		default=SaveExtensions.TAR,
 		sa_column=sqlalchemy.Column(
@@ -530,6 +556,7 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		),
 	)
+
 	status: Status = sqlmodel.Field(
 		default=Status.RUNNING,
 		sa_column=sqlalchemy.Column(
@@ -543,6 +570,7 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			nullable=False,
 		),
 	)
+
 	publicize_results: bool = sqlmodel.Field(
 		default=False,
 		sa_column_kwargs=dict(
@@ -563,6 +591,41 @@ class Run(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	@property
 	async def articles(self) -> list["Article"]:
 		return [link.article for link in await self.awaitable_attrs._article_links]
+
+
+class QueryCache(sqlmodel.SQLModel):
+	__tablename__ = "query_cache"
+	__table_args__ = (
+		sqlalchemy.PrimaryKeyConstraint("run_id"),
+		dict(schema="results", prefixes=["UNLOGGED"])
+	)
+
+	run_id: UUID = sqlmodel.Field(
+		description="The run ID that was created for this query.",
+		sa_column=sqlalchemy.Column(
+			sa_psql.UUID(as_uuid=True),
+			unique=True,
+			nullable=False,
+		)
+	)
+
+	idempotency_key: UUID = sqlmodel.Field(
+		description="The idempotency key sent by the client to ensure this query isn't submitted multiple times.",
+		sa_column=sqlalchemy.Column(
+			sa_psql.UUID(as_uuid=True),
+			unique=True,
+			nullable=False,
+		)
+	)
+
+	created_at: dt = sqlmodel.Field(
+		default_factory=lambda: dt.now(tz.utc),
+		sa_column=sqlalchemy.Column(
+			sqlmodel.DateTime(timezone=True),
+			server_default=sqlalchemy.text("NOW()"),
+			nullable=False,
+		)
+	)
 
 
 class RunArticles(AsyncAttrs, sqlmodel.SQLModel, table=True):

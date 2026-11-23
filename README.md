@@ -1,6 +1,7 @@
 # EXSCLAIM2.0: LLM-powered Automatic **EX**traction, **S**eparation, and **C**aption-based natural **L**anguage **A**nnotation of **IM**ages from scientific figures
 [![License](https://img.shields.io/github/license/MaterialEyes/exsclaim2.0.svg?color=blue)](https://github.com/MaterialEyes/exsclaim2.0/blob/main/LICENSE)
 [![Release](https://img.shields.io/github/release/MaterialEyes/exsclaim2.0.svg)](https://github.com/MaterialEyes/exsclaim2.0/releases)
+[![PyPI Version](https://img.shields.io/pypi/v/exsclaim)](https://pypi.org/project/exsclaim)
 [![DOI](https://zenodo.org/badge/DOI/10.48550/arXiv.2103.10631.svg)](https://arxiv.org/abs/2103.10631)
 <br>
 [![Production Website](https://img.shields.io/website?url=https%3A%2F%2Fexsclaim.materialeyes.org%2F&up_message=online&down_message=offline&down_color=red&label=Production%20Website)](https://exsclaim.materialeyes.org)
@@ -43,7 +44,7 @@ More extensive guides can be found within the [wiki](https://github.com/Material
 ### Using Docker Compose
 To use Docker Compose to host the service, run the following commands in the base directory:
 ```shell
-docker compose up --build python
+docker compose up --build exsclaim
 ```
 
 ## Upgrading the Database

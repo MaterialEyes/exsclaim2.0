@@ -109,23 +109,19 @@ def test_user_methods(client: TestClient, name: Optional[str] = None, email: Opt
 	assert has_cookie(client, response, "access_token"), "Access token was not provided when user was created."
 	assert has_cookie(client, response, "refresh_token"), "Refresh token was not provided when user was created."
 
-	# Make sure that refreshing the access_token works
-	response = client.get("/user/remaining_access")
-	assert response.status_code == 200, f"Could not check how long the access token exists for: {response.text}"
-
-	response = client.post("/user/refresh")
+	response = client.post("/user/protected/refresh")
 	set_cookies(client, response)
 	assert has_cookie(client, response, "access_token"), "Access token was not provided when refreshed."
 
 	# Logout
-	response = client.get("/user/logout")
+	response = client.get("/user/protected/logout")
 	assert response.status_code == 200, f"Logout was not successful: {response.text}"
 	set_cookies(client, response)
 	assert not has_cookie(client, response, "access_token"), "Access token is still here even after logging out."
 	assert not has_cookie(client, response, "refresh_token"), "Refresh token is still here even after logging out."
 
 	# Logout when not logged in
-	response = client.get("/user/logout")
+	response = client.get("/user/protected/logout")
 	assert response.status_code == 401, f"Logout when not logged in did not work as expected: {response.text}"
 
 	# Get guest name
@@ -158,7 +154,7 @@ def test_user_methods(client: TestClient, name: Optional[str] = None, email: Opt
 	assert response.status_code == 409, f"Creating an account that already exists did not respond as expected: {response.text}"
 
 	# Delete the account
-	response = client.delete("/user/remove_user")
+	response = client.delete("/user/protected/remove_user")
 	assert response.status_code == 200, f"Could not properly delete account: {response.text}"
 
 

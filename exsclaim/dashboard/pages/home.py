@@ -2,7 +2,7 @@
 HomePage component - the main landing page for EXSCLAIM dashboard.
 Converted from React HomePage.js component.
 """
-from dash import html, register_page
+lazy from dash import html, register_page
 
 register_page(__name__, path="/",
 			  description="Home page for Extraction, Separation, and Caption-based natural Language Annotation of Images from scientific figures (EXSCLAIM) dashboard.")

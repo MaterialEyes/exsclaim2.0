@@ -1,25 +1,25 @@
 # -*- coding: utf-8 -*-
-from ..exceptions import ExsclaimToolException
+lazy from ..exceptions import ExsclaimToolException
 
-from abc import ABC, abstractmethod, ABCMeta
-from asyncio import Semaphore
-from base64 import b64encode
-from dataclasses import dataclass
-from io import BytesIO
-from json import dumps
-from logging import Logger
-from PIL import Image
-from pydantic import BaseModel, Field
-from pydantic_core import ValidationError
-from re import sub
-from textwrap import dedent
-from typing import Literal, Iterable, Type, Optional, Any, TypeVar, Self, Collection, NamedTuple
-from uuid import UUID
+lazy from abc import ABC, abstractmethod, ABCMeta
+lazy from asyncio import Semaphore
+lazy from base64 import b64encode
+lazy from dataclasses import dataclass
+lazy from io import BytesIO
+lazy from logging import Logger
+lazy from PIL import Image
+lazy from pydantic import BaseModel, Field
+lazy from pydantic_core import ValidationError
+lazy from textwrap import dedent
+lazy from typing import Any, Collection, Iterable, Literal, NamedTuple, Optional, Self, Type, TypeVar
+lazy from uuid import UUID
 
-import numpy as np
+lazy import json
+lazy import numpy as np
 
 
-__all__ = ["ChatMessage", "LLMOptions", "LLMMeta", "LLMUsage", "LLM", "CaptionEntry", "Captions", "Keywords", "ResponseBase", "OptionalSemaphore"]
+__all__ = ["ChatMessage", "LLMOptions", "LLMMeta", "LLMUsage", "LLM", "CaptionEntry", "Captions", "Keywords",
+		   "ResponseBase", "OptionalSemaphore"]
 
 
 ResponseBase = TypeVar("ResponseBase", bound=str | BaseModel)
@@ -102,16 +102,16 @@ class LLMOptions(NamedTuple):
 
 
 class LLMMeta(ABCMeta):
-	models: dict[str, tuple[Type, bool, bool, Optional[str]]] = dict()
-	unscanned_classes = []
-	classes = set()
+	_models: dict[str, tuple[Type, bool, bool, Optional[str]]] = dict()
+	_unscanned_classes = []
+	_classes: dict[str, type["LLM"]] = dict()
 
 	def __new__(meta_class, name, bases, dct):
 		cls = super().__new__(meta_class, name, bases, dct)
 
 		if name != "LLM":
-			LLMMeta.unscanned_classes.append(cls)
-			LLMMeta.classes.add(cls)
+			LLMMeta._unscanned_classes.append(cls)
+			LLMMeta._classes[cls.display_name()] = cls
 
 		return cls
 
@@ -123,22 +123,35 @@ class LLMMeta(ABCMeta):
 
 		model_name = args[0]
 		try:
-			actual_cls, *_ = LLMMeta.models[model_name]
+			actual_cls, *_ = LLMMeta._models[model_name]
 		except KeyError as e:
 			raise ExsclaimToolException(f"{model_name} is not an available model.") from e
 		return actual_cls.__call__(*args, **kwargs)
 
 	def __iter__(cls):
 		cls.append_llms()
-		return iter(LLMMeta.models.items())
+		return iter(LLMMeta._models.items())
 
 	def append_llms(cls):
-		for scan_cls in LLMMeta.unscanned_classes:
-			for model, allows_api_key, needs_api_key, label in scan_cls.available_models():
-				LLMMeta.models[model] = (scan_cls, allows_api_key, needs_api_key, label)
+		for scan_cls in LLMMeta._unscanned_classes:
+			if scan_cls._api_key_needed_for_list():
+				continue
 
-		LLMMeta.unscanned_classes.clear()
-		LLM._models = LLMMeta.models
+			for model, allows_api_key, needs_api_key, label in scan_cls.available_models():
+				LLMMeta._models[model] = (scan_cls, allows_api_key, needs_api_key, label)
+
+		LLMMeta._unscanned_classes.clear()
+
+	@property
+	def classes(cls):
+		return cls._classes
+
+	@property
+	def models(cls) -> dict[str, tuple[Type, bool, bool, Optional[str]]]:
+		"""Returns a dictionary containing each available LLM.
+		Each key is the name of the LLM, and the value includes the class that will instantiate the model, if the model needs an API key/password,
+		and an optional readable name."""
+		return cls._models
 
 
 @dataclass
@@ -164,22 +177,21 @@ class OptionalSemaphore(Semaphore):
 
 
 class LLM(ABC, metaclass=LLMMeta):
-	_models = dict()
-	_classes = set()
-
 	def __init__(self, model: str, api_key: str | None = None, *args, **kwargs):
 		self.model = model
 
-	@staticmethod
-	def models() -> dict[str, tuple[type["LLM"], bool, bool, str]]:
-		"""Returns a dictionary containing each available LLM.
-		Each key is the name of the LLM, and the value includes the class that will instantiate the model, if the model needs an API key/password,
-		and an optional readable name."""
-		return LLM._models
+	@classmethod
+	def display_name(cls) -> str:
+		return cls.__name__
 
 	@staticmethod
 	@abstractmethod
-	def available_models() -> Iterable[LLMOptions]:
+	def _api_key_needed_for_list() -> bool:
+		...
+
+	@staticmethod
+	@abstractmethod
+	def available_models(api_key: Optional[str] = None, silent_fail: bool = False) -> Iterable[LLMOptions]:
 		"""Returns a list of tuples describing the available models.
 		Each tuple should contain the name of the model and a boolean indicating if it requires an api_key/password (True) or not (False)."""
 		...
@@ -244,10 +256,12 @@ class LLM(ABC, metaclass=LLMMeta):
 				info, usage = await self.get_response(messages, response_format=CaptionInfo)
 				break
 			except ValidationError as error:
-				messages.append(ChatMessage(role="user", content=f"Your previous response could not be parsed: {dumps(error.errors())}"))
+				messages.append(ChatMessage(role="user", content=f"Your previous response could not be parsed: {json.dumps(error.errors())}"))
 
 		captions = {entry.label: entry.caption for entry in info.captions}
-		return captions, info.keywords[:5], usage # TODO: Make sure the keywords are unique
+		keywords = info.keywords[:5]
+
+		return captions, keywords, usage
 
 	# TODO: Add deprecations to these methods
 	async def separate_captions(self, caption: str) -> dict[str, str]:
@@ -276,24 +290,29 @@ class LLM(ABC, metaclass=LLMMeta):
 		keywords = await self.get_response(messages, response_format=Keywords)
 		return tuple(keywords.keywords)
 
-	@staticmethod
-	def get_info_from_search_query(search_query: dict[str, Any]) -> tuple[str, Optional[str]]:
+	@classmethod
+	def get_info_from_search_query(cls, search_query: dict[str, Any]) -> tuple[type["LLM"], str, Optional[str]]:
 		llm = search_query.get("llm", None)
 		if llm is None:
 			raise ValueError("llm key must be provided to search_query.")
+
 		model_key = search_query.get("model_key", None)
-		return llm, model_key
+		provider = search_query.get("model_provider", None)
+		if provider is not None:
+			subclass = cls.classes.get(provider, None)
+			if subclass is None:
+				raise ValueError(f"Provider {provider} is not a valid provider.")
+		else:
+			subclass = cls
+
+		return subclass, llm, model_key
 
 	@classmethod
 	def from_search_query(cls, search_query: dict, run_id: Optional[UUID] = None):
-		llm, model_key = cls.get_info_from_search_query(search_query)
-		return cls(llm, model_key, run_id=run_id, max_tokens=search_query.get("max_tokens"))
+		subclass, llm, model_key = cls.get_info_from_search_query(search_query)
+		return subclass(llm, model_key, run_id=run_id, max_tokens=search_query.get("max_tokens"))
 
 	@classmethod
 	def validate_search_query(cls, search_query: dict):
-		llm, model_key = cls.get_info_from_search_query(search_query)
-		cls.check_validity(llm, model_key)
-
-	@staticmethod
-	def remove_control_characters(string: str) -> str:
-		return sub(r"[\x00-\x1F\x7F-\x9F]", "", string)
+		subclass, llm, model_key = cls.get_info_from_search_query(search_query)
+		subclass.check_validity(llm, model_key)

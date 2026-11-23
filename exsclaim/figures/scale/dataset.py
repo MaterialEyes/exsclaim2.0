@@ -1,15 +1,15 @@
-from json import load
-from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
-from torchvision import transforms
-from random import randint, sample, choice
+lazy from json import load
+lazy from pathlib import Path
+lazy from PIL import Image, ImageDraw, ImageFont
+lazy from torchvision import transforms
+lazy from random import randint, sample, choice
 
-import cv2 as cv
-import os
-import numpy as np
-import torch
+lazy import cv2 as cv
+lazy import os
+lazy import numpy as np
+lazy import torch
 
-from ..geometry_boxes import convert_geometry_to_coords
+lazy from ..geometry_boxes import convert_geometry_to_coords
 
 __all__ = ["ScaleLabelDataset", "ScaleBarDataset", "draw_text_on_image", "get_unit", "get_number", "no_pattern", "find_color"]
 

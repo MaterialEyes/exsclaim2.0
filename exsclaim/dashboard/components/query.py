@@ -3,27 +3,27 @@ Query component - the main form for EXSCLAIM queries.
 Converted from React Query.js component.
 """
 
-import dash_bootstrap_components as dbc
-import httpx2
+lazy import dash_bootstrap_components as dbc
 
-from dash import html, dcc, callback, Output, Input, State, clientside_callback, ClientsideFunction
-from dash.exceptions import PreventUpdate
-from re import compile
-from typing import Optional
+lazy from dash import html, dcc
+lazy from exsclaim import llms
 
 
-name_regex = compile(r"^[\w_\- ]+$")
+DAGGER = "\u2020"
 
 
 def get_llms() -> tuple[dict[str, dict[str, str | bool]], dict[str, bool], dict[str, bool]]:
-	from exsclaim import llms
-
 	available_llms = dict()
-	for cls in llms.LLMMeta.classes:
+	for name, cls in llms.LLM.classes.items():
+		if cls._api_key_needed_for_list():
+			available_llms[name] = []
+			continue
+
 		models = cls.available_models()
 		if not models:
 			continue
-		available_llms[cls.__name__] = [dict(
+
+		available_llms[name] = [dict(
 			model_name=model_name,
 			show_api_key=show_api_key,
 			needs_api_key=needs_api_key,
@@ -52,7 +52,7 @@ def create_query_component(available_llms, debounce=True):
 		"margin": "20px",
 		"justifyContent": "center",
 		"display": "flex",
-		"flex-direction": "column",
+		"flexDirection": "column",
 	}, children=[
 		# Interval to check if the results are ready
 		dcc.Interval(
@@ -249,32 +249,6 @@ def create_inheritance_component():
 	])
 
 
-@callback(
-	Output("base-run-id", "options"),
-	Output("base-run-id", "value"),
-	State("exsclaim-store", "data")
-)
-async def load_previous_runs(data):
-	try:
-		async with httpx2.AsyncClient(base_url=data["fast_api_url"], timeout=30) as client:
-			response = await client.get("/previous_runs?return_values=id&return_values=name")
-			runs = response.json()
-	except httpx2.HTTPError as e:
-		print(f"{e=}", flush=True)
-		return [], None
-
-	options = [None] * (len(runs) + 1)
-	options[0] = {"value": None, "label": "-"}
-
-	for i, run in enumerate(runs, start=1):
-		options[i] = {"value": str(run["id"]), "label": f"{run['name']} ({run['id']})"}
-
-	return options, None
-
-
-DAGGER = "\u2020"
-
-
 def create_journal_family_component():
 	"""Create journal family dropdown component."""
 	try:
@@ -346,33 +320,31 @@ def create_open_access_component():
 
 def create_model_component(available_llms, debounce=True):
 	"""Create model selection component."""
-	options = []
-	for i, (provider, llms) in enumerate(available_llms.items()):
-		options.append(dict(value=provider, label=provider, disabled=True))
-		options.extend((dict(value=llm["model_name"], label=llm["display_name"]) for llm in llms))
-
-		# dbc.Select currently doesn't support html.Option and html.Optgroup
-		# options[i] = html.Optgroup(
-		# 	label=provider,
-		# 	children=[html.Option(value=llm["model_name"], label=llm["display_name"]) for llm in llms]
-		# )
-
-	if "LlamaCPP" in available_llms and len(available_llms["LlamaCPP"]) > 0:
-		default_llm = available_llms["LlamaCPP"][0]["model_name"]
-	elif "Ollama" in available_llms and len(available_llms["Ollama"]) > 0:
-		default_llm = available_llms["Ollama"][0]["model_name"]
-	else:
-		if len(options) == 0:
-			default_llm = None
-		else:
-			default_llm = options[0]["value"]
+	providers = sorted(available_llms.keys(), key=lambda name: name.upper())
 
 	return html.Div([
+		dbc.Tooltip(
+			"This provider requires an API key to list available models, so the list will be empty until one is provided.",
+			id="model-api-requirement",
+			target="model-provider",
+			is_open=False,
+			trigger=None
+		),
+		dbc.Label("Model Provider*", html_for="model-provider"),
+		dbc.RadioItems(
+			id="model-provider",
+			options=providers,
+			inline=True,
+			value=None,
+			className="form-control",
+			persistence=True,
+			persistence_type="local"
+		),
 		dbc.Label("Model *", html_for="model-select"),
 		dbc.Select(
 			id="model-select",
-			options=options,
-			value=default_llm,
+			options=[],
+			value=None,
 			className="form-control",
 			valid=True,
 			invalid=False,
@@ -386,7 +358,7 @@ def create_model_component(available_llms, debounce=True):
 			type="password",
 			placeholder="API Key *",
 			className="form-control mt-2",
-			debounce=debounce,
+			debounce=True,
 		)
 	], className="mb-3")
 
@@ -394,11 +366,11 @@ def create_model_component(available_llms, debounce=True):
 def create_save_methods_component():
 	"""Creates the save methods options component."""
 	methods = (
+		dict(label="Upload to Database", value="postgres", disabled=True),
 		dict(label="Subfigures", value="subfigures"),
 		dict(label="Visualization", value="visualization"),
 		dict(label="Bounding Boxes", value="boxes"),
-		dict(label="Upload to Database", value="postgres", disabled=True),
-		dict(label="CSV", value="csv", disabled=True),
+		dict(label="CSV", value="csv"),
 	)
 
 	return html.Div([
@@ -507,204 +479,3 @@ def create_webhooks_component(debounce=True):
 			debounce=debounce
 		)
 	], className="mb-3")
-
-
-# Callbacks for form handling
-@callback(
-	Output("advanced-options", "is_open"),
-	Input("advanced-options-button", "n_clicks"),
-	State("advanced-options", "is_open"),
-)
-def collapse_advanced_options(n_clicks, is_open):
-	if n_clicks is None:
-		raise PreventUpdate
-	return not is_open
-
-
-@callback(
-	[
-		Output("model-key", "placeholder"),
-		Output("model-key", "disabled"),
-		Output("model-key", "valid"),
-		Output("model-key", "invalid"),
-		Output("model-key", "required"),
-		Output("model-key", "style")
-	],
-	[
-		Input("model-select", "value"),
-		Input("model-key", "value")
-	],
-	[
-		State("exsclaim-store", "data")
-	]
-)
-def show_api_key(selected_model: str, key: Optional[str], data) -> tuple[bool, bool, bool, bool, dict[str, str]]:
-	show_key = data["show_api_key"].get(selected_model, True)
-	needs_key = data["required_api_key"].get(selected_model, False)
-
-	disabled = not show_key		# The input is disabled if the LLM says don't show it
-
-	required = needs_key
-	placeholder = "API Key *" if required else "API Key"
-	style = dict(display="block" if show_key else "none")
-
-	valid = True
-	invalid = False
-
-	if needs_key and (key is None or not key.strip()):
-		valid = False
-		invalid = True
-
-	return placeholder, disabled, valid, invalid, required, style
-
-
-@callback(
-	[
-		Output("output-name", "valid"),
-		Output("output-name", "invalid"),
-		Output("output-name-tooltip", "is_open"),
-	],
-	[
-		Input("output-name", "value")
-	],
-	prevent_initial_call=True
-)
-def valid_output_name(name: Optional[str]) -> tuple[bool, bool, bool]:
-	if name is None:
-		return False, True, True
-	valid_name = name_regex.match(name) is not None
-
-	return valid_name, not valid_name, not valid_name
-
-
-@callback(
-	[
-		Output("num-articles", "valid"),
-		Output("num-articles", "invalid"),
-		Output("num-articles-tooltip", "is_open"),
-	],
-	[
-		Input("num-articles", "value")
-	],
-	prevent_initial_call=True
-)
-def valid_number_of_articles(num_articles: Optional[int]) -> tuple[bool, bool, bool]:
-	if num_articles is None:
-		return False, True, True
-
-	valid_num = 1 <= num_articles <= 200
-
-	return valid_num, not valid_num, not valid_num
-
-
-@callback(
-	[
-		Output("input-term", "valid"),
-		Output("input-term", "invalid"),
-		Output("input-term-tooltip", "is_open"),
-	],
-	[
-		Input("input-term", "value")
-	],
-
-	prevent_initial_call=True
-)
-def valid_search_term(search_term: Optional[str]) -> tuple[bool, bool, bool]:
-	"""Disable submit button if no search term is provided."""
-	if search_term is None:
-		return False, True, True
-
-	valid_name = bool(search_term.strip())
-	return valid_name, not valid_name, not valid_name
-
-
-@callback(
-	Output("journal-family-warning", "hidden"),
-	Input("journal-family", "value"),
-	State("journal-family", "options"),
-)
-def show_journal_warning(journal_family: str, options) -> bool:
-	option = next(filter(lambda option: option["value"] == journal_family, options), None)
-	if option is None:
-		return False
-
-	if isinstance(option["label"], str):
-		return True
-
-	children = option["label"]["props"].get("children", ())
-	for child in children:
-		if isinstance(child, str):
-			continue
-		if child.get("props", dict()).get("children") == DAGGER:
-			return False
-
-	return DAGGER not in option["label"]
-
-
-@callback(
-	Output("submit-query", "disabled"),
-	[
-		Input("output-name", "invalid"),
-		Input("num-articles", "invalid"),
-		Input("input-term", "invalid"),
-		Input("input-synonyms", "invalid"),
-		Input("model-key", "invalid"),
-	],
-)
-def enable_submit_button(*invalidity):
-	# If any of the elements are invalid, the button is set to disabled=True, so users won't be able to select it
-	return any(invalidity)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="query",
-		function_name="submit_query"
-	),
-	[
-		Output("results-finished", "disabled"),
-		Output("notification", "is_open"),
-		Output("notification-html", "html"),
-		Output("notification", "color"),
-		Output("exsclaim-store", "data"),
-	],
-	[
-		Input("submit-query", "n_clicks")
-	],
-	[
-		State("exsclaim-store", "data"),
-		State("output-name", "value"),
-		State("journal-family", "value"),
-		State("num-articles", "value"),
-		State("sort-by", "value"),
-		State("input-term", "value"),
-		State("input-synonyms", "value"),
-		State("base-run-id", "value"),
-		State("open-access", "value"),
-		State("model-select", "value"),
-		State("model-key", "value"),
-		State("save-methods", "value"),
-		State("ntfy-url", "value"),
-		State("ntfy-priority", "value"),
-		State("webhook-url", "value"),
-	],
-	prevent_initial_call=True
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="query",
-		function_name="check_results_status"
-	),
-	[
-		Output("new_url", "href"),
-		Output("new_url", "refresh")
-	],
-	Input("results-finished", "n_intervals"),
-	[
-		State("exsclaim-store", "data"),
-		# State("new_url", "href")
-	],
-	prevent_initial_call=True
-)

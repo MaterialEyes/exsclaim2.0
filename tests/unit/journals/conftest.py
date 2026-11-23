@@ -10,11 +10,11 @@ from pathlib import Path
 
 class Handler(SimpleHTTPRequestHandler):
 	def __init__(self, *args, **kwargs):
-		kwargs["directory"] = Path(__file__).parent.parent / "http_data"
+		kwargs["directory"] = Path(__file__).parent.parent.parent.resolve() / "http_data"
 		super().__init__(*args, **kwargs)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def http_server(server_address: str = "127.0.0.1", server_port: int = 8079):
 	server = HTTPServer((server_address, server_port), Handler)
 	thread = threading.Thread(target=server.serve_forever)

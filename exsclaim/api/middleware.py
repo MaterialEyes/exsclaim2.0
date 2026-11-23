@@ -1,24 +1,24 @@
-from .models import gen_uuid7
-from ..db import get_db_session
+lazy from exsclaim.config import ui_settings
+lazy from exsclaim.db import get_db_session, gen_uuid7
+lazy from exsclaim.utilities import TerminalColor
 
-from contextvars import ContextVar
-from starlette import status
-from starlette.datastructures import URL
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import Response, StreamingResponse, JSONResponse
-from starlette.types import ASGIApp
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
-from time import perf_counter
-from typing import AsyncGenerator, Optional
-from uuid import UUID
+lazy from contextlib import suppress
+lazy from contextvars import ContextVar
+lazy from starlette import status
+lazy from starlette.datastructures import Headers, MutableHeaders
+lazy from starlette.requests import Request
+lazy from starlette.types import ASGIApp, Message, Receive, Scope, Send
+lazy from sqlalchemy import text
+lazy from time import perf_counter
+lazy from typing import Optional
+lazy from uuid import UUID
 
-import ipaddress
-import logging
-import re
+lazy import asyncio
+lazy import ipaddress
+lazy import logging
+lazy import re
 
-__all__ = ["RequestLoggerMiddleware", "PreflightCacheMiddleware"]
+__all__ = ["RequestLoggerMiddleware", "MetricsMiddleware", "IPBlockerMiddleware", "SecurityMiddleware"]
 
 
 request_id_ctx = ContextVar("request_id")
@@ -29,146 +29,257 @@ BLOCKED_PATHS = [
 ]
 
 
-def format_response(_id, request: Request, ip: Optional[ipaddress._BaseAddress] = None) -> str:
-	if ip is None:
-		ip = request.headers.get('X-Forwarded-For', None)
-		if ip is None:
-			ip = request.client.host or "Unknown IP"
+def path_is_blocked(path: str) -> bool:
+	for regex in BLOCKED_PATHS:
+		if regex.match(path):
+			return True
+	return False
 
+
+def get_ip_address(headers: Headers, default: str) -> ipaddress._BaseAddress:
+	address = headers.get("X-Forwarded-For", headers.get("X-Real-IP"))
+	return ipaddress.ip_address(address or default)
+
+
+def get_log_time(diff: float) -> str:
+	if diff < 1:
+		return f"{diff * 1000:,.4f}ms"
+	return f"{diff:,.2f}s"
+
+
+def color_http_method(method: str) -> str:
+	match method:
+		case "GET":
+			return TerminalColor.GREEN + method + TerminalColor.RESET
+		case "POST":
+			return TerminalColor.BLUE + method + TerminalColor.RESET
+		case "HEAD":
+			return TerminalColor.MAGENTA + method + TerminalColor.RESET
+		case "OPTIONS":
+			return TerminalColor.YELLOW + method + TerminalColor.RESET
+		case "DELETE":
+			return TerminalColor.RED + method + TerminalColor.RESET
+	return method
+
+
+def format_response(_id, request: Request) -> str:
+	ip = get_ip_address(request.headers, request.client.host)
 	path = request.url.path if hasattr(request, "url") else "NULL PATH"
-	log = f"[{request_id_ctx.get()}] {{{ip} using {request.headers.get('User-Agent', 'Unknown User-Agent')}}} [{request.method}] {path}"
+	user_agent = request.headers.get("User-Agent", "Unknown User-Agent")
+
+	log = f"[{request_id_ctx.get()}] {{{TerminalColor.RED}{ip}{TerminalColor.RESET} using {user_agent}}} [{color_http_method(request.method)}] {path}"
 	if request.url.query:
 		log += f"?{request.url.query}"
 
 	return log
 
 
-# https://medium.com/the-pythonworld/15-useful-middlewares-for-fastapi-that-you-should-know-about-8c2d67ea0d86
-class RequestLoggerMiddleware(BaseHTTPMiddleware):
-	"""Logs each HTTP request made to the server, along with its unique request id and response status code."""
-	slots = ("logger",)
+def run_middleware(scope: Scope) -> bool:
+	return scope["type"] in {"http", "websocket"}
 
-	def __init__(self, app: ASGIApp, logger: logging.Logger, dispatch=None):
-		super().__init__(app, dispatch)
+
+# https://medium.com/the-pythonworld/15-useful-middlewares-for-fastapi-that-you-should-know-about-8c2d67ea0d86
+class IPBlockerMiddleware:
+	"""This middleware checks the IP of the request to see if it's blocked, and blocks users if they go ..."""
+	def __init__(self, app: ASGIApp, logger: logging.Logger):
+		self.app = app
 		self.logger = logger
 
-	@staticmethod
-	def get_log_time(diff: float) -> str:
-		if diff < 1:
-			return f"{diff * 1000:,.4f}ms"
-		return f"{diff:,.2f}s"
+	async def block_request(self, scope: Scope, receive: Receive, send: Send, address: ipaddress._BaseAddress,
+							immediately_stop_request: bool = True):
+		self.logger.warning(f"Banned IP: {address} tried to reach {scope["path"]}. Immediately stopping request: {immediately_stop_request}.")
 
-	@staticmethod
-	def path_is_blocked(url: URL) -> bool:
-		# TODO: Create a more comprehensive set of banned endpoints
-		for regex in BLOCKED_PATHS:
-			if regex.match(url.path):
-				return True
-		return False
-
-	def block_request(self, address: ipaddress._BaseAddress, request: Request, immediately_stop_request: bool = True):
-		self.logger.warning(f"Banned IP: {address} tried to reach {request.url.path}. Immediately stopping request: {immediately_stop_request}.")
+		headers = [(b"Content-Length", b"0")] if immediately_stop_request else []
+		await send({
+			"type": "http.response.start",
+			"status": status.HTTP_404_NOT_FOUND,
+			"headers": headers
+		})
 
 		if immediately_stop_request:
-			return Response(status_code=status.HTTP_404_NOT_FOUND)
-		else:
-			async def send_infinite_zeroes() -> AsyncGenerator[bytes, None]:
-				while not await request.is_disconnected():
-					yield b"000"
+			await send({
+				"type": "http.response.body",
+				"body": b'',
+				"more_body": False
+			})
+			return
 
-			return StreamingResponse(send_infinite_zeroes(), status_code=404)
+		response = b'0' * 1_024 * 4
+		while True:
+			with suppress(asyncio.TimeoutError):
+				async with asyncio.timeout(1):
+					message = await receive()
+					if message["type"] == "http.disconnect":
+						break
 
-	async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
-		start_time = perf_counter()
+			await send({
+				"type": "http.response.body",
+				"body": response,
+				"more_body": True
+			})
 
-		try:
-			address = ipaddress.ip_address(request.headers.get('X-Forwarded-For', request.client.host))
-		except ValueError as e:
-			self.logger.error(f"Could not extract an IP address for {request.client.host}, so the attempt was blocked.", exc_info=e)
-			return Response(status_code=status.HTTP_404_NOT_FOUND)
+	async def __call__(self, scope: Scope, receive: Receive, send: Send):
+		if not run_middleware(scope):
+			await self.app(scope, receive, send)
+			return
+
+		headers = Headers(scope=scope)
+		address = get_ip_address(headers, scope.get("client", [None])[0])
 
 		is_banned = False
 		async with get_db_session() as session:
-			results = await session.execute(text("SELECT EXISTS (SELECT 1 FROM settings.banned_ips WHERE address=:address)"),
-			                             dict(address=address))
+			results = await session.execute(
+				text("SELECT EXISTS (SELECT 1 FROM settings.banned_ips WHERE address=:address)"),
+				dict(address=address)
+			)
 			is_banned = results.scalar()
 
 		if is_banned:
-			return self.block_request(address, request)
+			await self.block_request(scope, receive, send, address)
+			return
 
-		if self.path_is_blocked(request.url):
+		if path_is_blocked(scope["path"]):
 			async with get_db_session() as session:
 				await session.execute(
 					text("INSERT INTO settings.banned_ips(address, reason) VALUES (:address, :reason);"),
-					dict(address=address, reason=f"Attempted to access: {request.url.path}")
+					dict(address=address, reason=f"Attempted to access: {scope["path"]}")
 				)
 				await session.commit()
 
-			return self.block_request(address, request)
+			await self.block_request(scope, receive, send, address)
+			return
 
-		request_id = request.headers.get("X-Request-Id", str(gen_uuid7()))
-		request.state.logger = self.logger
+		await self.app(scope, receive, send)
+		return
 
+
+class RequestLoggerMiddleware:
+	def __init__(self, app: ASGIApp, logger: logging.Logger):
+		self.app = app
+		self.logger = logger
+
+	async def __call__(self, scope: Scope, receive: Receive, send: Send):
+		if not run_middleware(scope):
+			await self.app(scope, receive, send)
+			return
+
+		headers = Headers(scope=scope)
+
+		# Get the Request ID for logging purposes
+		request_id = headers.get("X-Request-Id", str(gen_uuid7()))
+		scope["state"]["logger"] = self.logger
+
+		# Make sure that the Request ID is UUIDv7
 		try:
 			request_id = str(UUID(request_id))
 		except ValueError:
 			request_id = str(gen_uuid7())
 
 		request_id_ctx.set(request_id)
-		request.state.id = request_id
+		scope["state"]["id"] = request_id
 
-		try:
-			response = await call_next(request)
-			response.headers.setdefault("X-Request-Id", request_id)
-			response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload") # Max-age is 1 year
-			response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-			response.headers.setdefault("X-Content-Type", "nosniff")
-			response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
-			response.headers.setdefault("X-Xss-Protection", "1; mode=block")
+		# Handle calling the proper page
+		status_code = None
 
-			end_time = perf_counter()
-			diff = end_time - start_time
+		async def send_wrapper(message: Message):
+			if message["type"] == "http.response.start":
+				nonlocal status_code
+				status_code = message["status"]
 
-			# Don't care about logging these
-			match request.url.path:
-				case "/favicon.ico" | "/healthcheck" | "/swagger-dark-ui.css":
-					return response
+				response_headers = MutableHeaders(raw=message["headers"])
+				response_headers.setdefault("X-Request-Id", request_id)
 
-			self.logger.info(f"{format_response(request_id, request, address)} ({response.status_code}) in {self.get_log_time(diff)}.")
-			return response
-		except SQLAlchemyError as e:
-			self.logger.exception(f"{format_response(request_id_ctx.get(), request)} Database Error occurred.", exc_info=e)
-			return JSONResponse(dict(detail="Internal Database Error.", request_id=request.state.id),
-									status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-									media_type="text/plain", headers={"X-Request-Id": request_id_ctx.get()})
-		except BaseException as e:
-			end_time = perf_counter()
-			diff = end_time - start_time
+				message["headers"] = response_headers.raw
 
-			self.logger.exception(f"{format_response(request_id_ctx.get(), request, address)} Time to error: {self.get_log_time(diff)}. Unhandled error.", exc_info=e)
-			return JSONResponse(dict(detail="Internal Server Error.", request_id=request.state.id),
-								status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-								media_type="text/plain", headers={"X-Request-Id": request_id})
-		finally:
-			for handler in self.logger.handlers:
-				handler.flush()
+			await send(message)
+
+		start_time = perf_counter()
+		await self.app(scope, receive, send_wrapper)
+		end_time = perf_counter()
+		diff = end_time - start_time
+
+		# Don't care about logging these
+		if scope["path"] in {"/favicon.ico", "/healthcheck", "/swagger-dark-ui.css"}:
+			return
+
+		self.logger.info(f"{format_response(request_id, Request(scope=scope))} ({TerminalColor.YELLOW}{status_code}{TerminalColor.RESET}) in {get_log_time(diff)}.")
+		# for handler in self.logger.handlers:
+		# 	handler.flush()
 
 
-class PreflightCacheMiddleware(BaseHTTPMiddleware):
-	async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
-		response = await call_next(request)
+class SecurityMiddleware:
+	def __init__(self, app: ASGIApp, csp_header: Optional[str] = None):
+		self.app = app
+		self._csp_header = csp_header or f"default-src 'self' {ui_settings.DOMAIN.domain_with_scheme}"
 
-		if request.method != "OPTIONS":
-			return response
+	async def __call__(self, scope: Scope, receive: Receive, send: Send):
+		async def send_wrapper(message: Message):
+			if message["type"] == "http.response.start":
+				response_headers = MutableHeaders(raw=message["headers"])
 
-		response.headers["Access-Control-Max-Age"] = "600"
-		response.headers["Access-Control-Request-Headers"] = "X-Request-Id"
+				# Controls what the browser can load
+				response_headers.setdefault("Content-Security-Policy", self._csp_header)
 
-		# Have the request specify if users want light mode or dark mode
-		for header in ("Accept-CH", "Vary", "Critical-CH"):
-			if header in response.headers:
-				response.headers[header] += ", Sec-Ch-Prefers-Color-Scheme"
-			else:
-				response.headers[header] = "Sec-Ch-Prefers-Color-Scheme"
+				response_headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+				response_headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")  # Max-age is 1 year
 
-		return response
+				# Prevent MIME type sniffing
+				response_headers.setdefault("X-Content-Type", "nosniff")
+				response_headers.setdefault("X-Content-Type-Options", "nosniff")
+
+				# Prevent clickjacking
+				response_headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+				response_headers.setdefault("X-Xss-Protection", "1; mode=block")
+
+				# Explicitly deny browser features that aren't used
+				response_headers.setdefault("Permissions-Policy",
+											"camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), accelerometer=(), gyroscope=(), magnetometer=(), display-capture=(), screen-wake-lock=(), autoplay=(self), fullscreen=(self)")
+
+				del response_headers["Server"]
+				del response_headers["X-Powered-By"]
+
+				message["headers"] = response_headers.raw
+
+			await send(message)
+
+		await self.app(scope, receive, send_wrapper)
+
+
+class MetricsMiddleware:
+	def __init__(self, app: ASGIApp):
+		self.app = app
+		self.metrics_ip = ui_settings.METRICS_IP
+		self.metrics_network = ui_settings.METRICS_NETWORK
+		self.disallow_metrics_path = self.metrics_ip is None and self.metrics_network is None
+
+	async def __call__(self, scope: Scope, receive: Receive, send: Send):
+		if not run_middleware(scope) or scope["path"] != "/metrics":
+			await self.app(scope, receive, send)
+			return
+
+		if self.disallow_metrics_path:
+			await self.block_request(send)
+			return
+
+		headers = Headers(scope=scope)
+		address = get_ip_address(headers, scope["client"][0])
+
+		if address == self.metrics_ip or address in self.metrics_network:
+			await self.app(scope, receive, send)
+			return
+
+		await self.block_request(send)
+
+	@staticmethod
+	async def block_request(send: Send):
+		await send({
+			"type": "http.response.start",
+			"status": status.HTTP_404_NOT_FOUND,
+			"headers": []
+		})
+
+		await send({
+			"type": "http.response.body",
+			"body": b'',
+			"more_body": False
+		})

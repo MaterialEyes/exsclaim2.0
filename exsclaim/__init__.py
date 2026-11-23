@@ -8,6 +8,7 @@ from .exceptions import *
 from .llms import LLM
 from .notifications import Notifier, Notification
 from .pipeline import Pipeline, SaveMethods
+from .pdf import PDFScraper
 from .tool import ExsclaimTool, JournalScraper, CaptionDistributor, FigureSeparator
 from .version import version as __version__
 
@@ -23,6 +24,7 @@ __all__ = [
 	"JournalScraper",
 	"CaptionDistributor",
 	"FigureSeparator",
+	"PDFScraper",
 	"Pipeline",
 	"SaveMethods",
 	"LLM",

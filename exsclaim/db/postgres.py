@@ -1,18 +1,18 @@
-"""Functions for interacting with postgres database"""
-from .models import Author, ClassificationCodes, ArticleAuthor, Figure, Subfigure, SubfigureLabel, Scale, ScaleLabel
+"""Functions for interacting with PostgreSQL database"""
+lazy from .models import Author, ClassificationCodes, ArticleAuthor, Figure, Subfigure, SubfigureLabel, Scale, ScaleLabel
 
-from contextlib import asynccontextmanager
-from pathlib import Path
-from pydantic import Field, computed_field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy import select, text, insert
-from typing import Any, AsyncGenerator, Optional
-from uuid import UUID, uuid4
+lazy from contextlib import asynccontextmanager
+lazy from pathlib import Path
+lazy from pydantic import Field, computed_field, field_validator
+lazy from pydantic_settings import BaseSettings, SettingsConfigDict
+lazy from sqlalchemy import select, text, insert
+lazy from typing import Any, AsyncGenerator, Optional
+lazy from uuid import UUID, uuid4
 
-import logging
-import sqlalchemy
-import sqlalchemy.exc as sql_exc
-import sqlalchemy.ext.asyncio as sql_async
+lazy import logging
+lazy import sqlalchemy
+lazy import sqlalchemy.exc as sql_exc
+lazy import sqlalchemy.ext.asyncio as sql_async
 import sqlalchemy.dialects.postgresql as sa_psql
 
 
@@ -131,67 +131,65 @@ class Database:
 
 			for article_num, (article_id, article_json) in enumerate(exsclaim_json.items()):
 				async with session.begin():
-					results = await session.execute(
-						text("SELECT EXISTS (SELECT 1 FROM results.article WHERE id=:id)"),
-						dict(id=article_id)
-					)
-					article_in_database: bool = results.scalar()
-
-					if not article_in_database:
-						authors: tuple[Author] = article_json["authors"]
-						author_ids = [None] * len(authors)
-						for i, author in enumerate(authors):
-							if isinstance(author, dict):
-								author = Author.model_validate({**author, "id": uuid4()})
-							if author.orcid is not None:
-								results = await session.execute(
-									text("SELECT id FROM results.authors WHERE orcid=:orcid"),
-									dict(orcid=author.orcid)
-								)
-								author_id: Optional[UUID] = results.scalar_one_or_none()
-
-								if author_id is not None:
-									author_ids[i] = author_id
-									continue
-
+					authors: tuple[Author] = article_json["authors"]
+					author_ids = [None] * len(authors)
+					for i, author in enumerate(authors):
+						if isinstance(author, dict):
+							author = Author.model_validate({**author, "id": uuid4()})
+						if author.orcid is not None:
 							results = await session.execute(
-								text("INSERT INTO results.authors(name, orcid) VALUES(:name, :orcid) RETURNING id"),
-								dict(name=author.name, orcid=author.orcid)
+								text("SELECT id FROM results.authors WHERE orcid=:orcid"),
+								dict(orcid=author.orcid)
 							)
-							author_id = results.scalar_one_or_none()
-							author_ids[i] = author_id
+							author_id: Optional[UUID] = results.scalar_one_or_none()
 
-						# Upload the article json
-						await session.execute(
-							text("INSERT INTO results.article(id, title, url, license, open) VALUES(:id, :title, :url, :license, :open)"),
-							dict(
-								id=article_id,
-								title=article_json["title"],
-								url=article_json["article_url"],
-								license=article_json["license"],
-								open=article_json["open"],
-							)
+							if author_id is not None:
+								author_ids[i] = author_id
+								continue
+
+						results = await session.execute(
+							text("INSERT INTO results.authors(name, orcid) VALUES(:name, :orcid) ON CONFLICT (id) DO NOTHING RETURNING id"),
+							dict(name=author.name, orcid=author.orcid)
 						)
+						author_id = results.scalar_one_or_none()
+						author_ids[i] = author_id
 
-						# Upload mapping of authors to the article
-						author_ids = [
-							dict(article_id=article_id, author_id=author_id, author_order=i)
-							for i, author_id in enumerate(author_ids)
-						]
-						await session.execute(insert(ArticleAuthor).values(author_ids))
+					# Upload the article json
+					await session.execute(
+						text("INSERT INTO results.article(id, title, url, doi, license, open) VALUES(:id, :title, :url, :doi, :license, :open) ON CONFLICT (id) DO NOTHING"),
+						dict(
+							id=article_id,
+							title=article_json["title"],
+							url=article_json["article_url"],
+							doi=article_json["doi"],
+							license=article_json["license"],
+							open=article_json["open"],
+						)
+					)
 
-						# Upload the figure JSONs
-						figures = [dict(
-							# run_id=run_id,
-							caption=figure_json["full_caption"],
-							url=figure_json["image_url"],
-							figure_path=figure_json["figure_path"],
-							article_id=article_id,
-							id=figure_id.replace("_", "-").split(".")[0]
-						) for figure_id, figure_json in article_json["figures"].items()]
+					# Upload mapping of authors to the article
+					author_ids = [
+						dict(article_id=article_id, author_id=author_id, author_order=i)
+						for i, author_id in enumerate(author_ids)
+					]
+					statement = sa_psql.insert(ArticleAuthor)\
+						.values(author_ids)\
+						.on_conflict_do_nothing(index_elements=["article_id", "author_id"])
+					await session.execute(statement)
 
-						if len(figures) > 0:
-							await session.execute(insert(Figure).values(figures))
+					# Upload the figure JSONs
+					figures = [dict(
+						# run_id=run_id,
+						caption=figure_json["full_caption"],
+						url=figure_json["image_url"],
+						figure_path=figure_json["figure_path"],
+						article_id=article_id,
+						id=figure_id.replace("_", "-").split(".")[0]
+					) for figure_id, figure_json in article_json["figures"].items()]
+
+					if len(figures) > 0:
+						statement = sa_psql.insert(Figure).values(figures).on_conflict_do_nothing(index_elements=["id"])
+						await session.execute(statement)
 
 					# Upload mapping of article to run id
 					await session.execute(
@@ -280,14 +278,15 @@ class Database:
 									scale_bar_id=scale_bar_id,
 								))
 
-					for cls, values in (
-						(Subfigure, subfigures),
-						(SubfigureLabel, subfigure_labels),
-						(Scale, scales),
-						(ScaleLabel, scale_labels),
+					for cls, values, fkey in (
+						(Subfigure, subfigures, "subfigure_pkey"),
+						(SubfigureLabel, subfigure_labels, "subfigurelabel_pkey"),
+						(Scale, scales, "scale_pkey"),
+						(ScaleLabel, scale_labels, "scalelabel_pkey"),
 					):
 						if len(values) > 0:
-							await session.execute(insert(cls).values(values))
+							statement = sa_psql.insert(cls).values(values).on_conflict_do_nothing(constraint=fkey)
+							await session.execute(statement)
 
 					try:
 						# session.add_all(objects)
@@ -312,7 +311,8 @@ class Database:
 
 	async def initialize_database(self):
 		from sqlalchemy.schema import CreateSchema
-		from ..api.models import Run, User, get_guest_uuid # These models need to be imported before SQLModel.metadata.create_all
+		from .models import QueryCache # These models need to be imported before SQLModel.metadata.create_all
+		from ..api.models import Run, User, get_guest_uuid
 		from ..api.db import initialize_db as api_db
 
 		import sqlmodel
@@ -327,6 +327,12 @@ class Database:
 			result = await conn.execute(text("SELECT COUNT(id) FROM users.users WHERE email IS NULL;"))
 			if not result.fetchone()[0]:
 				await conn.execute(insert(User).values(id=get_guest_uuid(), name="Default User"))
+
+			await conn.execute(text("""CREATE OR REPLACE PROCEDURE results.expire_query_cache() AS $$
+				BEGIN
+					DELETE FROM results.query_cache WHERE created_at > (NOW() + INTERVAL '4 hours');
+				END;
+			$$ LANGUAGE plpgsql;"""))
 
 			await api_db(conn)
 
@@ -352,26 +358,51 @@ class Database:
 
 	@staticmethod
 	def run_alembic():
-		from ..version import Version
+		from exsclaim.version import Version
 
 		from alembic import command
 		from alembic.config import Config
+		from io import StringIO
 		from itertools import pairwise
+
+		import re
 
 		current_version = Version()
 
 		alembic_revision_lookup: dict[Version, str] = {
-			Version("2.5.2"): "3924f9a632d1"
+			Version("2.5.2"): "3924f9a632d1",
+			Version("2.5.3b2"): "289193e21c9c",
+			Version("2.5.3b4"): "58f3da095550",
+			Version("2.5.3b8"): "581ca3d69c77",
+			Version("2.5.3"): "c2fc8367b354",
 		}
 
+		buffer = StringIO()
+
 		directory = Path(__file__).parent.parent.resolve()
+		connection_string = PostgresSettings().connection_string
+
 		alembic_cfg = Config(directory / "alembic.ini")
-		alembic_cfg.set_main_option("sqlalchemy.url", PostgresSettings().connection_string)
+		output_cfg = Config(directory / "alembic.ini", stdout=buffer)
+
+		for cfg in (alembic_cfg, output_cfg):
+			cfg.set_main_option("sqlalchemy.url", connection_string)
+
+		command.show(output_cfg, "current")
+		current_info = buffer.getvalue()
+		match = re.search(r"Rev: ([a-z\d]+)", current_info, re.I)
+		current_alembic_version = match.group(1) if match is not None else None
+
+		def do_upgrade(exsclaim_version: Version):
+			given_version = alembic_revision_lookup[exsclaim_version]
+
+			if current_alembic_version != given_version:
+				command.upgrade(alembic_cfg, given_version)
 
 		keys = tuple(alembic_revision_lookup.keys())
 		for version1, version2 in pairwise(keys):
 			if version1 <= current_version < version2:
-				command.upgrade(alembic_cfg, alembic_revision_lookup[version1])
+				do_upgrade(version1)
 				break
 		else:
-			command.upgrade(alembic_cfg, alembic_revision_lookup[keys[-1]])
+			do_upgrade(keys[-1])

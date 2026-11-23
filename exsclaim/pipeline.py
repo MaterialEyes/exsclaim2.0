@@ -1,31 +1,31 @@
-from .config import settings
-from .pdf import PDFScraper
-from .exceptions import PipelineInterruptionException, PipelineConfigError
-from .notifications import SuccessNotification, InterruptionNotification, ErrorNotification, QueryNotifications, \
+lazy from .config import settings
+lazy from .pdf import PDFScraper
+lazy from .exceptions import PipelineInterruptionException, PipelineConfigError
+lazy from .notifications import SuccessNotification, InterruptionNotification, ErrorNotification, QueryNotifications, \
 	CouldNotNotifyException
-from .tool import ExsclaimTool, CaptionDistributor, JournalScraper, ExsclaimEncoder, FigureSeparator
-from .figures.geometry_boxes import convert_geometry_to_coords
-from .utilities import paths, PrinterFormatter, ExsclaimFormatter
-from .db import Database, gen_uuid7
+lazy from .tool import ExsclaimTool, CaptionDistributor, JournalScraper, ExsclaimEncoder, FigureSeparator
+lazy from .figures.geometry_boxes import convert_geometry_to_coords
+lazy from .utilities import paths, PrinterFormatter, ExsclaimFormatter
+lazy from .db import Database, gen_uuid7
 
-import asyncio
-import cv2
-import enum
-import functools
-import json
-import logging
-import numpy as np
-import re
-import shutil
+lazy import asyncio
+lazy import cv2
+lazy import enum
+lazy import functools
+lazy import json
+lazy import logging
+lazy import numpy as np
+lazy import re
+lazy import shutil
 
-from csv import writer
-from os.path import isfile, splitext
-from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
-from sqlalchemy.exc import SQLAlchemyError
-from textwrap import wrap, dedent
-from typing import Any, Callable, Optional
-from uuid import UUID
+lazy from csv import writer
+lazy from os.path import isfile, splitext
+lazy from pathlib import Path
+lazy from PIL import Image, ImageDraw, ImageFont
+lazy from sqlalchemy.exc import SQLAlchemyError
+lazy from textwrap import wrap, dedent
+lazy from typing import Any, Callable, Optional
+lazy from uuid import UUID
 
 
 __all__ = ["Pipeline", "SaveMethods", "PipelineInterruptionException"]
@@ -39,7 +39,7 @@ class SaveMethods(enum.Flag):
 	CSV = enum.auto()
 
 	@classmethod
-	def from_str(cls, string: str):
+	def from_str(cls, string: str) -> "SaveMethods":
 		match string.lower():
 			case "save_subfigures" | "subfigures":
 				return cls.SUBFIGURES
@@ -55,7 +55,7 @@ class SaveMethods(enum.Flag):
 				raise ValueError(f"There is no corresponding save_method to: {string}.")
 
 	@classmethod
-	def from_list(cls, lst: list[str]):
+	def from_list(cls, lst: list[str]) -> "SaveMethods":
 		from operator import or_
 
 		def get_values(value: str):
@@ -64,7 +64,13 @@ class SaveMethods(enum.Flag):
 			except ValueError:
 				return None
 
-		return functools.reduce(or_, filter(lambda x: x is not None, map(get_values, lst)))
+		value = functools.reduce(
+			or_,
+			filter(lambda x: x is not None, map(get_values, lst)),
+			cls(0)
+		)
+
+		return value
 
 
 class Pipeline:
@@ -144,7 +150,7 @@ class Pipeline:
 		"""
 		self.logger.info(info)
 
-	async def run(self, tools: list[type[ExsclaimTool]] = None, journal_scraper=True, pdf_scraper=True,
+	async def run(self, tools: list[type[ExsclaimTool]] | None = None, journal_scraper=True, pdf_scraper=True,
 				  caption_distributor=True, figure_separator=True) -> dict:
 		"""Run EXSCLAIM pipeline on Pipeline instance's query path
 
@@ -324,8 +330,10 @@ class Pipeline:
 				try:
 					await notifier.notify(notification, self.logger)
 				except CouldNotNotifyException as e:
-					self.logger.exception(f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".",
-										  exc_info=e)
+					self.logger.exception(
+						f"Could not send notification regarding the completion of \"{self.query_dict['name']}\".",
+						exc_info=e
+					)
 
 		return self.exsclaim_dict
 
@@ -414,9 +422,6 @@ class Pipeline:
 		self.display_info("Matching Image Objects to Caption Text\n")
 		figures = len(self.exsclaim_dict)
 
-		with open(self.results_directory / "pre-grouped.json", "w") as f:
-			json.dump(self.exsclaim_dict, f, indent='\t', cls=ExsclaimEncoder)
-
 		for counter, (article_id, article_json) in enumerate(self.exsclaim_dict.items(), start=1):
 			self.display_info(f">>> ({counter:,} of {figures:,}) Matching objects from figure: {article_id}")
 
@@ -468,8 +473,8 @@ class Pipeline:
 
 			try:
 				cv2.imwrite(str(directory / _name), patch)
-			except Exception as err:
-				self.logger.exception((f"Error in saving cropped master image of figure: {figure_root_name}. {err}"))
+			except Exception as e:
+				self.logger.exception(f"Error in saving cropped master image of figure: {figure_root_name}.", exc_info=e)
 
 		self.display_info(f"Printing Master Image Objects to: {self.results_directory / 'images'}\n")
 		for figure_name in self.exsclaim_dict:
@@ -627,7 +632,7 @@ class Pipeline:
 		"""
 		def append_bbox(geometry, lst: list):
 			coords = convert_geometry_to_coords(geometry)
-			bounding_box = tuple(map(int, coords))
+			bounding_box = tuple(int(coord) if coord is not None else None for coord in coords)
 			lst.append(bounding_box)
 
 		boxes_directory = self.results_directory / "boxes"
@@ -641,6 +646,7 @@ class Pipeline:
 		scale_objects = []
 		subfigure_labels = []
 		subfigures = []
+
 		for subfigure_json in master_images:
 			# collect subfigures
 			subfigures.append(convert_geometry_to_coords(subfigure_json["geometry"]))
@@ -840,8 +846,8 @@ class Pipeline:
 
 		# Cleanup leftover log files, making sure that all results aren't accidentally erased
 		if parent == settings.RESULTS_PATH or settings.RESULTS_PATH.is_relative_to(parent):
-			self.logger.warning(f"Almost removed {settings.RESULTS_PATH=} when removing results directory {parent=}.")
-			return
+			self.logger.warning(f"Almost removed {settings.RESULTS_PATH=} when removing results directory {parent=}. Instead removing {results_directory=}.")
+			parent = results_directory
 
 		shutil.rmtree(parent)
 		if parent.is_dir():

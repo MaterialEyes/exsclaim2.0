@@ -1,12 +1,12 @@
-from .caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
-from ..config import settings
+lazy from .caption import LLM, LLMOptions, ChatMessage, ResponseBase, LLMUsage
+lazy from ..config import settings
 
-from ollama import AsyncClient, Client, ChatResponse, ResponseError
-from pydantic import ValidationError
-from re import compile
-from typing import Any, Type, Self, Collection, Optional
+lazy from ollama import AsyncClient, Client, ChatResponse, ResponseError
+lazy from pydantic import ValidationError
+lazy from re import compile
+lazy from typing import Any, Type, Self, Collection, Optional
 
-import logging
+lazy import logging
 
 __all__ = ["Ollama"]
 
@@ -14,12 +14,16 @@ __all__ = ["Ollama"]
 class Ollama(LLM):
 	__slots__ = ("model", "client")
 
-	def __init__(self, model, api_key: str = None, **kwargs):
+	def __init__(self, model, api_key:  Optional[str] = None, **kwargs):
 		super().__init__(model, api_key, **kwargs)
 		self.client = AsyncClient(host=settings.OLLAMA_HOST)
 
 	@staticmethod
-	def available_models(silent_fail: bool = True):
+	def _api_key_needed_for_list() -> bool:
+		return False
+
+	@staticmethod
+	def available_models(api_key: Optional[str] = None, silent_fail: bool = True):
 		try:
 			client = Client(host=settings.OLLAMA_HOST)
 			models = client.list().models

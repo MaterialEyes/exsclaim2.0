@@ -1,11 +1,11 @@
-from .caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
-from ..exceptions import PipelineConfigError
+lazy from .caption import LLM, ChatMessage, ResponseBase, LLMOptions, LLMUsage
+lazy from ..exceptions import PipelineConfigError, LLMException
 
-from logging import exception
-from typing import Any, Collection, Type, Optional
+lazy from logging import exception
+lazy from typing import Any, Collection, Type, Optional
 
-import anthropic
-import asyncio
+lazy import anthropic
+lazy import asyncio
 
 
 class Anthropic(LLM):
@@ -15,22 +15,22 @@ class Anthropic(LLM):
 		self.max_tokens = max_tokens or 1_024
 
 	@staticmethod
-	def available_models(): # Unfortunately, Anthropic's API requires an API key to list models
-		cached_models = (
-			LLMOptions('claude-opus-5-5', True, True, 'Claude Opus 5.5'),
-			LLMOptions('claude-fable-5-1', True, True, 'Claude Fable 5.1'),
-			LLMOptions('claude-opus-5', True, True, 'Claude Opus 5'),
-			LLMOptions('claude-sonnet-5', True, True, 'Claude Sonnet 5'),
-			LLMOptions('claude-fable-5', True, True, 'Claude Fable 5'),
-			LLMOptions('claude-opus-4-8', True, True, 'Claude Opus 4.8'),
-			LLMOptions('claude-opus-4-7', True, True, 'Claude Opus 4.7'),
-			LLMOptions('claude-sonnet-4-6', True, True, 'Claude Sonnet 4.6'),
-			LLMOptions('claude-opus-4-6', True, True, 'Claude Opus 4.6'),
-			LLMOptions('claude-opus-4-5-20251101', True, True, 'Claude Opus 4.5'),
-			LLMOptions('claude-haiku-4-5-20251001', True, True, 'Claude Haiku 4.5'),
-			LLMOptions('claude-sonnet-4-5-20250929', True, True, 'Claude Sonnet 4.5')
+	def _api_key_needed_for_list() -> bool:
+		return True
+
+	@staticmethod
+	def available_models(api_key: str, silent_fail: bool = False):
+		if api_key is None:
+			raise LLMException("An API key is required to list Anthropic's models.")
+
+		client = anthropic.Anthropic(api_key=api_key)
+		models = client.models.list().data
+		options = tuple(
+			LLMOptions(model.id, True, True, model.display_name) for model in models
+			if model.capabilities.structured_outputs.supported
 		)
-		return cached_models
+
+		return options
 
 	@staticmethod
 	def check_validity(model: str, api_key: str):
@@ -58,6 +58,15 @@ class Anthropic(LLM):
 		new_messages: list[anthropic.types.MessageParam] = [None] * len(messages)
 
 		cache = anthropic.types.CacheControlEphemeralParam(type="ephemeral")
+		param_lookup: dict[str, type[anthropic.types.MessageParam]] = {
+			"user": anthropic.types.UserMessageParam,
+			"assistant": anthropic.types.AssistantMessageParam,
+			"system": anthropic.types.SystemMessageParam
+		}
+
+		def lookup_error(role: str):
+			raise ValueError(f"Could not find Anthropic's message type for role: {role}")
+
 		for i, message in enumerate(messages):
 			use_cache = cache if message.cache else None
 			if message.images is not None:
@@ -67,9 +76,17 @@ class Anthropic(LLM):
 					for image in message.images
 				])
 
-				formatted_message = anthropic.types.MessageParam(content=content, role=message.role)
+				message_class = param_lookup.get(message.role)
+				if message_class is None:
+					lookup_error(message.role)
+
+				formatted_message = message_class(content=content)
 			else:
-				formatted_message = anthropic.types.MessageParam(
+				message_class = param_lookup.get(message.role)
+				if message_class is None:
+					lookup_error(message.role)
+
+				formatted_message = message_class(
 					content=[anthropic.types.TextBlockParam(type="text", text=message.content, cache_control=use_cache)],
 					role=message.role
 				)

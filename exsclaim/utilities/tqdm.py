@@ -1,6 +1,6 @@
-import logging
-from contextlib import contextmanager
-from tqdm import tqdm
+lazy import logging
+lazy from contextlib import contextmanager
+lazy from tqdm import tqdm
 
 
 __all__ = ["tqdm_logging_redirect"]

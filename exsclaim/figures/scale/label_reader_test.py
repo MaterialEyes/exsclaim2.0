@@ -1,10 +1,10 @@
-import json
-from os import listdir
-from pathlib import Path
-from PIL import Image
-import torch
-from torch import nn
-from torchvision import models, transforms
+lazy import json
+lazy from os import listdir
+lazy from pathlib import Path
+lazy from PIL import Image
+lazy import torch
+lazy from torch import nn
+lazy from torchvision import models, transforms
 
 
 __all__ = ["ScaleBarReaderTest"]

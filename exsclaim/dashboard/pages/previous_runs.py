@@ -1,6 +1,6 @@
-from dash import dcc, html, Output, Input, State, clientside_callback, ClientsideFunction, register_page
-from dash_extensions import Purify
-import dash_bootstrap_components as dbc
+lazy from dash import dcc, html, Output, Input, State, clientside_callback, ClientsideFunction, register_page
+lazy from dash_extensions import Purify
+lazy import dash_bootstrap_components as dbc
 
 try:
 	from components.common import create_header_component, create_footer_component
@@ -53,10 +53,11 @@ clientside_callback(
 		function_name="previous_runs"
 	),
 	Output("previous-runs", "html"),
-	Output("check-run-status", "disabled"),
+	Output("check-run-status", "disabled", allow_duplicate=True),
 	Output("exsclaim-runs", "display"),
 	Input("load-previous-runs", "n_intervals"),
 	State("exsclaim-store", "data"),
+	prevent_initial_call=True
 )
 
 
@@ -65,7 +66,7 @@ clientside_callback(
 		namespace="user",
 		function_name="update_data_table"
 	),
-	Output("check-run-status", "disabled"),
+	Output("check-run-status", "disabled", allow_duplicate=True),
 	Input("check-run-status", "n_intervals"),
 	State("exsclaim-store", "data"),
 	prevent_initial_call=True

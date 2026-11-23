@@ -1,13 +1,13 @@
-import pymupdf
+lazy import pymupdf
 
-from .llms import LLM, ChatMessage, Captions, CaptionEntry
-from .exceptions import PDFScrapeException
-from .tool import ExsclaimTool
+lazy from .llms import LLM, ChatMessage, Captions, CaptionEntry
+lazy from .exceptions import PDFScrapeException
+lazy from .tool import ExsclaimTool
 
-from asyncio import gather, Lock
-from io import BytesIO
-from pathlib import Path
-from typing import Any, Optional
+lazy from asyncio import gather, Lock
+lazy from io import BytesIO
+lazy from pathlib import Path
+lazy from typing import Any, Optional
 
 
 __all__ = ["PDFScraper"]
@@ -38,8 +38,7 @@ class PDFScraper(ExsclaimTool):
 		...
 
 	def extract_authors_from_pdf(self, pdf: pymupdf.Document) -> list[str]:
-		metadata = pdf.metadata
-		authors = metadata.get("author", None)
+		authors = pdf.metadata.get("author", None)
 
 		if authors:
 			return authors
@@ -48,8 +47,7 @@ class PDFScraper(ExsclaimTool):
 		return []
 
 	def extract_title_from_pdf(self, pdf: pymupdf.Document) -> str:
-		metadata = pdf.metadata
-		title = metadata.get("title", None)
+		title = pdf.metadata.get("title", None)
 
 		if title:
 			return title
@@ -75,7 +73,7 @@ class PDFScraper(ExsclaimTool):
 				xref = image[0]
 
 				# Get the rectangles where this image is used
-				rects = page.get_image_rects(xref)
+				rects: list[pymupdf.Rect] = page.get_image_rects(xref)
 
 				if rects:
 					for rect in rects:
@@ -219,7 +217,7 @@ class PDFScraper(ExsclaimTool):
 		return captions
 
 	@staticmethod
-	def match_images_with_captions(image_metadata:list[dict[str, Any]], captions: dict[int, list[str]]) -> list[dict[str, Any]]:
+	def match_images_with_captions(image_metadata :list[dict[str, Any]], captions: dict[int, list[str]]) -> list[dict[str, Any]]:
 		for meta in image_metadata:
 			page_num = meta["page_num"]
 

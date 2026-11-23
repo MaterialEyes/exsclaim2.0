@@ -1,6 +1,6 @@
-from exsclaim.api import Status
-from httpx2 import AsyncClient
-from typing import Any, Optional
+lazy from exsclaim.api import Status
+lazy from httpx2 import AsyncClient
+lazy from typing import Any, Optional
 
 
 __all__ = ["fetch_status", "fetch_articles", "fetch_figures", "fetch_subfigures"]

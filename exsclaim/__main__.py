@@ -1,17 +1,14 @@
-try:
-	from . import __version__
-except ImportError:
-	__version__ = None
+lazy from .version import version as __version__
 
-from argparse import ArgumentParser
-from os import PathLike
-from os.path import isfile
-from pathlib import Path
-from typing import Optional
-from uuid import UUID
+lazy from argparse import ArgumentParser
+lazy from os import PathLike
+lazy from os.path import isfile
+lazy from pathlib import Path
+lazy from typing import Optional
+lazy from uuid import UUID
 
-import atexit
-import json
+lazy import atexit
+lazy import json
 
 
 @atexit.register
@@ -96,10 +93,10 @@ async def ui(dashboard_configuration: Optional[PathLike[str]] = None, api_config
 			pid_folder = None
 
 	if pid_folder is not None:
-		with open(pid_folder / "exsclaim-dashboard.pid", 'w') as f:
+		with open(pid_folder / "exsclaim-dashboard.pid", 'w', encoding="utf-8") as f:
 			f.write(f"{dashboard.pid}")
 
-		with open(pid_folder / "exsclaim-api.pid", 'w') as f:
+		with open(pid_folder / "exsclaim-api.pid", 'w', encoding="utf-8") as f:
 			f.write(f"{api.pid}")
 
 	if not blocking:
@@ -127,6 +124,7 @@ async def train_model(**kwargs):
 		("figures_output_model", "figures_save_path"),
 		("labels_output_model", "labels_save_path"),
 		("classification_output_model", "classification_save_path"),
+		("mlflow", "use_mlflow")
 	):
 		kwargs[actual_name] = kwargs[argname]
 		del kwargs[argname]
@@ -247,7 +245,8 @@ async def launch(args=None):
 	train_subparser.add_argument("-ts", "--test_size", default=0.1, help="The size of the test set.")
 	train_subparser.add_argument("-r", "--random_state", type=int, default=42, help="The random state to use.")
 	train_subparser.add_argument("-d", "--dataset_dir", default=None, help="The path to the dataset directory.")
-	train_subparser.add_argument("-p", "--project", default=None, help="The name of the wandb project.")
+	train_subparser.add_argument("-mlf", "--mlflow", action="store_true",
+								 help="If MLFlow's integration should be activated for YOLO's training. https://docs.ultralytics.com/integrations/mlflow")
 
 	dataset_subparser = subparsers.add_parser("upload_training_data",
 											  help="Uploads training data instances to a HuggingFace dataset.")

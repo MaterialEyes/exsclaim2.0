@@ -1,17 +1,17 @@
-from .caption import LLM, LLMOptions
-from .openai_llms import OpenAI
+lazy from .caption import LLM, LLMOptions
+lazy from .openai_llms import OpenAI
 
-from openai import AsyncOpenAI, NotGiven, NOT_GIVEN
-from os import getenv
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pathlib import Path
-from typing import Literal, Optional, Callable, Coroutine
+lazy from openai import AsyncOpenAI, NotGiven, NOT_GIVEN
+lazy from os import getenv
+lazy from pydantic import Field, field_validator
+lazy from pydantic_settings import BaseSettings, SettingsConfigDict
+lazy from pathlib import Path
+lazy from typing import Literal, Optional, Callable, Coroutine
 
-import httpx2
-import logging
-import re
-import ssl
+lazy import httpx2
+lazy import logging
+lazy import re
+lazy import ssl
 
 __all__ = ["LlamaCPP", "LlamaCPPSettings"]
 
@@ -128,12 +128,20 @@ class LlamaCPP(OpenAI):
 
 		return f"LlamaCPP({self.model} [{self.alias}])"
 
+	@classmethod
+	def display_name(cls):
+		return "Llama.cpp"
+
+	@staticmethod
+	def _api_key_needed_for_list() -> bool:
+		return False
+
 	@staticmethod
 	def check_validity(model: str, api_key: Optional[str]):
 		...
 
 	@staticmethod
-	def available_models(silent_fail: bool = False):
+	def available_models(api_key: Optional[str] = None, silent_fail: bool = False):
 		if settings.HOST is None:
 			if silent_fail:
 				logging.error("Could not connect to Llama.cpp. This may cause issues down the line if Llama.cpp LLMs are required.")

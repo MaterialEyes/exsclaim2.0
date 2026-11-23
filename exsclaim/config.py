@@ -1,16 +1,29 @@
-from datetime import datetime as dt
-from multiprocessing import cpu_count
-from os import getenv
-from pathlib import Path
-from pydantic import Field, field_validator, EmailStr, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from re import compile
-from typing import Optional, Self
+lazy from datetime import datetime as dt
+lazy from multiprocessing import cpu_count
+lazy from os import getenv
+lazy from pathlib import Path
+lazy from pydantic import Field, field_validator, EmailStr, model_validator
+lazy from pydantic_settings import BaseSettings, SettingsConfigDict
+lazy from re import compile
+lazy from typing import Optional, Self
+
+lazy import ipaddress
+from starlette.datastructures import URL as StarletteURL
 
 __all__ = ["ExsclaimSettings", "settings", "UISettings", "ui_settings", "get_variables", "orcid_settings", "ORCIDSettings"]
 
 
 BOOL_REGEX = compile("^0?$")
+
+
+class URL(StarletteURL):
+	@property
+	def domain(self) -> str:
+		return self.netloc
+
+	@property
+	def domain_with_scheme(self) -> str:
+		return self.components.geturl()
 
 
 class EmailSettings(BaseSettings):
@@ -213,10 +226,10 @@ class UISettings(ExsclaimSettings):
 		description="Whether or not to allow reloading the UI even if it's debugging.",
 	)
 
-	DASHBOARD_URL: Optional[str] = Field(
-		default="http://localhost:3000",
+	DASHBOARD_URL: URL = Field(
+		default=URL("http://localhost:3000"),
 		description="The full URL that a user would use to access the UI.",
-		examples=["http://localhost:3000", "https://exsclaim.local", "https://exsclaim.materialeyes.org"],
+		examples=["http://localhost:3000", "https://exsclaim.lan", "https://exsclaim.materialeyes.org"],
 	)
 
 	DASHBOARD_PORT: int = Field(
@@ -225,22 +238,22 @@ class UISettings(ExsclaimSettings):
 		examples=[3000, 80, 8080],
 	)
 
-	DOMAIN: str = Field(
-		default="localhost",
+	DOMAIN: URL = Field(
+		default=URL("localhost"),
 		description="The domain that a user would use to access the API and Dashboard through a proxy such as NGINX.",
-		examples=["https://exsclaim.local", "https://exsclaim-dev.materialeyes.org", "http://localhost"],
+		examples=["https://exsclaim.lan", "https://exsclaim-dev.materialeyes.org", "http://localhost"],
 	)
 
-	FAST_API_URL: str = Field(
-		default="http://localhost:8000",
+	FAST_API_URL: URL = Field(
+		default=URL("http://localhost:8000"),
 		description="The URL that a user inside the docker network would use to access the API i.e. from another service within Docker Compose.",
 		examples=["http://localhost:8000", "http://python:8000"],
 	)
 
-	PUBLIC_API_URL: str = Field(
-		default="http://localhost:8000",
+	PUBLIC_API_URL: URL = Field(
+		default=URL("http://localhost:8000"),
 		description="The URL that any user outside of the Docker network would use to access the API, i.e. from the computer hosting the Docker Compose services or an external computer.",
-		examples=["https://api.exsclaim.local", "https://api.exsclaim-dev.materialeyes.org"],
+		examples=["https://api.exsclaim.lan", "https://api.exsclaim-dev.materialeyes.org"],
 	)
 
 	PROJECT_NAME: str = "EXSCLAIM API"
@@ -255,10 +268,22 @@ class UISettings(ExsclaimSettings):
 		description="The file containing the JWT private key to use to authenticate with the API.",
 	)
 
-	@field_validator("DOMAIN", "FAST_API_URL", "PUBLIC_API_URL", "DASHBOARD_URL")
+	METRICS_IP: Optional[ipaddress._BaseAddress] = Field(
+		default=None,
+		description="The IP address that is allowed to view Prometheus' metrics.",
+	)
+
+	METRICS_NETWORK: Optional[ipaddress._BaseNetwork] = Field(
+		default=None,
+		description="The IP network that is allowed to view Prometheus' metrics.",
+	)
+
+	@field_validator("DOMAIN", "FAST_API_URL", "PUBLIC_API_URL", "DASHBOARD_URL", mode="before")
 	@classmethod
-	def domain_has_no_trailing_slash(cls, url: str) -> str:
-		return url.rstrip("/")
+	def domain_has_no_trailing_slash(cls, url: str) -> URL:
+		if isinstance(url, URL):
+			return url
+		return URL(url)
 
 	@field_validator("JWT_PUBLIC_KEY_FILE", "JWT_PRIVATE_KEY_FILE")
 	@classmethod
@@ -277,6 +302,20 @@ class UISettings(ExsclaimSettings):
 	@classmethod
 	def validate_boolean(cls, value) -> bool:
 		return super().validate_boolean(value)
+
+	@field_validator("METRICS_IP", mode="before")
+	@classmethod
+	def validate_metrics_ip(cls, ip: Optional[str]) -> Optional[ipaddress._BaseAddress]:
+		if ip is None:
+			return None
+		return ipaddress.ip_address(ip)
+
+	@field_validator("METRICS_NETWORK", mode="before")
+	@classmethod
+	def validate_metrics_network(cls, ip: Optional[str]) -> Optional[ipaddress._BaseNetwork]:
+		if ip is None:
+			return None
+		return ipaddress.ip_network(ip)
 
 
 settings = ExsclaimSettings()

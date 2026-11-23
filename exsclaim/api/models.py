@@ -1,30 +1,31 @@
 from __future__ import annotations
 
-from ..journals import JournalFamily
-from ..llms import LLM
-from ..config import ExsclaimSettings
-from ..notifications import NTFY, Email, Webhook, QueryNotifications
-from ..db.models import Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes, \
-	User, Run, SaveExtensions, Status, gen_uuid7, get_guest_uuid, RunArticles
-from .json_models import Output
+lazy from ..config import ExsclaimSettings
+lazy from ..db.models import Article, Figure, Subfigure, Scale, SubfigureLabel, ScaleLabel, ClassificationCodes, User, Run, \
+	SaveExtensions, Status, gen_uuid7, get_guest_uuid, RunArticles, QueryCache
+lazy from ..exceptions import PipelineConfigError
+lazy from ..journals import JournalFamily
+lazy from ..llms import LLM
+lazy from ..notifications import NTFY, Email, Webhook, QueryNotifications
+lazy from .json_models import Output
 
-from datetime import datetime as dt, timezone as tz
+lazy from datetime import datetime as dt, timezone as tz
 from fastapi.responses import JSONResponse
-from orjson import dumps
-from pydantic import field_validator, model_validator
-from sqlalchemy import text
-from typing import Any, Literal, Optional, Self
-from uuid import UUID
+lazy from orjson import dumps
+lazy from pydantic import field_validator, model_validator
+lazy from sqlalchemy import text
+lazy from typing import Any, Literal, Optional, Self
+lazy from uuid import UUID
 
-import pydantic
-import sqlalchemy
-import sqlalchemy.dialects.postgresql as sa_psql
-import sqlmodel
+lazy import pydantic
+lazy import sqlalchemy
+lazy import sqlalchemy.dialects.postgresql as sa_psql
+lazy import sqlmodel
 
 __all__ = ["NTFY", "Email", "Webhook", "Query", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
 		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Run", "User", "get_guest_uuid",
 		   "gen_uuid7", "PasswordReset", "ExsclaimJSONResponse", "Output", "Banner",
-		   "QueryTools", "PreviousRunFilters", "RunArticles"]
+		   "QueryTools", "PreviousRunFilters", "RunArticles", "QueryCache"]
 
 
 class PasswordReset(sqlmodel.SQLModel, table=True):
@@ -157,6 +158,11 @@ class Query(pydantic.BaseModel):
 		description="The Large Language Model (LLM) that is used to separate captions and generate keywords for articles and figures."
 	)
 
+	model_provider: Optional[str] = pydantic.Field(
+		default=None,
+		description="The model provider that might be needed depending on the specified llm."
+	)
+
 	pdf_path: Optional[str] = pydantic.Field(
 		default=None,
 		description="The local path towards the directory holding pdf files."
@@ -180,16 +186,6 @@ class Query(pydantic.BaseModel):
 		default=None,
 		description="The id of the EXSCLAIM run that this run will inherit the results from."
 	)
-
-	@field_validator("llm", mode="before")
-	@classmethod
-	def validate_llm(cls, llm: str) -> str:
-		"""Checks if the given LLM is valid."""
-		llm_lower = llm.lower()
-		for name, (_, show_api_key, needs_api_key, label) in LLM:
-			if llm_lower == name.lower() or (label is not None and label.lower() == llm_lower):
-				return name
-		raise ValueError(f"LLM \"{llm}\" is not a valid LLM model.")
 
 	@field_validator("model_key", mode="before")
 	@classmethod
@@ -220,6 +216,28 @@ class Query(pydantic.BaseModel):
 		if ExsclaimSettings().ALLOW_PDF_PATHS: # PDF Path won't even run in this case
 			return pdf_path
 		return None
+
+	@model_validator(mode="after")
+	def validate_query(self) -> Self:
+		llm_lower = self.llm.lower()
+		for name, (_, show_api_key, needs_api_key, label) in LLM:
+			if llm_lower == name.lower() or (label is not None and label.lower() == llm_lower):
+				break
+		else:
+			if self.model_provider is None:
+				raise ValueError(f"LLM \"{self.llm}\" is not a valid LLM model.")
+
+			provider = LLM.classes.get(self.model_provider, None)
+			if provider is None:
+				raise ValueError(
+					f"Could not find the provider {self.model_provider} to use to validate the information given for model={self.llm}.")
+
+			try:
+				provider.check_validity(self.llm, self.model_key)
+			except PipelineConfigError as e:
+				raise ValueError(str(e)) from e
+
+		return self
 
 
 class ExsclaimJSONResponse(JSONResponse):

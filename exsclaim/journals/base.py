@@ -1,35 +1,33 @@
-from ..config import settings
-from ..db import Author, ORCID_REGEX
-from ..exceptions import JournalScrapeError
-from ..utilities import paths
+lazy from ..config import settings
+lazy from ..db import Author, ORCID_REGEX, DOI_REGEX, DOI_REGEX_STRING
+lazy from ..exceptions import JournalScrapeError
+lazy from ..utilities import paths
 
-import asyncio
-import bs4
-import cairosvg
-import curl_cffi
-import httpx2
-import inspect
-import logging
-import re
-import sys
-import urllib.parse
+lazy import asyncio
+lazy import bs4
+lazy import cairosvg
+lazy import curl_cffi
+lazy import httpx2
+lazy import inspect
+lazy import logging
+lazy import re
+lazy import sys
+lazy import urllib.parse
 
-from abc import ABC, abstractmethod, ABCMeta
-from bs4 import BeautifulSoup
-from itertools import product
-from pathlib import Path
-from playwright.async_api import BrowserContext, Locator, async_playwright, Response, PlaywrightContextManager, Page
-from playwright._impl import _errors as playwright_errors
-from playwright_stealth import Stealth
-from typing import Any, Awaitable, Callable, Collection, Iterable, Iterator, Literal, Optional, Self, Sequence, overload
+lazy from abc import ABC, abstractmethod, ABCMeta
+lazy from bs4 import BeautifulSoup
+lazy from itertools import product
+lazy from pathlib import Path
+lazy from playwright.async_api import BrowserContext, Locator, async_playwright, Response, PlaywrightContextManager, Page
+lazy from playwright._impl import _errors as playwright_errors
+lazy from playwright_stealth import Stealth
+lazy from typing import Any, Awaitable, Callable, Collection, Iterable, Iterator, Literal, Optional, Self, Sequence, overload
 
 __all__ = ["JournalFamily", "JournalMeta", "JournalHtml", "StaticHtml", "DynamicHtml", "JournalFamilyStatic",
-		   "JournalFamilyDynamic", "URLParams", "DOI_REGEX", "ORCID_REGEX", "ResponseFunction", "default_predicate"]
+		   "JournalFamilyDynamic", "URLParams", "DOI_REGEX_STRING", "DOI_REGEX", "ORCID_REGEX", "ResponseFunction",
+		   "default_predicate"]
 
 URLParams = dict[str, Any]
-
-# language=PythonRegExp
-DOI_REGEX = r"(10\.\d{4,9})/([-.;()/:\w%]+)"
 
 ResponseFunction = str | re.Pattern[str] | Callable[[Response], bool | Awaitable[bool]]
 
@@ -626,13 +624,13 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		return self.open
 
 	@staticmethod
-	async def _get_image(url: str, client: curl_cffi.AsyncClient, *args, **kwargs) -> bytes:
+	async def _get_image(url: str, client: curl_cffi.AsyncSession, *args, **kwargs) -> bytes:
 		response = await client.get(url)
 		response.raise_for_status()
 
 		return await response.aread()
 
-	async def _get_image_stream(self, client: curl_cffi.AsyncClient | httpx2.AsyncClient, image_url: str, save_file: Path, chunk_size: int = 1_024,
+	async def _get_image_stream(self, client: curl_cffi.AsyncSession | httpx2.AsyncClient, image_url: str, save_file: Path, chunk_size: int = 1_024,
 								sleep_time: float = 30, retries: int = 5):
 		for retry in range(retries):
 			async with client.stream("GET", image_url) as response:
@@ -851,6 +849,9 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 	async def get_title(self, html: T, url: str) -> str:
 		return (await html.select_one("title").get_text()).strip()
 
+	async def get_doi(self, html: T, url: str) -> Optional[str]:
+		return None
+
 	@staticmethod
 	def convert_svg_to_image(image_path: Path, new_extension: str = "png"):
 		new_path = image_path.with_suffix(f".{new_extension}")
@@ -875,7 +876,10 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		try:
 			html = await self.get(url)
 		except JournalScrapeError as e:
-			self.logger.error(f"Could not scrape {url} (HTTP Status Code: {e.status}). Reason: \"{e.message}\".")
+			self.logger.error(
+				f"Could not scrape {url} (HTTP Status Code: {e.status}). Reason: \"{e.message}\".",
+				exc_info=e
+			)
 			return dict()
 
 		_id = self.get_article_name_from_url(url)
@@ -886,18 +890,24 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 		try:
 			is_open, _license = await self.get_license(html)
 		except playwright_errors.TimeoutError as e:
-			self.logger.error(f"Could not get license for {url}.")
+			self.logger.error(f"Could not get license for {url}.", exc_info=e)
 			raise JournalScrapeError(f"Could not get license for: {url}.", url=url, html=html) from e
 
 		title = await self.get_title(html, url)
 		authors = await self.get_authors(html)
+		doi = await self.get_doi(html, url)
 		figure_subtrees = await self.get_figure_list(html)
+
+		if isinstance(doi, str):
+			doi_match = DOI_REGEX.search(doi)
+			doi = f"{doi_match.group(1)}/{doi_match.group(2)}" if doi_match is not None else None
 
 		self.logger.info(f"Number of subfigures: {len(figure_subtrees):,} for {_id}.")
 		article_json = {
 			"title": title,
 			"authors": authors,
 			"article_url": url,
+			"doi": doi,
 			"license": _license,
 			"open": is_open,
 			"figures": dict()
@@ -942,7 +952,7 @@ class JournalFamily[T: JournalHtml](ABC, metaclass=JournalMeta):
 					except BaseException as e:
 						self.logger.error(f"An error occurred when trying to convert {saved_image} into a(n) {image_extension} file.", exc_info=e)
 			except JournalScrapeError as e:
-				self.logger.error(f"Could not download figure \"{figure_name}\" from {image_url} (HTTP Status Code: {e.status}). Reason: {e.message}")
+				self.logger.error(f"Could not download figure \"{figure_name}\" from {image_url} (HTTP Status Code: {e.status}). Reason: {e.message}", exc_info=e)
 				continue
 
 			article_json["figures"][figure_name] = figure_json

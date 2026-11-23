@@ -1,17 +1,17 @@
 # Acquired from https://github.com/pytorch/vision/tree/master/references/detection
-import math
-import sys
+lazy import math
+lazy import sys
 
-import numpy as np
-import torch
+lazy import numpy as np
+lazy import torch
 
-from pathlib import Path
-from time import time
-from torchvision.models.detection import MaskRCNN, KeypointRCNN
+lazy from pathlib import Path
+lazy from time import time
+lazy from torchvision.models.detection import MaskRCNN, KeypointRCNN
 
-from . import process, utils
-from .coco_eval import CocoEvaluator
-from .coco_utils import get_coco_api_from_dataset
+lazy from . import process, utils
+lazy from .coco_eval import CocoEvaluator
+lazy from .coco_utils import get_coco_api_from_dataset
 
 
 __all__ = ["train_one_epoch", "get_epoch", "run_nms_on_outputs", "evaluate"]

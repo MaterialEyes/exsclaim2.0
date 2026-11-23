@@ -1,4 +1,4 @@
-import datasets
+lazy import datasets
 
 
 __all__ = ["classification_labels", "caption_features", "image_features"]

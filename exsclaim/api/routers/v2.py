@@ -1,17 +1,17 @@
-from ..models import User, Run
-from ..dependencies import CurrentUserId
-from ...db import get_db_session
+lazy from ..models import User, Run
+lazy from ..dependencies import CurrentUserId
+lazy from ...db import get_db_session
 
-from fastapi import APIRouter, status, HTTPException
-from starlette.responses import StreamingResponse
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import SQLModel
-from typing import Literal, Optional
-from uuid import UUID
+lazy from fastapi import APIRouter, status, HTTPException
+lazy from starlette.responses import StreamingResponse
+lazy from sqlalchemy import select
+lazy from sqlalchemy.ext.asyncio import AsyncSession
+lazy from sqlmodel import SQLModel
+lazy from typing import Literal, Optional
+lazy from uuid import UUID
 
-import enum
-import orjson
+lazy import enum
+lazy import orjson
 
 __all__ = ["router"]
 
@@ -33,7 +33,7 @@ class SearchEnum(enum.IntEnum):
 	def get_level(cls, level: SearchLevels) -> "SearchEnum":
 		try:
 			return cls[level.title()]
-		except ValueError as e:
+		except (KeyError, ValueError) as e:
 			match level.lower():
 				case "subfigure_label":
 					return cls.SubfigureLabel

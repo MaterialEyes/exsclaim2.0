@@ -1,5 +1,5 @@
 """Functions for reading and writing files."""
-import yaml
+lazy import yaml
 
 
 __all__ = ["load_yaml"]

@@ -1,16 +1,16 @@
 # Acquired from https://github.com/pytorch/vision/tree/master/references/detection
-import copy
-import json
-import pathlib
-from collections import defaultdict
+lazy import copy
+lazy import json
+lazy import pathlib
+lazy from collections import defaultdict
 
-import numpy as np
-import pycocotools.mask as mask_util
-from torch import stack
-from pycocotools.coco import COCO
-from pycocotools.cocoeval import COCOeval
+lazy import numpy as np
+lazy import pycocotools.mask as mask_util
+lazy from torch import stack
+lazy from pycocotools.coco import COCO
+lazy from pycocotools.cocoeval import COCOeval
 
-from .utils import all_gather
+lazy from .utils import all_gather
 
 
 __all__ = ["CocoEvaluator", "convert_to_xywh", "merge", "create_common_coco_eval", "createIndex", "loadRes", "evaluate"]

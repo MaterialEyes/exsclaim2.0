@@ -1,7 +1,7 @@
 from __future__ import division, print_function
 
-from itertools import pairwise
-from re import findall
+lazy from itertools import pairwise
+lazy from re import findall
 
 
 __all__ = ["LanguageModel"]

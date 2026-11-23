@@ -1,26 +1,26 @@
-from ..models import Banner, Run
-from ..dependencies import AcceptHeader
+lazy from ..models import Banner, Run
+lazy from ..dependencies import AcceptHeader
 
-from ...config import ui_settings
-from ...db import get_db_session
+lazy from ...config import ui_settings
+lazy from ...db import get_db_session
 
-import exsclaim
-import httpx2
-import logging
+lazy import exsclaim
+lazy import httpx2
+lazy import logging
 
-from asyncpg import UndefinedTableError
-from datetime import datetime as dt, timezone as tz
-from fastapi import APIRouter, status
-from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
-from fastapi.responses import JSONResponse
-from hashlib import sha256
-from sqlalchemy import select
-from starlette.requests import Request
-from starlette.responses import Response, HTMLResponse
-from starlette.routing import BaseRoute
-from textwrap import dedent
-from typing import Optional
-from uuid import UUID
+lazy from asyncpg import UndefinedTableError
+lazy from datetime import datetime as dt, timezone as tz
+lazy from fastapi import APIRouter, status
+lazy from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+lazy from fastapi.responses import JSONResponse
+lazy from hashlib import sha256
+lazy from sqlalchemy import select
+lazy from starlette.requests import Request
+lazy from starlette.responses import Response, HTMLResponse
+lazy from starlette.routing import BaseRoute
+lazy from textwrap import dedent
+lazy from typing import Optional
+lazy from uuid import UUID
 
 __all__ = ["router"]
 
@@ -88,6 +88,8 @@ async def dark_theme(request: Request):
 		swagger_favicon_url="/favicon.ico"
 	)
 
+	response.headers["Content-Security-Policy"] = f"default-src 'self' {ui_settings.DOMAIN.domain_with_scheme}; script-src 'unsafe-inline' https://cdn.jsdelivr.net/; img-src 'unsafe-inline' 'self' data: {ui_settings.DOMAIN.domain_with_scheme};"
+
 	return response
 
 
@@ -97,14 +99,18 @@ async def docs_redirect() -> Response:
 
 
 @router.api_route("/redoc", methods=["GET", "HEAD"], include_in_schema=False)
-async def redoc(request: Request) -> Response:
+async def redoc(request: Request) -> HTMLResponse:
 	app = request.app
 	schema = app.openapi()
-	return get_redoc_html(
+	response = get_redoc_html(
 		openapi_url=app.openapi_url,
 		title=schema["info"]["title"],
 		redoc_favicon_url="/favicon.ico",
 	)
+
+	response.headers["Content-Security-Policy"] = f"default-src 'self' {ui_settings.DOMAIN}; script-src 'unsafe-inline' https://cdn.jsdelivr.net/; img-src 'unsafe-inline' 'self' data: {ui_settings.DOMAIN} https://cdn.redoc.ly/; style-src 'unsafe-inline' 'self' {ui_settings.DOMAIN} https://fonts.googleapis.com/css; font-src 'unsafe-inline' 'self' {ui_settings.DOMAIN} https://fonts.gstatic.com/; connect-src 'unsafe-inline' 'self' {ui_settings.DOMAIN} https://cdn.jsdelivr.net/; worker-src 'unsafe-inline' 'self' {ui_settings.DOMAIN} blob:;"
+
+	return response
 
 
 @router.api_route("/openapi.yaml", methods=["GET"], include_in_schema=False)

@@ -1,17 +1,11 @@
-try:
-	from ... import ui_settings
-	from components.common import create_header_component, create_footer_component
-except ImportError:
-	from exsclaim import ui_settings
-	from exsclaim.dashboard.components import create_header_component, create_footer_component
+lazy from exsclaim import ui_settings
+lazy from exsclaim.dashboard.components import create_header_component, create_footer_component
 
-from dash import html, dcc, clientside_callback, ClientsideFunction, Output, Input, State, callback, register_page
-from json import dumps
-# from plotly.graph_objs import Figure
+lazy from dash import html, dcc, register_page
 
-import dash_ag_grid as dag
-import dash_bootstrap_components as dbc
-import numpy as np
+lazy import dash_ag_grid as dag
+lazy import dash_bootstrap_components as dbc
+lazy import plotly.graph_objs as go
 
 register_page(__name__, path="/train", title="Training", description="Use previous EXSCLAIM runs to create training data.")
 
@@ -24,7 +18,7 @@ def get_image_annotator() -> dcc.Graph:
 		]
 	}
 
-	fig = np.zeros((256, 256, 3))
+	fig = go.Figure()
 	graph = dcc.Graph(id="figure", figure=fig, config=config)
 	return graph
 
@@ -40,7 +34,7 @@ def get_article_button():
 def get_data_table():
 	import httpx2
 
-	client = httpx2.Client(base_url=ui_settings.FAST_API_URL)
+	client = httpx2.Client(base_url=ui_settings.FAST_API_URL.domain_with_scheme)
 	try:
 		response = client.get("/classification_codes")
 	except httpx2.ConnectError:
@@ -90,7 +84,7 @@ def layout():
 		"margin": "20px",
 		"justifyContent": "center",
 		"display": "flex",
-		"flex-direction": "column",
+		"flexDirection": "column",
 	}, children=[
 		create_header_component(),
 		dcc.Store(
@@ -107,12 +101,12 @@ def layout():
 						accept="application/json",
 						style={
 							"width": "100%",
-							'height': '60px',
-							'lineHeight': '60px',
-							'borderWidth': '1px',
-							'borderStyle': 'dashed',
-							'borderRadius': '5px',
-							'textAlign': 'center',
+							"height": "60px",
+							"lineHeight": "60px",
+							"borderWidth": "1px",
+							"borderStyle": "dashed",
+							"borderRadius": "5px",
+							"textAlign": "center",
 						}
 					),
 				]),
@@ -152,164 +146,3 @@ def layout():
 		html.Pre(id="store-output"),
 		create_footer_component()
 	])
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="train",
-		function_name="add_new_row"
-	),
-	Output("training_data", "rowTransaction"),
-	Input("add-row-button", "n_clicks"),
-	prevent_initial_call=True
-)
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="train",
-		function_name="load_previous_runs"
-	),
-	[
-		Output("run_selector", "options"),
-		Output("run_selector", "value"),
-		Output("start-interval", "disabled")
-	],
-	[
-		Input("start-interval", "n_intervals")
-	],
-	[
-		State("exsclaim-store", "data"),
-	],
-	prevent_initial_call=True
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="train",
-		function_name="populate_figures"
-	),
-	[
-		Output("figure_selector", "options")
-	],
-	[
-		Input("run_selector", "value")
-	],
-	[
-		State("exsclaim-store", "data"),
-	],
-	prevent_initial_call=True
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="train",
-		function_name="update_available_figures"
-	),
-	[
-		Output("current_figure", "options"),
-		Output("current_figure", "value"),
-	],
-	[
-		Input("figure_selector", "value")
-	],
-	[
-		# State("exsclaim-store", "data"),
-		State("current_figure", "value"),
-	],
-	prevent_initial_call=True
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="train",
-		function_name="update_current_figure"
-	),
-	[
-		Output("training_data", "rowData"),
-		Output("training_data_store", "data"),
-		Output("figure", "figure"),
-		Output("full_caption", "value"),
-		Output("article_url", "href"),
-		Output("article_button", "hidden"),
-	],
-	[
-		Input("current_figure", "value"),
-		# Input("training_data_store", "data"),
-	],
-	[
-		State("training_data_store", "data"),
-	],
-	prevent_initial_call=True
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="train",
-		function_name="update_coordinates"
-	),
-	[
-		Output("figure", "figure"),
-		Output("training_data_store", "data"),
-	],
-	[
-		Input("training_data", "cellValueChanged"),
-	],
-	[
-		State("training_data_store", "data"),
-		State("current_figure", "value"),
-	],
-	prevent_initial_call=True
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="train",
-		function_name="update_full_caption"
-	),
-
-	Output("training_data_store", "data"),
-	[
-		Input("full_caption", "value"),
-	],
-	[
-		State("training_data_store", "data"),
-		State("current_figure", "value"),
-	],
-	prevent_initial_call=True
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="train",
-		function_name="download"
-	),
-	Output("download_data", "data"),
-	Input("download_button", "n_clicks"),
-	State("training_data_store", "data"),
-	prevent_initial_call=True
-)
-
-
-clientside_callback(
-	ClientsideFunction(
-		namespace="train",
-		function_name="upload"
-	),
-	Output("training_data_store", "data"),
-	Input("upload_data", "contents"),
-	prevent_initial_call=True
-)
-
-
-@callback(
-	Output("store-output", "children"),
-	Input("training_data_store", "data")
-)
-def update_preview(data):
-	return dumps(data, indent="\t")

@@ -7,29 +7,29 @@ package. All the model classes are independent of each
 other, but they expose the same interface, so they are
 interchangeable.
 """
-from .llms import LLM, LLMUsage, OptionalSemaphore
-from .config import settings
-from .exceptions import PipelineInterruptionException, JournalScrapeError, ExsclaimToolException, PipelineConfigError
-from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform, \
+lazy from .llms import LLM, LLMUsage, OptionalSemaphore
+lazy from .config import settings
+lazy from .exceptions import PipelineInterruptionException, JournalScrapeError, ExsclaimToolException, PipelineConfigError
+lazy from .figures import CRNN, ctc, non_max_suppression_malisiewicz, create_scale_bar_objects, ScalebarInfo, resize_transform, \
 	geometry_boxes as boxes
-from .journals import JournalFamily
-from .utilities import initialize_results_dir, PrinterFormatter, load_model_from_checkpoint, download_model_checkpoint
+lazy from .journals import JournalFamily
+lazy from .utilities import initialize_results_dir, PrinterFormatter, load_model_from_checkpoint, download_model_checkpoint
 
-from abc import ABC, abstractmethod
-from logging import getLogger, StreamHandler
-from os import PathLike
-from pathlib import Path
-from PIL import Image
-from time import time_ns as timer
-from typing import Any, Callable, Collection, Iterable, Optional
+lazy from abc import ABC, abstractmethod
+lazy from logging import getLogger, StreamHandler
+lazy from os import PathLike
+lazy from pathlib import Path
+lazy from PIL import Image
+lazy from time import time_ns as timer
+lazy from typing import Any, Callable, Collection, Iterable, Optional
 
-import asyncio
-import cv2
-import json
-import numpy as np
-import pydantic
-import re
-import torch
+lazy import asyncio
+lazy import cv2
+lazy import json
+lazy import numpy as np
+lazy import pydantic
+lazy import re
+lazy import torch
 
 if settings.DISPLAY_TQDM:
 	from tqdm.asyncio import tqdm_asyncio
@@ -238,7 +238,7 @@ class JournalScraper(ExsclaimTool):
 					self._update_exsclaim(exsclaim_json, name, article_dict)
 			self.new_articles_visited.add(article)
 		except JournalScrapeError as e:
-			self.logger.exception(f"Could not scrape the details for {url}.")
+			self.logger.exception(f"Could not scrape the details for {url}.", exc_info=e)
 			await self._handle_scrape_error(e)
 			raise e
 		except Exception as e:
@@ -301,10 +301,10 @@ class CaptionDistributor(ExsclaimTool):
 	"""
 	CaptionDistributor object.
 	Distribute subfigure caption chunks from full figure captions
-	in an exsclaim_dict using custom caption nlp tools
+	in an exsclaim_dict using custom caption NLP tools
 	Parameters:
 	model_path: str
-		Absolute path to caption nlp model
+		Absolute path to caption NLP model
 	"""
 
 	def __init__(self, search_query: dict, **kwargs):
@@ -354,8 +354,8 @@ class CaptionDistributor(ExsclaimTool):
 	async def check_search_query(self, query_dict: dict[str, Any]):
 		self.llm.validate_search_query(query_dict)
 
-	async def _task(self, exsclaim_json: dict, search_query: dict, article_id: str, figure: str, new_separated: set, lock: asyncio.Lock,
-					 semaphore: OptionalSemaphore):
+	async def _task(self, exsclaim_json: dict, search_query: dict, article_id: str, figure: str, new_separated: set,
+					lock: asyncio.Lock, semaphore: OptionalSemaphore):
 		async with semaphore:
 			try:
 				caption_text = exsclaim_json[article_id]["figures"][figure]["full_caption"]
@@ -492,8 +492,8 @@ class FigureSeparator(ExsclaimTool):
 			self.classification_model = YOLO(self._yolov11_classifier_path)
 			self.classification_model.to(self.device)
 			self.logger.info("Subfigure classification model has been loaded.")
-		except BaseException as e:
-			self.logger.exception("Error loading YOLO models.")
+		except Exception as e:
+			self.logger.exception("Error loading YOLO models.", exc_info=e)
 			raise ExsclaimToolException from e
 
 		# Common YOLO settings if needed
@@ -842,6 +842,7 @@ class FigureSeparator(ExsclaimTool):
 			label_box = subfigures_per_class.get(cls_id, None)
 			if label_box is not None:
 				lx1, ly1, lx2, ly2 = label_box.xyxy[0].cpu().numpy()
+				lx1, ly1, lx2, ly2 = int(lx1), int(ly1), int(lx2), int(ly2)
 			else:
 				lx1, ly1, lx2, ly2 = None, None, None, None
 			conf = float(box.conf[0])
@@ -905,10 +906,10 @@ class FigureSeparator(ExsclaimTool):
 				"subfigure_label": {
 					"text": label,
 					"geometry": dict(
-						x0=int(lx1),
-						y0=int(ly1),
-						x1=int(lx2),
-						y1=int(ly2)
+						x0=lx1,
+						y0=ly1,
+						x1=lx2,
+						y1=ly2
 					)
 				}
 			}

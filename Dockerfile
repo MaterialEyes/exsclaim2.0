@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7-labs
-FROM python:3.14.7-slim AS deps
+FROM python:3.15.2-slim AS deps
 
 # This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
 ARG UV_DEFAULT_INDEX="https://pypi.org/simple"
@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/tmp/pip \
     curl -LsSf https://astral.sh/uv/install.sh | sh && \
     pip install --upgrade pip --cache-dir=/tmp/pip --root-user-action ignore && \
     . ~/.bashrc && \
-    uv pip install --system --system-certs -r pyproject.toml --cache-dir=/tmp/pip || exit 1; \
+    uv pip install --system --system-certs -r pyproject.toml --extra llm --extra telemetry --cache-dir=/tmp/pip || exit 1; \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/tmp/pip \
     rm -rf /opt/install/exsclaim
 
 # syntax=docker/dockerfile:1.7-labs
-FROM python:3.14.7-slim AS core
+FROM python:3.15.2-slim AS core
 
 ARG UID=1000
 ARG GID=1000
@@ -56,8 +56,8 @@ ARG UNAME=exsclaim
 ARG GNAME=exsclaim
 ARG DEBIAN_FRONTEND=noninteractive
 
-# This was added as a local PYPI server with all of the necessary packages installed on it to reduce the build time
-ARG CHROMEDRIVER_VERSION="144.0.7559.96"
+# https://googlechromelabs.github.io/chrome-for-testing/
+ARG CHROMEDRIVER_VERSION="158.0.8127.36"
 
 ENV CUDA_LAUNCH_BLOCKING=1
 
@@ -68,11 +68,12 @@ ENV DASHBOARD_PORT=3000
 ENV DASHBOARD_URL=http://localhost:$DASHBOARD_PORT
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+# ENV PYTHON_LAZY_IMPORTS=all
 
 SHELL ["/bin/bash", "-c"]
 HEALTHCHECK --interval=20s --timeout=4s --start-period=12s --retries=8 CMD docker-healthcheck
 ENTRYPOINT ["docker-entrypoint"]
-CMD exsclaim ui --blocking --initialize_db
+CMD exsclaim ui --blocking --update_db
 
 WORKDIR /opt/install
 
@@ -82,10 +83,11 @@ RUN --mount=type=cache,sharing=locked,target=/var/lib/apt \
     usermod -aG $GID $UNAME && \
     printf "\numask 002\n" >> /home/$UNAME/.bashrc && \
     printf "\numask 002\n" >> /root/.bashrc && \
+    printf "\numask 002\n" >> /etc/environment && \
     mkdir -p /exsclaim/{logs,results,yolo}/ && \
     chown -R $UID:$GID /exsclaim && \
     apt update && \
-    apt install -y --no-install-recommends curl ffmpeg unzip libglib2.0-0 libnss3 playwright  \
+    apt install -y --no-install-recommends curl ffmpeg unzip libglib2.0-0 libnss3 playwright \
         libfontconfig1 libxcb1 libx11-6 libx11-xcb1 libxcomposite1 \
         libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 \
         libxrender1 libxss1 libxtst6 libsm6 \
@@ -94,8 +96,12 @@ RUN --mount=type=cache,sharing=locked,target=/var/lib/apt \
         libasound2 libgdk-pixbuf-xlib-2.0-0 libgtk-3-0 lsof nano \
         libdrm2 libnspr4 xvfb \
         libfreetype6 xfonts-scalable fonts-liberation fonts-ipafont-gothic \
-        fonts-wqy-zenhei fonts-tlwg-loma-otf fonts-freefont-ttf zstd \
-        libfreetype6-dev libharfbuzz-dev && \
+        fonts-wqy-zenhei fonts-tlwg-loma-otf fonts-freefont-ttf zstd npm \
+        libfreetype6-dev libharfbuzz-dev libatomic1 && \
+    npm install -g node && \
+    rm -rf /usr/bin/node* && \
+    rm -rf /lib/x86_64-linux-gnu/libnode.so && \
+    apt remove -y libnode-dev libnode115 && \
     curl -o chromedriver-linux64.zip https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip && \
     unzip -p chromedriver-linux64.zip chromedriver-linux64/chromedriver > /usr/local/bin/chromedriver && \
     curl -o chrome-linux64.zip https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chrome-linux64.zip && \
@@ -109,9 +115,8 @@ RUN --mount=type=cache,sharing=locked,target=/var/lib/apt \
 WORKDIR /opt/exsclaim
 
 COPY docker-entrypoint docker-healthcheck /usr/local/bin/
-COPY --chown=$UID:$GID query ./query
 
-COPY --link --from=deps /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
+COPY --link --from=deps /usr/local/lib/python3.15/site-packages /usr/local/lib/python3.15/site-packages
 COPY --from=build /usr/local/bin/hypercorn /usr/local/bin/gunicorn /usr/local/bin/playwright /usr/local/bin/alembic /usr/local/bin/
 
 RUN --mount=type=cache,target=/var/lib/apt \
@@ -125,9 +130,9 @@ RUN --mount=type=cache,target=/var/lib/apt \
 	playwright install chromium && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --link --from=build /usr/local/lib/python3.14/site-packages/exsclaim /usr/local/lib/python3.14/site-packages/exsclaim
+COPY --link --from=build /usr/local/lib/python3.15/site-packages/exsclaim /usr/local/lib/python3.15/site-packages/exsclaim
 COPY --from=build /usr/local/bin/exsclaim /usr/local/bin/exsclaim
-COPY --from=build /opt/install/dist/ /opt/install/dist
+COPY --from=build /opt/install/dist/exsclaim* /opt/install/dist/
 
 USER $UID
 
@@ -141,9 +146,8 @@ COPY pyproject.toml ./
 RUN touch ~/.xinitrc && chmod +x ~/.xinitrc && \
     apt update && apt install git -y --no-install-recommends && \
 	curl -LsSf https://astral.sh/uv/install.sh | sh && \
-	pip install --upgrade pip --cache-dir=/tmp/pip --root-user-action ignore && \
 	. ~/.bashrc && \
-    uv pip install --system --system-certs -r pyproject.toml --extra test --extra dev --cache-dir=/tmp/pip && \
+    uv pip install --system --system-certs -r pyproject.toml --extra test --extra dev --extra train --cache-dir=/tmp/pip && \
     chmod -R 775 /opt && \
     chown -R exsclaim:root /opt && \
     mkdir -p /home/exsclaim/.cache/torch/hub/checkpoints/ && \
@@ -168,5 +172,4 @@ RUN pip install -r jupyter_requirements.txt --no-cache-dir && \
     ls -la /root/.nvm && \
     \. /root/.nvm/nvm.sh && \
     \. /root/.nvm/bash_completion && \
-    nvm install v20.15.0 && \
     jupyter lab build

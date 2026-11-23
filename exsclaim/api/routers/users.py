@@ -1,25 +1,25 @@
-from ...config import ui_settings, orcid_settings
-from ...db import get_db_session, cryptographic_hash
-from ..models import User, PasswordReset, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
-from ..dependencies.users import LoginInfo, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, ActiveUser, \
-	CurrentUser, CurrentUserId, ActiveUserId, create_access_token, create_refresh_token, extract_access_token, \
-	extract_refresh_token, AccessTokenCookie, RefreshTokenCookie
+lazy from ...config import ui_settings, orcid_settings
+lazy from ...db import get_db_session, cryptographic_hash
+lazy from ..models import User, PasswordReset, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
+lazy from ..dependencies.users import LoginInfo, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, ActiveUser, \
+	CurrentUser, CurrentUserId, ActiveUserId, create_access_token, create_refresh_token, extract_refresh_token, \
+	RefreshTokenCookie
 
-from datetime import datetime as dt, timezone as tz, timedelta as td
-from fastapi import APIRouter, status, HTTPException, Body, Cookie
-from httpx2 import AsyncClient
-from starlette.requests import Request
-from starlette.responses import Response, HTMLResponse, RedirectResponse
-from pydantic import EmailStr
-from sqlalchemy import text, delete, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
-from typing import Optional
-from uuid import uuid4, UUID
+lazy from datetime import datetime as dt, timezone as tz, timedelta as td
+lazy from fastapi import APIRouter, status, HTTPException, Body, Cookie
+lazy from httpx2 import AsyncClient
+lazy from starlette.requests import Request
+lazy from starlette.responses import Response, HTMLResponse, RedirectResponse
+lazy from pydantic import EmailStr
+lazy from sqlalchemy import text, delete, update
+lazy from sqlalchemy.ext.asyncio import AsyncSession
+lazy from sqlmodel import select
+lazy from typing import Optional
+lazy from uuid import uuid4, UUID
 
-import asyncpg
-import re
-import sqlalchemy.exc as sql_exc
+lazy import asyncpg
+lazy import html
+lazy import sqlalchemy.exc as sql_exc
 
 __all__ = ["router"]
 
@@ -28,15 +28,12 @@ router = APIRouter(prefix="/user")
 TAG = "User Management"
 
 
-DOMAIN_REGEX = re.compile("https?://")
-
-
 def get_cookie_domain() -> str:
-	return DOMAIN_REGEX.sub("", ui_settings.DOMAIN)
+	return ui_settings.DOMAIN.domain
 
 
 def get_api_cookie_domain() -> str:
-	return DOMAIN_REGEX.sub("", ui_settings.PUBLIC_API_URL)
+	return ui_settings.PUBLIC_API_URL.domain
 
 
 async def add_user_jti(user: User | UUID, jti: UUID):
@@ -83,7 +80,7 @@ async def create_access_token_for_cookie(user: User, response: Response) -> Resp
 	response.set_cookie(
 		key="access_token",
 		value=access_token,
-		httponly=True,
+		httponly=False,
 		secure=True,
 		domain=get_cookie_domain(),
 		samesite="lax",
@@ -108,7 +105,7 @@ async def create_refresh_token_for_cookie(user: User, response: Response) -> Res
 		domain=get_api_cookie_domain(),
 		samesite="strict",
 		max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86_400, # 86,400 seconds in a day
-		path=router.prefix + "/refresh"
+		path=f"{router.prefix}/protected"
 	)
 
 	response.headers["X-EXSCLAIM-Refresh-Days"] = str(REFRESH_TOKEN_EXPIRE_DAYS)
@@ -118,6 +115,11 @@ async def create_refresh_token_for_cookie(user: User, response: Response) -> Res
 def is_valid_username(username: str) -> bool:
 	# TODO: Check for profanity before allowing the username
 	return True
+
+
+@router.api_route("/cookie/{path}", methods=["GET", "POST"])
+async def redirect_old_path_get(path: str) -> Response:
+	return RedirectResponse(f"/protected/{path}", status_code=301)
 
 
 @router.post("/create_user", tags=[TAG])
@@ -139,6 +141,7 @@ async def create_user(info: LoginInfo):
 	salt = User.generate_salt()
 	password_hash = cryptographic_hash(password, salt=salt)
 
+	username = html.escape(username)
 	user = User(name=username, email=email, salt=salt, password_hash=password_hash)
 
 	async with get_db_session(expire_on_commit=False) as session:
@@ -151,32 +154,30 @@ async def create_user(info: LoginInfo):
 	return response
 
 
-async def get_user_from_login(info: LoginInfo) -> User | Response:
+async def get_user_from_login(info: LoginInfo) -> User:
 	email = info.email.strip().lower()
 	password = info.password.strip()
 
 	async with get_db_session() as session:
 		results = await session.execute(select(User).where(User.email == email))
-		actual_user: Optional[User] = results.scalar_one_or_none()
+		user: Optional[User] = results.scalar_one_or_none()
 
-	if not actual_user:
-		return Response(content="Invalid email/password.", status_code=status.HTTP_401_UNAUTHORIZED, media_type="text/plain")
+	if user is None or not user.verify_password(password):
+		raise HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail="Invalid email/password.",
+			headers={"WWW-Authenticate": "Bearer"},
+		)
 
-	if not actual_user.verify_password(password):
-		return Response(content="Invalid email/password.", status_code=status.HTTP_401_UNAUTHORIZED, media_type="text/plain")
-
-	return actual_user
+	return user
 
 
 @router.post("/login", tags=[TAG])
 async def login_user(request: Request, info: LoginInfo) -> Response:
 	actual_user = await get_user_from_login(info)
-	if isinstance(actual_user, Response):
-		return actual_user
+	response = JSONResponse({"status": "Logged in successfully!", "user": actual_user.name}, status_code=status.HTTP_200_OK)
 
 	referer = request.headers.get("Referer")
-	response = JSONResponse({"status": "Logged in successfully!"}, status_code=status.HTTP_200_OK)
-
 	if referer is not None:
 		response.headers["Location"] = referer
 
@@ -187,7 +188,6 @@ async def login_user(request: Request, info: LoginInfo) -> Response:
 
 @router.api_route("/login-orcid", methods=["GET", "HEAD"], tags=[TAG], include_in_schema=False)
 async def login_with_orcid(request: Request, code: str):
-	logger = request.state.logger
 	async with AsyncClient() as client:
 		headers = {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}
 		data = {
@@ -201,6 +201,7 @@ async def login_with_orcid(request: Request, code: str):
 		response = await client.post(f"{orcid_settings.URL}/oauth/token", headers=headers, data=data)
 
 		if response.status_code != 200:
+			logger = request.state.logger
 			logger.error(f"Login failed with status code {response.status_code}: {response.text}")
 			return JSONResponse({**response.json(), "status_code": response.status_code}, status_code=500)
 
@@ -215,13 +216,13 @@ async def login_with_orcid(request: Request, code: str):
 			session.add(actual_user)
 			await session.commit()
 
-	response = RedirectResponse(ui_settings.DASHBOARD_URL)
-	response = await create_access_token_for_cookie(actual_user, response)
-	response = await create_refresh_token_for_cookie(actual_user, response)
-	return response
+		response = RedirectResponse(ui_settings.DASHBOARD_URL)
+		response = await create_access_token_for_cookie(actual_user, response)
+		response = await create_refresh_token_for_cookie(actual_user, response)
+		return response
 
 
-@router.post("/refresh", tags=[TAG])
+@router.post("/protected/refresh", tags=[TAG])
 async def refresh(refresh_token: str = Cookie()):
 	payload = extract_refresh_token(refresh_token)
 
@@ -249,7 +250,7 @@ async def refresh(refresh_token: str = Cookie()):
 	return response
 
 
-@router.api_route("/logout", methods=["GET", "HEAD"], tags=[TAG])
+@router.api_route("/protected/logout", methods=["GET", "HEAD"], tags=[TAG])
 async def logout_user(request: Request, user_id: ActiveUserId, cookie: RefreshTokenCookie) -> Response:
 	payload = extract_refresh_token(cookie)
 	await remove_user_jti(user_id, payload["jti"])
@@ -349,6 +350,7 @@ async def update_username(request: Request, user: ActiveUser, username: str = Bo
 		return JSONResponse({"detail": "Username not valid.", "requested_username": username}, status_code=status.HTTP_400_BAD_REQUEST)
 
 	old_username = user.name
+	username = html.escape(username)
 
 	try:
 		async with get_db_session() as session:
@@ -370,31 +372,9 @@ async def update_username(request: Request, user: ActiveUser, username: str = Bo
 	}, status_code=status.HTTP_200_OK)
 
 
-@router.api_route("/remaining_access", methods=["GET", "HEAD"], include_in_schema=False)
-async def check_access_token_remaining_time(token: AccessTokenCookie) -> JSONResponse:
-	if token is None:
-		return JSONResponse(dict(detail="Not logged in."), status_code=status.HTTP_400_BAD_REQUEST)
-
-	payload = extract_access_token(token)
-
-	expiration = payload.get("exp")
-	if expiration is None:
-		return JSONResponse({"detail": "Expiration is somehow missing from the token."},
-							status_code=status.HTTP_401_UNAUTHORIZED)
-
-	expiration = dt.fromtimestamp(expiration, tz=tz.utc)
-	diff = expiration - dt.now(tz=tz.utc)
-	seconds = diff.total_seconds()
-
-	response = {
-		"detail": f"Access token remains valid for another {seconds} seconds.",
-		"remaining": seconds,
-	}
-	return JSONResponse(response, status_code=status.HTTP_200_OK)
-
-
-@router.delete("/remove_user", tags=[TAG])
-async def delete_user(request: Request, user: ActiveUser) -> JSONResponse:
+@router.delete("/protected/remove_user", tags=[TAG])
+async def delete_user(request: Request, user: ActiveUser, refresh_token: RefreshTokenCookie) -> JSONResponse:
+	extract_refresh_token(refresh_token)
 	async with get_db_session() as session:
 		try:
 			await session.execute(delete(User).where(User.id == user.id))
@@ -402,7 +382,10 @@ async def delete_user(request: Request, user: ActiveUser) -> JSONResponse:
 		except sql_exc.SQLAlchemyError as e:
 			await session.rollback()
 			request.state.logger.exception(f"Could not successfully delete user {user.id}.", exc_info=e)
-			return JSONResponse({"detail": "An error occurred while trying to delete user."}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+			return JSONResponse(
+				{"detail": "An error occurred while trying to delete user."},
+				status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+			)
 
 	return JSONResponse(dict(detail="Successfully deleted user from database.", user=user.name, id=str(user.id)),
 						status_code=status.HTTP_200_OK)
@@ -413,15 +396,13 @@ async def delete_user(request: Request, user: ActiveUser) -> JSONResponse:
 # 	return PlainTextResponse(PUBLIC_KEY, status_code=status.HTTP_200_OK)
 
 
-@router.post("/merge_accounts", tags=[TAG], description="Merges an ORCID account with an account created using email and password")
-async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUser) -> JSONResponse:
+@router.post("/merge_accounts", tags=[TAG],
+			 description="Merges an ORCID account with an account created using email and password")
+async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUser) -> Response:
 	if orcid_user.orcid is None:
 		return JSONResponse({"detail": "You must be logged in as your ORCID account, not your account with your email and password."}, status_code=status.HTTP_409_CONFLICT)
 
 	email_user = await get_user_from_login(info)
-	if isinstance(email_user, Response):
-		return email_user
-
 	if email_user.id == orcid_user.id:
 		return JSONResponse(dict(detail=f"User with email {email_user.email} and ORCID {orcid_user.orcid} are the same account, so they can't be merged."), status_code=status.HTTP_400_BAD_REQUEST)
 
@@ -473,3 +454,24 @@ async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUs
 		email_user_id=str(email_user.id),
 		new_id=str(orcid_user.id)
 	), status_code=status.HTTP_200_OK)
+
+
+@router.get("/articles", tags=[TAG],
+			description="Returns a list of articles authored by the current user (if they have an ORCID id attached).")
+async def get_articles(user: CurrentUser) -> JSONResponse:
+	if user.id == get_guest_uuid():
+		return JSONResponse({"detail": "Not logged in."}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+	if user.orcid is None:
+		return JSONResponse(
+			{"detail": "You must have an ORCID id attached to this account to see which articles attached to this user have been viewed."},
+			status_code=status.HTTP_412_PRECONDITION_FAILED
+		)
+
+	async with get_db_session() as session:
+		results = await session.execute(
+			text("SELECT title, url FROM results.article WHERE id IN (SELECT article_id FROM results.article_authors WHERE author_id = (SELECT id FROM results.authors WHERE orcid = :orcid));"),
+			dict(orcid=user.orcid)
+		)
+		articles = dict(results.scalars().all())
+		return JSONResponse(articles, status_code=status.HTTP_200_OK)

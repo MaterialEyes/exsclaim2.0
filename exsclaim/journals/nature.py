@@ -1,9 +1,10 @@
-from .base import JournalFamilyStatic, StaticHtml, ORCID_REGEX, Author
+lazy from .base import JournalFamilyStatic, StaticHtml, ORCID_REGEX, Author
 
-import json
-import re
+lazy import json
+lazy import re
 
-from datetime import datetime
+lazy from datetime import datetime
+lazy from typing import Optional
 
 __all__ = ["Nature"]
 
@@ -160,6 +161,17 @@ class Nature(JournalFamilyStatic):
 		title = await super().get_title(html, url)
 		self.logger.warning(f"Could not find title for {url}.")
 		return title
+
+	async def get_doi(self, html: StaticHtml, url: str) -> Optional[str]:
+		doi_abbr = html.select_one("abbr[title='Digital Object Identifier']")
+		if doi_abbr is None:
+			return None
+
+		doi_link = doi_abbr.soup.parent.find("span", class_="c-bibliographic-information__value")
+		if doi_link is None:
+			return None
+
+		return doi_link.get_text()
 
 	async def get_authors(self, html: StaticHtml) -> tuple[Author]:
 		if isinstance(html, str):

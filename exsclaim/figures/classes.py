@@ -1,7 +1,7 @@
 __all__ = ["SubfigureBoundary", "SubfigureInfo", "ScalebarInfo"]
 
 
-from typing import Any, NamedTuple
+lazy from typing import Any, NamedTuple
 
 
 class SubfigureBoundary(NamedTuple):

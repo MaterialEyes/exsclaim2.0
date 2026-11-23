@@ -2,9 +2,9 @@
 ResultPage component - the results page that uses Layout.
 Converted from React ResultPage.js component.
 """
-from dash import html, register_page
-from typing import Optional
-from uuid import UUID
+lazy from dash import html, register_page
+lazy from typing import Optional
+lazy from uuid import UUID
 
 try:
 	from components.common import create_header_component, create_footer_component
@@ -43,7 +43,7 @@ def layout(result_id: Optional[UUID] = None):
 
 	if result_id is not None:
 		# Layout component (contains the main results interface)
-		children[1] = create_layout_component(result_id, ui_settings.FAST_API_URL, ui_settings.PUBLIC_API_URL)
+		children[1] = create_layout_component(result_id, ui_settings.FAST_API_URL.domain_with_scheme, ui_settings.PUBLIC_API_URL.domain_with_scheme)
 	else:
 		children = [child for child in children if child is not None]
 

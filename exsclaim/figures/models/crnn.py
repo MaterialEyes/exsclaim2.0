@@ -1,5 +1,5 @@
-import numpy as np
-from torch import nn
+lazy import numpy as np
+lazy from torch import nn
 
 
 __all__ = ["CRNN", "max_pooling_output_dim"]

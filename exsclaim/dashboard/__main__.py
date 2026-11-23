@@ -1,22 +1,19 @@
-from werkzeug.middleware.proxy_fix import ProxyFix
+lazy from werkzeug.middleware.proxy_fix import ProxyFix
 
-try:
-	from ..config import ui_settings
-	from ..utilities import PrinterFormatter, ExsclaimFormatter
-except ImportError:
-	from exsclaim import PrinterFormatter, ExsclaimFormatter, ui_settings
+lazy from exsclaim.config import ui_settings
+lazy from exsclaim.utilities import PrinterFormatter, ExsclaimFormatter
 
-from .components.query import get_llms
+lazy from .components.query import get_llms
 
-import dash
-import dash_bootstrap_components as dbc
-import flask
-import logging
+lazy import dash
+lazy import dash_bootstrap_components as dbc
+lazy import flask
+lazy import logging
 
-from datetime import datetime as dt, timezone as tz
-from textwrap import dedent
-from typing import Optional
-from pathlib import Path
+lazy from datetime import datetime as dt, timezone as tz
+lazy from textwrap import dedent
+lazy from typing import Optional
+lazy from pathlib import Path
 
 
 __all__ = ["app", "server"]
@@ -73,7 +70,11 @@ def create_sitemap() -> str:
 def get_app() -> dash.Dash:
 	global logger, app
 
+	if app is not None:
+		raise RuntimeError("get_app() called twice.")
+
 	logger = create_logger(ui_settings)
+
 	meta_tags = [
 		{"property": "og:url", "content": ui_settings.DOMAIN},
 	]
@@ -105,6 +106,18 @@ def get_app() -> dash.Dash:
 		show_undo_redo=True,
 	)
 
+	import callbacks # Imports the callbacks after the app is created
+
+	if ui_settings.DEBUG:
+		app.enable_dev_tools(
+			debug=True,
+			dev_tools_ui=True,
+			dev_tools_props_check=True,
+			# dev_tools_prune_errors=False,
+			# dev_tools_hot_reload=False,
+			# dev_tools_serve_dev_bundles=False
+		)
+
 	available_llms, show_api_key, required_api_key = get_llms()
 
 	fastapi_url = ui_settings.FAST_API_URL
@@ -113,7 +126,7 @@ def get_app() -> dash.Dash:
 	app.layout = dash.html.Div([
 		dash.dcc.Interval(
 			id="check-credentials",
-			interval=300_000 # Check every 5 minutes
+			interval=2_500 # Check credentials after 2.5 seconds. The callback disables it if the user isn't logged in.
 		),
 		dash.dcc.Store(
 			id="storage",
@@ -162,7 +175,7 @@ def favicon_png():
 
 @server.route("/logout")
 def logout():
-	return flask.redirect(f"{ui_settings.PUBLIC_API_URL}/user/logout")
+	return flask.redirect(f"{ui_settings.PUBLIC_API_URL}/user/protected/logout")
 
 
 @server.route("/robots.txt")
