@@ -37,7 +37,7 @@ dependencies = [
     "numpy==2.5.2",
     "opencv-contrib-python-headless==5.0.0.93",
     "Pillow==13.0.0",
-    "ultralytics==8.4.215",
+    "ultralytics==8.4.216",
 #    "pi_heif==1.4.0",
 
     # HTTP requests
