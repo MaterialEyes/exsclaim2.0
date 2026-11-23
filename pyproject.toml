@@ -88,7 +88,7 @@ dependencies = [
 
     # Used with the Dashboard
     "dash_bootstrap_components==2.0.4",
-    "gunicorn[gevent]==26.2.0",
+    "gunicorn[gevent]==27.0.1",
     "alembic==1.20.1"
 ]
 
