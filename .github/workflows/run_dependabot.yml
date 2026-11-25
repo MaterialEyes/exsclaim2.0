@@ -8,7 +8,7 @@ on:
 jobs:
     run-dependabot:
         runs-on: ubuntu-latest
-        permissions: read
+        permissions: read-all
         steps:
             - name: Checkout code
               uses: actions/checkout@v7
