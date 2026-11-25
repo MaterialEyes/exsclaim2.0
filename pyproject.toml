@@ -65,7 +65,7 @@ dependencies = [
     "pytorch-model-summary==0.1.2",
 
     # Run LLMs
-    "openai~=3.51.0",
+    "openai>=3.51,<3.58",
 
     # Used with the API
     "dash[async,compress]==4.5.0",
