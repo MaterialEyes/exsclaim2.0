@@ -117,7 +117,7 @@ WORKDIR /opt/exsclaim
 COPY docker-entrypoint docker-healthcheck /usr/local/bin/
 
 COPY --link --from=deps /usr/local/lib/python3.15/site-packages /usr/local/lib/python3.15/site-packages
-COPY --from=build /usr/local/bin/hypercorn /usr/local/bin/gunicorn /usr/local/bin/playwright /usr/local/bin/alembic /usr/local/bin/
+COPY --from=build /usr/local/bin/hypercorn /usr/local/bin/playwright /usr/local/bin/alembic /usr/local/bin/
 
 RUN --mount=type=cache,target=/var/lib/apt \
     chmod +x /usr/local/bin/docker-entrypoint && \

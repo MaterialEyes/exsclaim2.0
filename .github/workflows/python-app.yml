@@ -5,10 +5,7 @@ name: Python application
 
 on:
     push:
-        branches: [ "main", "dev" ]
         tags: ["v*"]
-    pull_request:
-        branches: [ "main" ]
 
 permissions:
     contents: read

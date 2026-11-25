@@ -1,19 +1,18 @@
 lazy from datetime import datetime as dt
-lazy from multiprocessing import cpu_count
 lazy from os import getenv
-lazy from pathlib import Path
-lazy from pydantic import Field, field_validator, EmailStr, model_validator
+from pathlib import Path
 lazy from pydantic_settings import BaseSettings, SettingsConfigDict
-lazy from re import compile
+from starlette.datastructures import URL as StarletteURL
 lazy from typing import Optional, Self
 
 lazy import ipaddress
-from starlette.datastructures import URL as StarletteURL
+lazy import pydantic
+import re
 
 __all__ = ["ExsclaimSettings", "settings", "UISettings", "ui_settings", "get_variables", "orcid_settings", "ORCIDSettings"]
 
 
-BOOL_REGEX = compile("^0?$")
+BOOL_REGEX = re.compile("^0?$")
 
 
 class URL(StarletteURL):
@@ -27,14 +26,14 @@ class URL(StarletteURL):
 
 
 class EmailSettings(BaseSettings):
-	SERVER: str = Field(description="The server that is hosting the email account.")
-	PORT: int = Field(default=465)
-	ACCOUNT: EmailStr = Field(description="The email that is used to send notifications.")
-	PASSWORD: Optional[str] = Field(default=None, description="The password for the email account.")
-	PASSWORD_FILE: Optional[Path] = Field(default=None,
+	SERVER: str = pydantic.Field(description="The server that is hosting the email account.")
+	PORT: int = pydantic.Field(default=465)
+	ACCOUNT: pydantic.EmailStr = pydantic.Field(description="The email that is used to send notifications.")
+	PASSWORD: Optional[str] = pydantic.Field(default=None, description="The password for the email account.")
+	PASSWORD_FILE: Optional[Path] = pydantic.Field(default=None,
 										  description="The file containing the password for the email account.")
 
-	@model_validator(mode="after")
+	@pydantic.model_validator(mode="after")
 	def get_password(self) -> Self:
 		if self.PASSWORD is None and self.PASSWORD_FILE is None:
 			raise ValueError("A password must be given for the email.")
@@ -60,92 +59,92 @@ class ExsclaimSettings(BaseSettings):
 		secrets_dir_missing="ok"
 	)
 
-	PATH: Path = Field(
+	PATH: Path = pydantic.Field(
 		default=Path.home().resolve() / ".exsclaim",
 		description="The base directory where EXSCLAIM should write information to",
 		examples=["~/.exsclaim", "/exsclaim"]
 	)
 
-	ALLOW_PDF_PATHS: bool = Field(
+	ALLOW_PDF_PATHS: bool = pydantic.Field(
 		default=False,
 		description="",
 		examples=[],
 	)
 
-	CHECKPOINTS_PATH: Path = Field(
+	CHECKPOINTS_PATH: Path = pydantic.Field(
 		default=TMP_PATH,
 		description="The directory where the checkpoint files for the FigureSeparator should be stored.",
 		examples=["~/.exsclaim/checkpoints", "/exsclaim/checkpoints"],
 	)
 
-	DEBUG: bool = Field(
+	DEBUG: bool = pydantic.Field(
 		default=False,
 		description="If the service should run in DEBUG mode, which would allow for hot-reloading of the code and more detailed crash errors. Having the value unset or set as '0' turns off debug mode.",
 		examples=["0", "1", ""],
 	)
 
-	DISPLAY_TQDM: bool = Field(
+	DISPLAY_TQDM: bool = pydantic.Field(
 		default=False,
 		description="If tqdm progress bars should be displayed during the pipeline.",
 		examples=["0", "1", ""],
 	)
 
-	EMAIL: Optional[EmailSettings] = Field(default=None)
+	EMAIL: Optional[EmailSettings] = pydantic.Field(default=None)
 
-	ALLOW_EMAILS_WITHOUT_ACCOUNT: bool = Field(
+	ALLOW_EMAILS_WITHOUT_ACCOUNT: bool = pydantic.Field(
 		default=True,
 		description="If the Email's model validator should raise an error if emails are provided without the pipeline being able to send emails."
 	)
 
-	PLAYWRIGHT_HEADLESS: bool = Field(
+	PLAYWRIGHT_HEADLESS: bool = pydantic.Field(
 		default=True,
 		description="If playwright should run headless (default, no visible screen) or headed (requires X server to show the pages)."
 	)
 
-	LOGS_PATH: Path = Field(
+	LOGS_PATH: Path = pydantic.Field(
 		default=TMP_PATH,
 		description="The directory where the log files should be stored.",
 		examples=["~/.exsclaim/logs", "/var/logs/exsclaim", "/exsclaim/logs"],
 	)
 
-	OLLAMA_HOST: Optional[str] = Field(
+	OLLAMA_HOST: Optional[str] = pydantic.Field(
 		default=None,
 		description="The directory where the checkpoint files for the FigureSeparator should be stored.",
 		examples=["http://localhost:11434", "http://ollama:11434"],
 	)
 
-	RESULTS_PATH: Path = Field(
+	RESULTS_PATH: Path = pydantic.Field(
 		default=TMP_PATH,
 		description="The directory where the results from the pipeline should be stored.",
 		examples=["~/.exsclaim/results", "/exsclaim/results"],
 	)
 
-	UNCLASSIFIED_SUBFIGURES_PATH: Optional[Path] = Field(
+	UNCLASSIFIED_SUBFIGURES_PATH: Optional[Path] = pydantic.Field(
 		default=None,
 		description="The directory where subfigures that could not have been classified should be stored (in case future models should be trained on it).",
 		examples=["~/.exsclaim/training/unclassified", "/exsclaim/training/unclassified"],
 	)
 
-	UNDETECTED_SUBFIGURES_PATH: Optional[Path] = Field(
+	UNDETECTED_SUBFIGURES_PATH: Optional[Path] = pydantic.Field(
 		default=None,
 		description="The directory where images that had no detected subfigures should be stored (in case future models should be trained on it).",
 		examples=["~/.exsclaim/training/undetected", "/exsclaim/training/undetected"],
 	)
 
-	UNSCRAPED_HTML_PATH: Optional[Path] = Field(
+	UNSCRAPED_HTML_PATH: Optional[Path] = pydantic.Field(
 		default=None,
 		description="The directory where the HTML of articles that incurred an error should be stored (in case of debugging possible bugs in the code).",
 		examples=["~/.exsclaim/training/unscraped", "/exsclaim/training/unscraped"],
 	)
 
-	@field_validator("OLLAMA_HOST")
+	@pydantic.field_validator("OLLAMA_HOST")
 	@classmethod
 	def domain_has_no_trailing_slash(cls, url: Optional[str]) -> Optional[str]:
 		if url is None:
 			return url
 		return url.rstrip("/")
 
-	@field_validator("ALLOW_PDF_PATHS", "DEBUG", "DISPLAY_TQDM", "PLAYWRIGHT_HEADLESS", mode="before")
+	@pydantic.field_validator("ALLOW_PDF_PATHS", "DEBUG", "DISPLAY_TQDM", "PLAYWRIGHT_HEADLESS", mode="before")
 	@classmethod
 	def validate_boolean(cls, value) -> bool:
 		if isinstance(value, bool):
@@ -159,7 +158,7 @@ class ExsclaimSettings(BaseSettings):
 
 		raise ValueError(f"Unknown boolean-coercion type: {type(value).__name__} with value {value}.")
 
-	@field_validator("UNDETECTED_SUBFIGURES_PATH", "UNCLASSIFIED_SUBFIGURES_PATH", "UNSCRAPED_HTML_PATH", mode="after")
+	@pydantic.field_validator("UNDETECTED_SUBFIGURES_PATH", "UNCLASSIFIED_SUBFIGURES_PATH", "UNSCRAPED_HTML_PATH", mode="after")
 	@classmethod
 	def validate_paths(cls, path: Optional[Path]) -> Optional[Path]:
 		if path is None:
@@ -172,7 +171,7 @@ class ExsclaimSettings(BaseSettings):
 
 		return path
 
-	@model_validator(mode="after")
+	@pydantic.model_validator(mode="after")
 	def set_derived_paths(self):
 		self.PATH.mkdir(parents=True, exist_ok=True)
 
@@ -194,25 +193,25 @@ class ExsclaimSettings(BaseSettings):
 class ORCIDSettings(BaseSettings):
 	model_config = SettingsConfigDict(env_prefix="ORCID_", secrets_dir=("/run/secrets/", "/var/run"))
 
-	URL: Optional[str] = Field(
+	URL: Optional[str] = pydantic.Field(
 		default=getenv("ORCID_URL", "https://orcid.org").rstrip('/'),
 		description="The URL that points to ORCID",
 		examples=["https://orcid.org", "https://sandbox.orcid.org"],
 	)
 
-	@field_validator("URL")
+	@pydantic.field_validator("URL")
 	@classmethod
 	def url_has_no_trailing_slash(cls, url: str) -> Optional[str]:
 		if url is None:
 			return url
 		return url.rstrip("/")
 
-	CLIENT_ID: Optional[str] = Field(
+	CLIENT_ID: Optional[str] = pydantic.Field(
 		default=None,
 		description="",
 	)
 
-	CLIENT_SECRET: Optional[str] = Field(
+	CLIENT_SECRET: Optional[str] = pydantic.Field(
 		default=None,
 		description="",
 	)
@@ -221,36 +220,46 @@ class ORCIDSettings(BaseSettings):
 class UISettings(ExsclaimSettings):
 	"""Gets access to the environment variables necessary for running the UI (API and Dashboard)."""
 
-	ALLOW_RELOAD: bool = Field(
+	ALLOW_RELOAD: bool = pydantic.Field(
 		default=True,
 		description="Whether or not to allow reloading the UI even if it's debugging.",
 	)
 
-	DASHBOARD_URL: URL = Field(
+	ALLOW_GUEST_USERS: bool = pydantic.Field(
+		default=True,
+		description="If users are allowed to access EXSCLAIM without an account or not."
+	)
+
+	ALLOW_LOGIN_WITH_EMAIL: bool = pydantic.Field(
+		default=True,
+		description="If the endpoints for creating and logining into accounts with email/password is acceptable."
+	)
+
+	DASHBOARD_URL: URL = pydantic.Field(
 		default=URL("http://localhost:3000"),
 		description="The full URL that a user would use to access the UI.",
 		examples=["http://localhost:3000", "https://exsclaim.lan", "https://exsclaim.materialeyes.org"],
 	)
 
-	DASHBOARD_PORT: int = Field(
+	DASHBOARD_PORT: int = pydantic.Field(
 		default=3000,
 		description="The port that a user would use to access the Dashboard.",
 		examples=[3000, 80, 8080],
 	)
 
-	DOMAIN: URL = Field(
+	DOMAIN: URL = pydantic.Field(
 		default=URL("localhost"),
 		description="The domain that a user would use to access the API and Dashboard through a proxy such as NGINX.",
 		examples=["https://exsclaim.lan", "https://exsclaim-dev.materialeyes.org", "http://localhost"],
 	)
 
-	FAST_API_URL: URL = Field(
+	FAST_API_URL: URL = pydantic.Field(
 		default=URL("http://localhost:8000"),
 		description="The URL that a user inside the docker network would use to access the API i.e. from another service within Docker Compose.",
 		examples=["http://localhost:8000", "http://python:8000"],
 	)
 
-	PUBLIC_API_URL: URL = Field(
+	PUBLIC_API_URL: URL = pydantic.Field(
 		default=URL("http://localhost:8000"),
 		description="The URL that any user outside of the Docker network would use to access the API, i.e. from the computer hosting the Docker Compose services or an external computer.",
 		examples=["https://api.exsclaim.lan", "https://api.exsclaim-dev.materialeyes.org"],
@@ -258,34 +267,34 @@ class UISettings(ExsclaimSettings):
 
 	PROJECT_NAME: str = "EXSCLAIM API"
 
-	JWT_PUBLIC_KEY_FILE: Optional[Path] = Field(
+	JWT_PUBLIC_KEY_FILE: Optional[Path] = pydantic.Field(
 		default=None,
 		description="The file containing the JWT public key to use to authenticate with the API.",
 	)
 
-	JWT_PRIVATE_KEY_FILE: Optional[Path] = Field(
+	JWT_PRIVATE_KEY_FILE: Optional[Path] = pydantic.Field(
 		default=None,
 		description="The file containing the JWT private key to use to authenticate with the API.",
 	)
 
-	METRICS_IP: Optional[ipaddress._BaseAddress] = Field(
+	METRICS_IP: Optional[ipaddress._BaseAddress] = pydantic.Field(
 		default=None,
 		description="The IP address that is allowed to view Prometheus' metrics.",
 	)
 
-	METRICS_NETWORK: Optional[ipaddress._BaseNetwork] = Field(
+	METRICS_NETWORK: Optional[ipaddress._BaseNetwork] = pydantic.Field(
 		default=None,
 		description="The IP network that is allowed to view Prometheus' metrics.",
 	)
 
-	@field_validator("DOMAIN", "FAST_API_URL", "PUBLIC_API_URL", "DASHBOARD_URL", mode="before")
+	@pydantic.field_validator("DOMAIN", "FAST_API_URL", "PUBLIC_API_URL", "DASHBOARD_URL", mode="before")
 	@classmethod
 	def domain_has_no_trailing_slash(cls, url: str) -> URL:
 		if isinstance(url, URL):
 			return url
 		return URL(url)
 
-	@field_validator("JWT_PUBLIC_KEY_FILE", "JWT_PRIVATE_KEY_FILE")
+	@pydantic.field_validator("JWT_PUBLIC_KEY_FILE", "JWT_PRIVATE_KEY_FILE")
 	@classmethod
 	def get_jwt_secrets(cls, file: Optional[Path]) -> Optional[Path]:
 		if file is None:
@@ -298,19 +307,19 @@ class UISettings(ExsclaimSettings):
 
 		return file
 
-	@field_validator("ALLOW_RELOAD", mode="before")
+	@pydantic.field_validator("ALLOW_RELOAD", "ALLOW_GUEST_USERS", "ALLOW_LOGIN_WITH_EMAIL", mode="before")
 	@classmethod
 	def validate_boolean(cls, value) -> bool:
 		return super().validate_boolean(value)
 
-	@field_validator("METRICS_IP", mode="before")
+	@pydantic.field_validator("METRICS_IP", mode="before")
 	@classmethod
 	def validate_metrics_ip(cls, ip: Optional[str]) -> Optional[ipaddress._BaseAddress]:
 		if ip is None:
 			return None
 		return ipaddress.ip_address(ip)
 
-	@field_validator("METRICS_NETWORK", mode="before")
+	@pydantic.field_validator("METRICS_NETWORK", mode="before")
 	@classmethod
 	def validate_metrics_network(cls, ip: Optional[str]) -> Optional[ipaddress._BaseNetwork]:
 		if ip is None:
@@ -324,6 +333,8 @@ orcid_settings = ORCIDSettings()
 
 
 def get_variables(port_env: str, default_port: str, log_subfolder: str) -> dict:
+	from multiprocessing import cpu_count
+
 	log_dir = settings.LOGS_PATH / log_subfolder
 	log_dir.mkdir(parents=True, exist_ok=True)
 	date = dt.now().strftime("%Y-%m-%d")
@@ -346,7 +357,7 @@ def get_variables(port_env: str, default_port: str, log_subfolder: str) -> dict:
 	)
 
 	if settings.DEBUG:
-		config["workers"] = 1
+		config["workers"] = 2
 
 	return config
 

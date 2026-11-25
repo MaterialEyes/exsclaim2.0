@@ -17,27 +17,27 @@ lazy from sqlalchemy import text
 lazy from typing import Any, Literal, Optional, Self
 lazy from uuid import UUID
 
-lazy import pydantic
-lazy import sqlalchemy
+import pydantic
+lazy import sqlalchemy as sa
 lazy import sqlalchemy.dialects.postgresql as sa_psql
-lazy import sqlmodel
+import sqlmodel
 
 __all__ = ["NTFY", "Email", "Webhook", "Query", "Article", "Figure", "Subfigure", "Scale", "SubfigureLabel",
 		   "ScaleLabel", "ClassificationCodes", "SaveExtensions", "Status", "Run", "User", "get_guest_uuid",
-		   "gen_uuid7", "PasswordReset", "ExsclaimJSONResponse", "Output", "Banner",
+		   "gen_uuid7", "PasswordReset", "EmailVerification", "ExsclaimJSONResponse", "Output", "Banner",
 		   "QueryTools", "PreviousRunFilters", "RunArticles", "QueryCache"]
 
 
 class PasswordReset(sqlmodel.SQLModel, table=True):
 	__tablename__ = "password_reset"
 	__table_args__ = (
-		sqlalchemy.ForeignKeyConstraint(["email"], ["users.users.email"], ondelete="CASCADE", onupdate="CASCADE"),
+		sa.ForeignKeyConstraint(["email"], ["users.users.email"], ondelete="CASCADE", onupdate="CASCADE"),
 		dict(schema="users")
 	)
 
 	email: pydantic.EmailStr = sqlmodel.Field(
 		title="The email of the user who's password needs to be reset.",
-		sa_column=sqlalchemy.Column(
+		sa_column=sa.Column(
 			sa_psql.TEXT,
 			unique=True,
 			primary_key=True,
@@ -48,7 +48,7 @@ class PasswordReset(sqlmodel.SQLModel, table=True):
 	created: dt = sqlmodel.Field(
 		title="When the password reset attempt was created.",
 		default_factory=lambda: dt.now(tz.utc),
-		sa_column=sqlalchemy.Column(
+		sa_column=sa.Column(
 			sqlmodel.DateTime(timezone=True),
 			server_default=text("NOW()"),
 			nullable=False,
@@ -59,11 +59,46 @@ class PasswordReset(sqlmodel.SQLModel, table=True):
 	# TODO: Cryptographically create a token to prove that the link sent to the email belongs to this email.
 
 
+class EmailVerification(sqlmodel.SQLModel, table=True):
+	__tablename__ = "email_verification"
+	__table_args__ = (
+		sa.ForeignKeyConstraint(["user_id"], ["users.users.id"], ondelete="CASCADE", onupdate="CASCADE"),
+		sa.PrimaryKeyConstraint("user_id"),
+		dict(schema="users")
+	)
+
+	user_id: UUID = sqlmodel.Field(
+		description="The user's unique ID.",
+		sa_column=sa.Column(
+			sa_psql.UUID(as_uuid=True),
+			unique=True,
+			nullable=False,
+		)
+	)
+
+	code_hash: str = sqlmodel.Field(
+		description="The hashed version of the email verification code.",
+		sa_column=sa.Column(
+			sa_psql.TEXT,
+			unique=True,
+			nullable=False,
+		)
+	)
+
+	expires_at: dt = sqlmodel.Field(
+		description="When the email verification code expires.",
+		sa_column=sa.Column(
+			sqlmodel.DateTime(timezone=True),
+			nullable=False,
+		)
+	)
+
+
 class Banner(sqlmodel.SQLModel, table=True):
 	id: UUID = sqlmodel.Field(
 		default_factory=gen_uuid7,
 		title="The unique ID for the banners",
-		sa_column=sqlalchemy.Column(
+		sa_column=sa.Column(
 			sa_psql.UUID(as_uuid=True),
 			primary_key=True,
 			server_default=text("uuidv7()"),
@@ -73,14 +108,14 @@ class Banner(sqlmodel.SQLModel, table=True):
 	)
 	content: str = sqlmodel.Field(
 		title="The content that should be shown to the user.",
-		sa_column=sqlalchemy.Column(
+		sa_column=sa.Column(
 			sa_psql.TEXT,
 			nullable=False
 		)
 	)
 	created: dt = sqlmodel.Field(
 		default_factory=lambda: dt.now(tz.utc),
-		sa_column=sqlalchemy.Column(
+		sa_column=sa.Column(
 			sqlmodel.DateTime(timezone=True),
 			server_default=text("NOW()"),
 			nullable=False,

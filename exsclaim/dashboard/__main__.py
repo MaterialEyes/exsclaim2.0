@@ -1,46 +1,21 @@
-lazy from werkzeug.middleware.proxy_fix import ProxyFix
-
+lazy from exsclaim.api.app_dependencies import my_schema, create_logger, lifespan, get_middleware
 lazy from exsclaim.config import ui_settings
-lazy from exsclaim.utilities import PrinterFormatter, ExsclaimFormatter
 
+lazy from .routers import router
 lazy from .components.query import get_llms
 
 lazy import dash
 lazy import dash_bootstrap_components as dbc
-lazy import flask
-lazy import logging
 
-lazy from datetime import datetime as dt, timezone as tz
-lazy from textwrap import dedent
-lazy from typing import Optional
+lazy from fastapi import FastAPI
 lazy from pathlib import Path
+from typing import TYPE_CHECKING
 
 
-__all__ = ["app", "server"]
+__all__ = ["get_app"]
 
 
-logger, app = None, None
-title = "EXSCLAIM Dashboard"
-server = flask.Flask(title, static_folder="assets")
-server.wsgi_app = ProxyFix(server.wsgi_app, x_for=1, x_proto=1)
-
-
-def create_logger(settings) -> logging.Logger:
-	printer_handler = logging.StreamHandler()
-	printer_handler.setFormatter(PrinterFormatter())
-	printer_handler.setLevel(logging.INFO)
-
-	file_handler = logging.FileHandler(settings.LOGS_PATH / "exsclaim-dashboard.log", "a")
-	file_handler.setFormatter(ExsclaimFormatter())
-	file_handler.setLevel(logging.DEBUG)
-
-	handlers = (printer_handler, file_handler)
-	logging.basicConfig(level=logging.INFO, force=True, handlers=[printer_handler])
-
-	logger = logging.getLogger("exsclaim.dashboard")
-	for handler in handlers:
-		logger.addHandler(handler)
-	return logger
+global logger
 
 
 def error_handler(exception: Exception) -> None:
@@ -48,43 +23,50 @@ def error_handler(exception: Exception) -> None:
 	logger.exception("An error occurred in Dash", exc_info=exception)
 
 
-def create_sitemap() -> str:
-	host = ui_settings.DASHBOARD_URL
-	last_mod = dt.now(tz.utc).strftime("%Y-%m-%dT%H:%M:%S.%f%z")
+def fix_badge_issue(app: FastAPI):
+	"""Fixes the issue with img.shields.io reporting the site is down when it isn't."""
+	from fastapi.routing import APIRoute
+	routes = filter(lambda route: isinstance(route, APIRoute) and route.path == "/", app.router.routes)
+	route = next(routes, None)
+	if route is None:
+		return
 
-	def format_xml(page) -> Optional[str]:
-		path = page["relative_path"].replace("/none", "/*")
-
-		return dedent(f"""\
-			<url>
-				<loc>{host}{path}</loc>
-				<lastmod>{last_mod}</lastmod>
-			</url>
-		""")
-
-	routes = map(lambda page: format_xml(page), dash.page_registry.values())
-	sitemap = f'<urlset xmlns="https://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="https://www.w3.org/1999/xhtml">\n{''.join(routes)}</urlset>'
-	return sitemap
+	route.methods.add("HEAD")
 
 
-def get_app() -> dash.Dash:
-	global logger, app
+def get_app() -> FastAPI:
+	global logger
+	logger = create_logger(ui_settings, "dashboard")
+	title = "EXSCLAIM Dashboard"
+	plotly_script = "https://cdn.plot.ly/plotly-4.3.0.min.js"
 
-	if app is not None:
-		raise RuntimeError("get_app() called twice.")
+	csp_header = f"default-src 'self' {ui_settings.DOMAIN.domain_with_scheme}; style-src-elem 'unsafe-inline' 'self' https://cdn.jsdelivr.net/ https://use.fontawesome.com/ https://fonts.googleapis.com; script-src-elem 'unsafe-inline' {plotly_script} 'self'; font-src https://fonts.gstatic.com/ https://use.fontawesome.com/; connect-src *.{ui_settings.DOMAIN.domain} {ui_settings.DOMAIN.domain} https://cdn.jsdelivr.net/; img-src 'unsafe-inline' 'self' {ui_settings.DOMAIN.domain_with_scheme} https://media.springernature.com/ data:;"
+	server = FastAPI(
+		title=title,
+		debug=ui_settings.DEBUG,
+		docs_url=None,
+		redoc_url=None,
+		lifespan=lifespan,
+		middleware=get_middleware(ui_settings, logger, csp_header=csp_header),
+		terms_of_service="/terms-of-service"
+	)
+	server.logger = logger
+	server.openapi = lambda: my_schema(server)
+	server.configuration_ini = None
 
-	logger = create_logger(ui_settings)
+	server.include_router(router)
 
 	meta_tags = [
-		{"property": "og:url", "content": ui_settings.DOMAIN},
+		{"property": "og:url", "content": ui_settings.DOMAIN.components.geturl()},
 	]
 
 	logo_path = Path(__file__).parent / "assets" / "logo.png"
 	if logo_path.is_file():
-		import cv2
-		image = cv2.imread(logo_path)
-		if image is not None:
-			height, width, _ = image.shape
+		from contextlib import suppress
+		from PIL import Image
+
+		with suppress(FileNotFoundError):
+			width, height = Image.open(logo_path).size
 			meta_tags.extend([
 				{"property": "og:image", "content": f"{ui_settings.DASHBOARD_URL}/assets/logo.png"},
 				{"property": "og:image:width", "content": str(width)},
@@ -99,7 +81,7 @@ def get_app() -> dash.Dash:
 		compress=False,
 		external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.FONT_AWESOME],
 		use_pages=True,
-		external_scripts=["https://cdn.plot.ly/plotly-3.5.1.min.js"],
+		external_scripts=[plotly_script],
 		meta_tags=meta_tags,
 		health_endpoint="/healthcheck",
 		server=server,
@@ -117,11 +99,12 @@ def get_app() -> dash.Dash:
 			# dev_tools_hot_reload=False,
 			# dev_tools_serve_dev_bundles=False
 		)
+		app.backend.register_prune_error_handler(None, False)
 
 	available_llms, show_api_key, required_api_key = get_llms()
 
-	fastapi_url = ui_settings.FAST_API_URL
-	public_fastapi_url = ui_settings.PUBLIC_API_URL
+	fastapi_url = ui_settings.FAST_API_URL.domain_with_scheme
+	public_fastapi_url = ui_settings.PUBLIC_API_URL.domain_with_scheme
 
 	app.layout = dash.html.Div([
 		dash.dcc.Interval(
@@ -149,100 +132,22 @@ def get_app() -> dash.Dash:
 		dash.dcc.Location(id="url", refresh=False),
 		dash.page_container
 	])
-	server.sitemap = create_sitemap()
-	return app
 
+	fix_badge_issue(server)
 
-@server.route("/terms-of-service")
-def terms_of_service():
-	return flask.send_from_directory("assets", "terms_of_service.html")
-
-
-@server.route("/privacy-policy")
-def privacy_policy():
-	return flask.send_from_directory("assets", "privacy_policy.html")
-
-
-@server.route("/favicon.ico")
-def favicon_ico():
-	return flask.send_from_directory("assets", "favicon.ico")
-
-
-@server.route("/favicon.png")
-def favicon_png():
-	return flask.send_from_directory("assets", "favicon.png")
-
-
-@server.route("/logout")
-def logout():
-	return flask.redirect(f"{ui_settings.PUBLIC_API_URL}/user/protected/logout")
-
-
-@server.route("/robots.txt")
-def robots():
-	robots = dedent(f"""\
-		User-Agent: *
-		Content-signal: search=yes, ai-train=no, use=reference
-		Allow: /
-		
-		User-Agent: Amazonbot
-		Disallow: /
-		
-		User-agent: Applebot-Extended
-		Disallow: /
-		
-		User-agent: Bytespider
-		Disallow: /
-		
-		User-agent: CCBot
-		Disallow: /
-		
-		User-Agent: ClaudeBot
-		Disallow: /
-		
-		User-Agent: Google-Extended
-		Disallow: /
-		
-		User-Agent: GPTBot
-		Disallow: /
-		
-		Allow: /login
-		
-		Allow: /signup
-		
-		Allow: /terms-of-service
-		
-		Allow: /privacy-policy
-		
-		Disallow: /results/*
-		
-		Disallow: /train
-		
-		Disallow: /previous
-		
-		Disallow: /logout
-		
-		Sitemap: {ui_settings.DASHBOARD_URL}/sitemap.xml
-	""")
-	return flask.Response(robots, status=200, mimetype="text/plain")
-
-
-@server.route("/sitemap.xml")
-def sitemap():
-	if hasattr(server, "sitemap"):
-		sitemap = server.sitemap
-	else:
-		sitemap = create_sitemap()
-		server.sitemap = sitemap
-	return flask.Response(sitemap, status=200, mimetype="text/xml")
+	return server
 
 
 def main():
+	app = get_app()
 	app.run(debug=ui_settings.DEBUG, port=ui_settings.DASHBOARD_PORT, host="0.0.0.0")
 
 
-app = get_app()
+if TYPE_CHECKING:
+	app = get_app()
+else:
+	app = None
 
 
-if __name__ == "__main__":
-	main()
+# if __name__ == "__main__":
+# 	main()

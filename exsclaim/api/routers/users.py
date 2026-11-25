@@ -1,24 +1,27 @@
-lazy from ...config import ui_settings, orcid_settings
-lazy from ...db import get_db_session, cryptographic_hash
+from exsclaim.config import ui_settings
+lazy from exsclaim.config import orcid_settings
+lazy from exsclaim.db import get_db_session, cryptographic_hash
+lazy from exsclaim.utilities.email import _EMAIL_AVAILABLE
+
 lazy from ..models import User, PasswordReset, get_guest_uuid, ExsclaimJSONResponse as JSONResponse
 lazy from ..dependencies.users import LoginInfo, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, ActiveUser, \
 	CurrentUser, CurrentUserId, ActiveUserId, create_access_token, create_refresh_token, extract_refresh_token, \
 	RefreshTokenCookie
+lazy from ..dependencies.email_verification import send_verification_email, verify_email, send_password_reset_email
 
 lazy from datetime import datetime as dt, timezone as tz, timedelta as td
-lazy from fastapi import APIRouter, status, HTTPException, Body, Cookie
-lazy from httpx2 import AsyncClient
+lazy from fastapi import APIRouter, BackgroundTasks, Body, Cookie, HTTPException, status
 lazy from starlette.requests import Request
 lazy from starlette.responses import Response, HTMLResponse, RedirectResponse
-lazy from pydantic import EmailStr
-lazy from sqlalchemy import text, delete, update
-lazy from sqlalchemy.ext.asyncio import AsyncSession
 lazy from sqlmodel import select
 lazy from typing import Optional
 lazy from uuid import uuid4, UUID
 
 lazy import asyncpg
 lazy import html
+lazy import httpx2
+import pydantic
+lazy import sqlalchemy as sa
 lazy import sqlalchemy.exc as sql_exc
 
 __all__ = ["router"]
@@ -43,7 +46,7 @@ async def add_user_jti(user: User | UUID, jti: UUID):
 		user_id = user
 
 	async with get_db_session() as session:
-		await session.execute(text("INSERT INTO users.jtis VALUES(:user_id, :jti)"), dict(user_id=user_id, jti=jti))
+		await session.execute(sa.text("INSERT INTO users.jtis VALUES(:user_id, :jti)"), dict(user_id=user_id, jti=jti))
 		await session.commit()
 
 
@@ -54,13 +57,13 @@ async def remove_user_jti(user: User | UUID, jti: UUID):
 		user_id = user
 
 	async with get_db_session() as session:
-		await session.execute(text("DELETE FROM users.jtis WHERE id = :user_id AND jti = :jti"), dict(user_id=user_id, jti=jti))
+		await session.execute(sa.text("DELETE FROM users.jtis WHERE id = :user_id AND jti = :jti"), dict(user_id=user_id, jti=jti))
 		await session.commit()
 
 
 async def user_has_jti(user: User, jti: UUID) -> bool:
 	async with get_db_session() as session:
-		results = await session.execute(text("SELECT EXISTS (SELECT 1 FROM users.jtis WHERE id = :user_id AND jti = :jti)"), dict(user_id=user.id, jti=jti))
+		results = await session.execute(sa.text("SELECT EXISTS (SELECT 1 FROM users.jtis WHERE id = :user_id AND jti = :jti)"), dict(user_id=user.id, jti=jti))
 		return results.scalar()
 
 
@@ -123,7 +126,18 @@ async def redirect_old_path_get(path: str) -> Response:
 
 
 @router.post("/create_user", tags=[TAG])
-async def create_user(info: LoginInfo):
+async def old_signup_path():
+	return RedirectResponse(router.prefix + "/signup", status.HTTP_308_PERMANENT_REDIRECT)
+
+
+@router.post("/signup", tags=[TAG])
+async def create_user(info: LoginInfo, background_tasks: BackgroundTasks):
+	if not ui_settings.ALLOW_LOGIN_WITH_EMAIL:
+		raise HTTPException(
+			status.HTTP_403_FORBIDDEN,
+			detail="EXSCLAIM currently does not allow users to create accounts using email/password. Please use a different method."
+		)
+
 	email = info.email.strip().lower()
 	username = info.username.strip()
 	password = info.password.strip()
@@ -133,25 +147,37 @@ async def create_user(info: LoginInfo):
 		existing_user: Optional[User] = results.scalar_one_or_none()
 
 	if existing_user:
-		return Response("Account with email already exists.", status_code=status.HTTP_409_CONFLICT, media_type="text/plain")
+		raise HTTPException(status.HTTP_409_CONFLICT, "Account with email already exists.")
 
 	if not is_valid_username(username):
-		return JSONResponse({"detail": "Username not valid.", "requested_username": username}, status_code=status.HTTP_400_BAD_REQUEST)
+		return JSONResponse(
+			{"detail": "Username not valid.", "requested_username": username},
+			status_code=status.HTTP_400_BAD_REQUEST
+		)
 
 	salt = User.generate_salt()
 	password_hash = cryptographic_hash(password, salt=salt)
 
 	username = html.escape(username)
-	user = User(name=username, email=email, salt=salt, password_hash=password_hash)
+	user = User(name=username, email=email, salt=salt, password_hash=password_hash, email_verified=False)
 
 	async with get_db_session(expire_on_commit=False) as session:
 		session.add(user)
 		await session.commit()
 
+	if _EMAIL_AVAILABLE:
+		background_tasks.add_task(send_verification_email, email, user.id)
+
 	response = JSONResponse({"detail": f"Account created for {email}."}, status_code=status.HTTP_201_CREATED)
 	response = await create_access_token_for_cookie(user, response)
 	response = await create_refresh_token_for_cookie(user, response)
 	return response
+
+
+@router.get("/validate")
+async def validate_email(code: str):
+	await verify_email(code)
+	return JSONResponse({"detail": "Email verified."}, status_code=status.HTTP_200_OK)
 
 
 async def get_user_from_login(info: LoginInfo) -> User:
@@ -174,8 +200,17 @@ async def get_user_from_login(info: LoginInfo) -> User:
 
 @router.post("/login", tags=[TAG])
 async def login_user(request: Request, info: LoginInfo) -> Response:
+	if not ui_settings.ALLOW_LOGIN_WITH_EMAIL:
+		raise HTTPException(
+			status.HTTP_403_FORBIDDEN,
+			detail="EXSCLAIM currently does not allow users to login to accounts using email/password. Please use a different method."
+		)
+
 	actual_user = await get_user_from_login(info)
-	response = JSONResponse({"status": "Logged in successfully!", "user": actual_user.name}, status_code=status.HTTP_200_OK)
+	response = JSONResponse(
+		{"status": "Logged in successfully!", "user": actual_user.name},
+		status_code=status.HTTP_200_OK
+	)
 
 	referer = request.headers.get("Referer")
 	if referer is not None:
@@ -188,7 +223,7 @@ async def login_user(request: Request, info: LoginInfo) -> Response:
 
 @router.api_route("/login-orcid", methods=["GET", "HEAD"], tags=[TAG], include_in_schema=False)
 async def login_with_orcid(request: Request, code: str):
-	async with AsyncClient() as client:
+	async with httpx2.AsyncClient() as client:
 		headers = {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}
 		data = {
 			"client_id": orcid_settings.CLIENT_ID,
@@ -212,7 +247,7 @@ async def login_with_orcid(request: Request, code: str):
 		actual_user: Optional[User] = results.scalar_one_or_none()
 		if actual_user is None:
 			# Create user
-			actual_user = User(name=json["name"], orcid=json["orcid"])
+			actual_user = User(name=json["name"], orcid=json["orcid"], email_verified=None)
 			session.add(actual_user)
 			await session.commit()
 
@@ -266,7 +301,7 @@ async def logout_user(request: Request, user_id: ActiveUserId, cookie: RefreshTo
 @router.post("/logout_all", tags=[TAG])
 async def logout_all_instances(user_id: ActiveUserId) -> Response:
 	async with get_db_session() as session:
-		await session.execute(text("DELETE FROM users.jtis WHERE id = :user_id"), dict(user_id=user_id))
+		await session.execute(sa.text("DELETE FROM users.jtis WHERE id = :user_id"), dict(user_id=user_id))
 		await session.commit()
 
 	response = JSONResponse(dict(detail=
@@ -276,55 +311,55 @@ async def logout_all_instances(user_id: ActiveUserId) -> Response:
 	return response
 
 
-async def send_reset_request_email(request: Request, session: AsyncSession, email: EmailStr) -> Response:
-	token = ... # TODO: Generate the token for resetting passwords
-	reset_obj = PasswordReset(email=email, token=token)
-	session.add(reset_obj)
-	await session.commit()
-	reset_link: str = request.url_for("reset_password", token=reset_obj.token, email=email) # TODO: Test if this generates the correct link
-
-	subject = "Password Reset | EXSCLAIM" # TODO: Make the reset email look prettier when there's a chance
-	email_content = ("<!DOCTYPE html>"
-					 "<html lang=\"en\">"
-					 "<head>"
-					 "<title>EXSCLAIM Password Reset</title>"
-					 "</head>"
-					 "<body>"
-					 "<h3>Password Reset</h3>"
-					 "<p>Hi,</p>"
-					 "<p>We got a request to reset your EXSCLAIM password.</p>"
-					 f"<a href=\"{reset_link}\"><button>Reset password</button></a>"
-					 "<p>If you did not request a password reset, please ignore this email.</p>"
-					 "<p><small>If the button above does not appear, please use the link below in your browser's address bar:</small></p>"
-					 f"<p><small><a href=\"{reset_link}\">{reset_link}</a></small></p>"
-					 "This link will expire after 1 hour."
-					 "</body>"
-					 "</html>")
-
-	# TODO: Send the email
-
-	return Response("Unfortunately, we do not have email capabilities set up for this system, so password resets are unavailable at this time.", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, media_type="text/plain")
+class ResetRequest(pydantic.BaseModel):
+	email: pydantic.EmailStr
 
 
-@router.post("/reset_password", tags=[TAG])
-async def reset_password(request: Request, token: Optional[str] = None, email: Optional[EmailStr] = None) -> Response:
-	if email is None:
-		return Response("No email provided.", status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, media_type="text/plain")
+@router.post("/send_reset", tags=[TAG])
+async def send_reset_request_email(request: Request, body: ResetRequest, background_tasks: BackgroundTasks) -> Response:
+	now = dt.now(tz.utc)
+	email = body.email
+	async with get_db_session() as session:
+		results = await session.execute(
+			sa.text("SELECT id FROM users.users WHERE email = :email"),
+			dict(email=email)
+		)
+		user_id = results.scalar_one_or_none()
+		if user_id is not None:
+			background_tasks.add_task(send_password_reset_email, request, email, user_id, now)
 
-	email = email.strip().lower()
+	return JSONResponse(
+		{"detail": "If an account with this email exists, it will receive the password reset email."},
+		status_code=status.HTTP_200_OK
+	)
 
-	async with get_db_session() as db:
-		if token is None:
-			# Email the user a URL to get to the reset page.
-			return await send_reset_request_email(request, db, email)
 
-		results = await db.execute(select(PasswordReset).where(PasswordReset.token == token))
-		reset_obj: PasswordReset = results.scalar_one_or_none()
-
-	if (reset_obj is None) or (reset_obj.email != email) or (dt.now(tz.utc) - reset_obj.created > td(hours=1)):
-		return Response("The email/token pair was invalid.", status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, media_type="text/plain")
-
-	return HTMLResponse("", status_code=status.HTTP_202_ACCEPTED) # TODO: Create the password reset form, and have a hidden field with some token for security when the form is posted.
+@router.get("/reset_password", tags=[TAG], include_in_schema=False)
+async def reset_password(request: Request, code: str) -> Response:
+	# async with get_db_session() as db:
+	# 	if token is None:
+	# 		# Email the user a URL to get to the reset page.
+	# 		return await send_reset_request_email(request, db, email)
+	#
+	# 	results = await db.execute(select(PasswordReset).where(PasswordReset.token == token))
+	# 	reset_obj: PasswordReset = results.scalar_one_or_none()
+	#
+	# if (reset_obj is None) or (reset_obj.email != email) or (dt.now(tz.utc) - reset_obj.created > td(hours=1)):
+	# 	return Response("The email/token pair was invalid.", status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, media_type="text/plain")
+	#
+	# response = HTMLResponse(
+	# 	"",
+	# 	status_code=status.HTTP_202_ACCEPTED,
+	# 	headers={"Referrer-Policy": "no-referrer"},
+	# )
+	#
+	# # other_response = await logout_all_instances(...)
+	# # other_response
+	#
+	# # await send_email() # TODO: Send an email to the email on file that the password was reset
+	#
+	# return response
+	raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail="The password reset logic is not fully set up.")
 
 
 @router.get("/id", tags=[TAG])
@@ -347,18 +382,24 @@ async def get_username(user: CurrentUser) -> JSONResponse:
 @router.patch("/name", tags=[TAG])
 async def update_username(request: Request, user: ActiveUser, username: str = Body(...)) -> JSONResponse:
 	if not is_valid_username(username):
-		return JSONResponse({"detail": "Username not valid.", "requested_username": username}, status_code=status.HTTP_400_BAD_REQUEST)
+		return JSONResponse(
+			{"detail": "Username not valid.", "requested_username": username},
+			status_code=status.HTTP_400_BAD_REQUEST
+		)
 
 	old_username = user.name
 	username = html.escape(username)
 
 	try:
 		async with get_db_session() as session:
-			await session.execute(update(User).where(User.id == user.id).values(name=username))
+			await session.execute(sa.update(User).where(User.id == user.id).values(name=username))
 			await session.commit()
 	except sql_exc.SQLAlchemyError as e:
 		await session.rollback()
-		request.state.logger.error(f"An error stopped user {user.id} from updating their username to: \"{username}\"", exc_info=e)
+		request.state.logger.error(
+			f"An error stopped user {user.id} from updating their username to: \"{username}\"",
+			exc_info=e
+		)
 		return JSONResponse({
 			"detail": "Could not successfully update username.",
 			"old_username": old_username,
@@ -377,7 +418,7 @@ async def delete_user(request: Request, user: ActiveUser, refresh_token: Refresh
 	extract_refresh_token(refresh_token)
 	async with get_db_session() as session:
 		try:
-			await session.execute(delete(User).where(User.id == user.id))
+			await session.execute(sa.delete(User).where(User.id == user.id))
 			await session.commit()
 		except sql_exc.SQLAlchemyError as e:
 			await session.rollback()
@@ -411,14 +452,14 @@ async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUs
 	try:
 		async with get_db_session() as session:
 			# Move the owner ID for all runs from the orcid account where it was originally the email account
-			await session.execute(text("UPDATE results.runs SET user_id = :orcid_user WHERE user_id = :email_user"),
+			await session.execute(sa.text("UPDATE results.runs SET user_id = :orcid_user WHERE user_id = :email_user"),
 								  dict(orcid_user=orcid_user.id, email_user=email_user.id))
 
 			# Delete any JTIs for the email account
-			await session.execute(text("DELETE FROM users.jtis WHERE id = :email_user"), email_params)
+			await session.execute(sa.text("DELETE FROM users.jtis WHERE id = :email_user"), email_params)
 
 			# Move all of the information from the email user to the orcid user, keeping the creation timestamp as whichever account was created first
-			await session.execute(text("""UPDATE users.users
+			await session.execute(sa.text("""UPDATE users.users
 										  SET
 											  salt=:salt,
 											  password_hash=:password_hash,
@@ -432,10 +473,10 @@ async def merge_accounts(request: Request, info: LoginInfo, orcid_user: ActiveUs
 								  ))
 
 			# Delete the email account
-			await session.execute(text("DELETE FROM users.users WHERE id = :email_user"), email_params)
+			await session.execute(sa.text("DELETE FROM users.users WHERE id = :email_user"), email_params)
 
 			# Add the email to the ORCID account (Couldn't do this before because emails have to be unique)
-			await session.execute(text("""UPDATE users.users SET email=:email WHERE id = :orcid_user"""),
+			await session.execute(sa.text("""UPDATE users.users SET email=:email WHERE id = :orcid_user"""),
 								  dict(
 									  email=email_user.email,
 									  orcid_user=orcid_user.id,
@@ -470,7 +511,7 @@ async def get_articles(user: CurrentUser) -> JSONResponse:
 
 	async with get_db_session() as session:
 		results = await session.execute(
-			text("SELECT title, url FROM results.article WHERE id IN (SELECT article_id FROM results.article_authors WHERE author_id = (SELECT id FROM results.authors WHERE orcid = :orcid));"),
+			sa.text("SELECT title, url FROM results.article WHERE id IN (SELECT article_id FROM results.article_authors WHERE author_id = (SELECT id FROM results.authors WHERE orcid = :orcid));"),
 			dict(orcid=user.orcid)
 		)
 		articles = dict(results.scalars().all())

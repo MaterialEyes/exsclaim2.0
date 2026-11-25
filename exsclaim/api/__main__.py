@@ -1,7 +1,7 @@
 lazy from exsclaim.config import ui_settings
 lazy from .app_dependencies import my_schema, create_logger, lifespan, get_middleware
 lazy from .exception_handlers import handler_dict
-lazy from .routers import v1_router, v2_router, general_router, query_router, users_router
+lazy from .routers import v1_router, v2_router, general_router, query_router, train_router, users_router
 
 lazy from fastapi import FastAPI
 from typing import TYPE_CHECKING
@@ -32,8 +32,26 @@ def get_app() -> FastAPI:
 	app.openapi = lambda: my_schema(app)
 	app.configuration_ini = None
 
-	for router in (general_router, query_router, users_router, v1_router, v2_router):
+	if not ui_settings.ALLOW_GUEST_USERS:
+		from exsclaim.api.dependencies.users import get_current_user_id_from_cookie, get_current_user_from_cookie, \
+			get_active_user_id_from_cookie, get_active_user_from_cookie
+
+		deps = {get_current_user_id_from_cookie, get_current_user_from_cookie, get_active_user_id_from_cookie,
+				get_active_user_from_cookie}
+
+	for router in (general_router, query_router, train_router, users_router, v1_router, v2_router):
 		app.include_router(router)
+		if not ui_settings.ALLOW_GUEST_USERS:
+			for route in router.routes:
+				dependencies = route.dependencies + route.dependant.dependencies
+				for dependency in dependencies:
+					if dependency.call in deps:
+						break
+				else:
+					logger.warning(
+						f"{route.name} [{router.prefix}/{route.path}] won't block unauthenticated attempts.",
+						flush=True
+					)
 
 	if use_prometheus:
 		from os import getenv

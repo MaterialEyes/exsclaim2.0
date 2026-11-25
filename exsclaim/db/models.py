@@ -1,19 +1,23 @@
+import enum
 lazy import pydantic
 lazy import re
-lazy import sqlalchemy
+import sqlalchemy
 lazy import sqlalchemy.dialects.postgresql as sa_psql
 lazy import sqlmodel
 
 lazy from datetime import datetime as dt, timezone as tz
 lazy from enum import StrEnum
+lazy from fastapi import HTTPException, status
+
+from sqlalchemy import Dialect
 lazy from sqlalchemy.ext.asyncio import AsyncAttrs
 lazy from sys import version_info
-lazy from typing import Annotated, Optional
+lazy from typing import Annotated, Any, Optional, Self
 lazy from uuid import UUID
 
 __all__ = ["Author", "ORCID_REGEX", "DOI_REGEX_STRING", "DOI_REGEX", "Article", "Figure", "Subfigure", "Scale",
 		   "SubfigureLabel", "ScaleLabel", "ClassificationCodes", "User", "Run", "Status", "SaveExtensions", "gen_uuid7",
-		   "get_guest_uuid", "ArticleAuthor", "RunArticles", "cryptographic_hash", "QueryCache"]
+		   "get_guest_uuid", "ArticleAuthor", "RunArticles", "cryptographic_hash", "QueryCache", "UserRoles"]
 
 if version_info >= (3, 14):
 	def gen_uuid7() -> UUID:
@@ -72,14 +76,44 @@ ORCID_TYPE = Annotated[Optional[str], pydantic.StringConstraints(pattern=ORCID_R
 """A temporary fix while SQLModel is missing the pattern kwarg."""
 
 
+class UserRoles(enum.IntFlag):
+	Default = 1
+	"""Normal user account, can create runs, view results, etc."""
+
+	Trainer = 2
+	"""Can access photos in settings.UNDETECTED_PATH within the UI's training page."""
+
+
+class RolesConverter(sqlalchemy.types.TypeDecorator):
+	impl = sqlalchemy.types.INTEGER
+	cache_ok = True
+
+	def process_result_value(self, value: int, dialect):
+		"""Convert integer from DB to custom enum"""
+		return UserRoles(value)
+
+	def process_bind_param(self, value: UserRoles, dialect: Dialect) -> Any:
+		"""Convert custom Enum to integer for DB storage"""
+		return value.value
+
+	def copy_value(self, value: Any) -> Any:
+		return UserRoles(value)
+
+
 class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	__tablename__ = "users"
 	__table_args__ = (
 		# Checks that the user is the guest login (which shouldn't have any login methods) OR has an attached ORCID OR has an email, password and salt saved
-		sqlalchemy.CheckConstraint(f"""id = '{get_guest_uuid()}'::UUID OR
-									orcid IS NOT NULL OR
-                                    (email IS NOT NULL AND password_hash IS NOT NULL AND salt IS NOT NULL)""",
-						name="check_login_methods"),
+		sqlalchemy.CheckConstraint(
+			f"""id = '{get_guest_uuid()}'::UUID OR
+			orcid IS NOT NULL OR
+            (email IS NOT NULL AND password_hash IS NOT NULL AND salt IS NOT NULL)""",
+			name="check_login_methods"
+		),
+		sqlalchemy.CheckConstraint(
+			"(email IS NULL AND email_validated IS NULL) OR (email IS NOT NULL AND email_validated IS NOT NULL))",
+			name="user_email_validated"
+		),
 		dict(schema="users")
 	)
 
@@ -171,6 +205,23 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 		}
 	)
 
+	email_verified: Optional[bool] = sqlmodel.Field(
+		default=None,
+		sa_column=sqlalchemy.Column(
+			sa_psql.BOOLEAN,
+			nullable=True
+		)
+	)
+
+	roles: UserRoles = sqlmodel.Field(
+		default=UserRoles.Default,
+		sa_column=sqlalchemy.Column(
+			RolesConverter,
+			server_default=sqlalchemy.text("1"),
+			nullable=False,
+		),
+	)
+
 	@property
 	async def runs(self) -> list["Run"]:
 		return await self.awaitable_attrs._runs
@@ -189,6 +240,11 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 	def jti(self):
 		self._jti = None
 
+	@property
+	def is_valid(self) -> bool:
+		# Checks that the email is validated (True) or the user is logged in through ORCID (None)
+		return self.email_verified in {True, None}
+
 	@pydantic.field_validator("email", mode="before")
 	@classmethod
 	def normalize_emails(cls, raw_email: Optional[pydantic.EmailStr]) -> Optional[pydantic.EmailStr]:
@@ -197,14 +253,34 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			return None
 		return raw_email.strip().lower()
 
+	@pydantic.model_validator(mode="after")
+	def check_user(self) -> Self:
+		if self.email is None:
+			if self.email_verified is not None:
+				raise ValueError(
+					f"email_verified should not be {self.email_verified} for user {self.id} when email is None.")
+		else:
+			if self.email_verified not in {True, False}:
+				raise ValueError(
+					f"email_verified should be a boolean value for user {self.id} when email isn't None. " +
+					f"Instead, it was `{self.email_verified}`."
+				)
+
+		return self
+
 	@staticmethod
 	def generate_salt(*args, **kwargs) -> bytes:
 		return generate_salt(*args, **kwargs)
 
 	def verify_password(self, attempted_password: str) -> bool:
 		from hmac import compare_digest
-
 		return compare_digest(cryptographic_hash(attempted_password, salt=self.salt), self.password_hash)
+
+	def ensure_verified(self):
+		"""Ensures that this user account is valid, or throws an HTTPException detailing why it's not.
+		:raises fastapi.exceptions.HTTPException: If the user account is verified."""
+		if self.email is not None and not self.email_verified:
+			raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Email has not been verified.")
 
 	@staticmethod
 	def has_permission(viewer: "User | UUID", run: Optional["Run"]) -> bool:

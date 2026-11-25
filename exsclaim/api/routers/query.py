@@ -1,31 +1,30 @@
-lazy from exsclaim.config import settings
+lazy from exsclaim.config import ui_settings
 lazy from exsclaim.db import get_db_session
 lazy from exsclaim.api.models import Run, User, ExsclaimJSONResponse, Status, get_guest_uuid, ClassificationCodes, \
 	PreviousRunFilters, QueryTools, Query, gen_uuid7, SaveExtensions
-lazy from exsclaim.api.dependencies import ActiveUserId, CurrentUserId, IdempotencyHeader, AcceptHeader
+lazy from exsclaim.api.dependencies import ActiveUserId, CurrentUser, CurrentUserId, IdempotencyHeader, AcceptHeader
 
+lazy import asyncio
 lazy import fastapi
+lazy import hashlib
 lazy import html
 lazy import json
 lazy import logging
+lazy import os
+lazy import sqlalchemy as sa
+lazy import shutil
 lazy import tarfile
+lazy import textwrap
 
-lazy from asyncio import all_tasks, create_task, CancelledError, Task
 lazy from base64 import b64encode
 lazy from datetime import datetime as dt
 lazy from exsclaim.__main__ import run_pipeline as exsclaim_pipeline
 lazy from exsclaim import llms
 lazy from fastapi import Body, Depends, status
-lazy from hashlib import sha256
-lazy from os import listdir
 lazy from pathlib import Path
-lazy from sqlalchemy import select, update, insert, delete, text
-lazy from shutil import make_archive, get_archive_formats
 lazy from starlette.requests import Request
 lazy from starlette.responses import Response, FileResponse, JSONResponse
-lazy from tarfile import open as tar_open
 lazy from tempfile import TemporaryDirectory
-lazy from textwrap import dedent
 lazy from typing import Annotated, Literal, Optional
 lazy from uuid import UUID
 lazy from zoneinfo import ZoneInfo
@@ -34,7 +33,7 @@ lazy from zoneinfo import ZoneInfo
 router = fastapi.APIRouter()
 _EXAMPLE_UUID = get_guest_uuid()
 cache = dict()
-ARCHIVE_FORMATS = set(map(lambda _format: _format[0], get_archive_formats()))
+ARCHIVE_FORMATS = frozenset(map(lambda _format: _format[0], shutil.get_archive_formats()))
 
 
 async def get_temp_dir():
@@ -52,17 +51,22 @@ def get_pipeline_task_name(result_id: UUID) -> str:
 
 async def run_exsclaim(_id: UUID, search_query_location: Path, logger: logging.Logger, tools: QueryTools):
 	db_result: Status = Status.ERROR
-	pipeline_task = create_task(
+	pipeline_task = asyncio.create_task(
 		name=get_pipeline_task_name(_id),
-		coro=exsclaim_pipeline(query=search_query_location, compress="gztar", verbose=settings.DEBUG,
-		                       compress_location=str(settings.RESULTS_PATH / str(_id)), **tools.model_dump())
+		coro=exsclaim_pipeline(
+			query=search_query_location,
+			compress="gztar",
+			verbose=ui_settings.DEBUG,
+			compress_location=str(ui_settings.RESULTS_PATH / str(_id)),
+			**tools.model_dump()
+		)
 	)
 
 	try:
 		result_code = await pipeline_task
 		if result_code == 0:
 			db_result = Status.FINISHED
-	except (KeyboardInterrupt, CancelledError) as e:
+	except (KeyboardInterrupt, asyncio.CancelledError) as e:
 		db_result = Status.STOPPED
 		logger.info(f"Run {_id} was stopped during processing.", exc_info=e)
 		result_code = 1
@@ -72,7 +76,7 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, logger: logging.L
 		result_code = -1
 	finally:
 		async with get_db_session() as session:
-			await session.execute(update(Run).where(Run.id == _id).values(status=db_result, end_time=dt.now()))
+			await session.execute(sa.update(Run).where(Run.id == _id).values(status=db_result, end_time=dt.now()))
 			await session.commit()
 
 	return result_code
@@ -157,7 +161,7 @@ async def run_exsclaim(_id: UUID, search_query_location: Path, logger: logging.L
 		}
 	}
 }, tags=["Using EXSCLAIM"])
-async def query(request: Request, search_query: Query, background_tasks: fastapi.BackgroundTasks, user_id: CurrentUserId,
+async def query(request: Request, search_query: Query, background_tasks: fastapi.BackgroundTasks, user: CurrentUser,
 				accept_header: AcceptHeader, idempotency_key: IdempotencyHeader = None) -> Response:
 	logger: logging.Logger = request.state.logger
 	headers = dict()
@@ -168,13 +172,16 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			status_code=status.HTTP_406_NOT_ACCEPTABLE
 		)
 
+	if not ui_settings.ALLOW_GUEST_USERS:
+		user.ensure_verified()
+
 	uuid = gen_uuid7()
 	str_uuid = str(uuid)
 
 	if idempotency_key is not None:
 		async with get_db_session() as session:
 			results = await session.execute(
-				text("SELECT run_id FROM results.query_cache WHERE idempotency_key = :key"),
+				sa.text("SELECT run_id FROM results.query_cache WHERE idempotency_key = :key"),
 				dict(key=idempotency_key)
 			)
 			existing_run_id = results.scalar_one_or_none()
@@ -190,7 +197,7 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 				)
 
 			await session.execute(
-				text("INSERT INTO results.query_cache(run_id, idempotency_key) VALUES(:run_id, :idempotency_key)"),
+				sa.text("INSERT INTO results.query_cache(run_id, idempotency_key) VALUES(:run_id, :idempotency_key)"),
 				dict(
 					run_id=uuid,
 					idempotency_key=idempotency_key,
@@ -223,7 +230,7 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 			"model_provider": search_query.model_provider,
 		}
 
-		results_dir = settings.RESULTS_PATH / str_uuid
+		results_dir = ui_settings.RESULTS_PATH / str_uuid
 		results_dir.mkdir(exist_ok=True, parents=True)
 		logger = request.app.logger
 		with open(results_dir / "search_query.json", "w") as f:
@@ -240,9 +247,9 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 		db_json["query"]["search_field_1"]["synonyms"] = [html.escape(synonym) for synonym in db_json["query"]["search_field_1"]["synonyms"]]
 
 		async with get_db_session() as session:
-			await session.execute(insert(Run).values(
+			await session.execute(sa.insert(Run).values(
 				id=uuid,
-				user_id=user_id,
+				user_id=user.id,
 				search_query=db_json,
 				extension=SaveExtensions.TAR)
 			)
@@ -414,7 +421,7 @@ async def query(request: Request, search_query: Query, background_tasks: fastapi
 async def status_def(request: Request, run_id: UUID, user_id: CurrentUserId):
 	logger: logging.Logger = request.state.logger
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == run_id))
+		results = await session.execute(sa.select(Run).where(Run.id == run_id))
 		result: Run = results.scalar_one_or_none()
 
 	if not User.has_permission(user_id, result):
@@ -458,7 +465,7 @@ async def status_def(request: Request, run_id: UUID, user_id: CurrentUserId):
 @router.api_route("/stop/{run_id}", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
 async def stop_run(run_id: UUID, user_id: CurrentUserId):
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == run_id))
+		results = await session.execute(sa.select(Run).where(Run.id == run_id))
 		result: Run = results.scalar_one_or_none()
 
 	if result.user_id != user_id:
@@ -483,7 +490,7 @@ async def stop_run(run_id: UUID, user_id: CurrentUserId):
 
 	# The pipeline is still running for the pipeline
 	task_name = get_pipeline_task_name(run_id)
-	tasks = tuple(filter(lambda task: task.get_name() == task_name, all_tasks()))
+	tasks = tuple(filter(lambda task: task.get_name() == task_name, asyncio.all_tasks()))
 
 	if len(tasks) == 0:
 		return ExsclaimJSONResponse({
@@ -494,7 +501,7 @@ async def stop_run(run_id: UUID, user_id: CurrentUserId):
 			"message": f"Found too many running pipelines for {run_id}. Please try again later."
 		}, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-	task: Task = tasks[0]
+	task: asyncio.Task = tasks[0]
 	task.cancel("Pipeline stopped upon user request.")
 	return ExsclaimJSONResponse({
 		"message": f"Stopped the pipeline for {run_id}."
@@ -572,7 +579,7 @@ async def stop_run(run_id: UUID, user_id: CurrentUserId):
 async def download(request: Request, run_id: UUID, user_id: CurrentUserId, compression: str = "default",
 				   filename: Literal["name", "id"] = "id", tmp_dir_name: str = Depends(get_temp_dir)) -> Response:
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == run_id))
+		results = await session.execute(sa.select(Run).where(Run.id == run_id))
 		result: Run = results.scalar_one_or_none()
 
 	if not User.has_permission(user_id, result):
@@ -594,8 +601,8 @@ async def download(request: Request, run_id: UUID, user_id: CurrentUserId, compr
 				case "Android" | "Chrome OS" | "Chromium OS" | "iOS" | "macOS" | "Windows" | "Unknown" | _:
 					compression = "zip"
 		else:
-			os = request.headers.get("user-agent", "")
-			if "Linux" in os:
+			user_agent = request.headers.get("user-agent", "")
+			if "Linux" in user_agent:
 				compression = "gztar"
 			else:
 				compression = "zip"
@@ -616,7 +623,7 @@ async def download(request: Request, run_id: UUID, user_id: CurrentUserId, compr
 				f"The database has an unknown status for id \"{run_id}\" and cannot send the results at this time.",
 				status_code=status.HTTP_501_NOT_IMPLEMENTED, media_type="text/plain")
 
-	results_file = (settings.RESULTS_PATH / str(run_id)).with_suffix(".tar.gz")
+	results_file = (ui_settings.RESULTS_PATH / str(run_id)).with_suffix(".tar.gz")
 	if not results_file.exists():
 		return Response(
 			"The result id was found in our database, but the corresponding results file could not be found. Please try again later.",
@@ -627,13 +634,13 @@ async def download(request: Request, run_id: UUID, user_id: CurrentUserId, compr
 
 	tmp_dir = Path(tmp_dir_name)
 
-	with tar_open(results_file) as f:
+	with tarfile.open(results_file) as f:
 		f.extractall(tmp_dir)
 
-	name = [file for file in listdir(tmp_dir) if "." not in file][0]
+	name = [file for file in os.listdir(tmp_dir) if "." not in file][0]
 
 	results_file = Path(
-		make_archive(str(tmp_dir / str(run_id)), compression, root_dir=str(tmp_dir), base_dir=name)
+		shutil.make_archive(str(tmp_dir / str(run_id)), compression, root_dir=str(tmp_dir), base_dir=name)
 	)
 
 	if filename == "name":
@@ -648,8 +655,8 @@ async def download(request: Request, run_id: UUID, user_id: CurrentUserId, compr
 @router.delete("/results/{run_id}", tags=["Using EXSCLAIM"])
 async def delete_results(run_id: UUID, user_id: CurrentUserId) -> Response:
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == run_id))
-		result: Run = results.scalar_one_or_none()
+		results = await session.execute(sa.select(Run).where(Run.id == run_id))
+		result: Optional[Run] = results.scalar_one_or_none()
 
 		if result is None or not User.has_permission(user_id, result):
 			return JSONResponse(
@@ -660,13 +667,20 @@ async def delete_results(run_id: UUID, user_id: CurrentUserId) -> Response:
 				),
 				status_code=status.HTTP_404_NOT_FOUND
 			)
+
 		if result.user_id == get_guest_uuid():
 			return JSONResponse(
 				dict(detail="Runs started by guest users (anonymous/not logged in) cannot be deleted."),
 				status_code=status.HTTP_401_UNAUTHORIZED
 			)
 
-		await session.execute(delete(Run).where(Run.id == run_id))
+		if result.user_id != user_id:
+			return JSONResponse(
+				dict(detail="Only the user who started the run (and owns it) can delete the run."),
+				status_code=status.HTTP_401_UNAUTHORIZED
+			)
+
+		await session.execute(sa.delete(Run).where(Run.id == run_id))
 	return JSONResponse(
 		dict(
 			detail="Run deleted",
@@ -685,7 +699,7 @@ async def download_logs(request: Request, run_id: UUID, user_id: CurrentUserId):
 	logger = request.state.logger
 
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == run_id))
+		results = await session.execute(sa.select(Run).where(Run.id == run_id))
 		result: Optional[Run] = results.scalar_one_or_none()
 
 	if result is None or not User.has_permission(user_id, result):
@@ -701,7 +715,7 @@ async def download_logs(request: Request, run_id: UUID, user_id: CurrentUserId):
 								status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
 	if result.status == Status.RUNNING:
-		logs_path = settings.RESULTS_PATH / str(run_id) / name / "exsclaim.log"
+		logs_path = ui_settings.RESULTS_PATH / str(run_id) / name / "exsclaim.log"
 		if not logs_path.exists():
 			logger.error(f"Could not find the log file for run \"{run_id}\" in {logs_path}.")
 			return missing_logs
@@ -709,7 +723,7 @@ async def download_logs(request: Request, run_id: UUID, user_id: CurrentUserId):
 		with open(logs_path, "rb") as f:
 			logs = f.read()
 	else:
-		results_path = settings.RESULTS_PATH / f"{run_id}.tar.gz"
+		results_path = ui_settings.RESULTS_PATH / f"{run_id}.tar.gz"
 		if not (results_path.exists() and tarfile.is_tarfile(results_path)):
 			logger.error(f"Could not find the log file for run \"{run_id}\" in {results_path}.")
 			return missing_logs
@@ -722,7 +736,7 @@ async def download_logs(request: Request, run_id: UUID, user_id: CurrentUserId):
 				logger.exception(f"Could not find the log file for run \"{run_id}\" in {results_path}.", exc_info=e)
 				return Response("Could not find log file in the saved results file.", status_code=status.HTTP_404_NOT_FOUND, media_type="text/plain")
 
-	digest = sha256(logs).hexdigest()
+	digest = hashlib.sha256(logs).hexdigest()
 	return Response(logs, status_code=status.HTTP_200_OK, headers={"ETag": digest, "Content-Length": str(len(logs))},
 	                media_type="text/plain")
 
@@ -730,7 +744,7 @@ async def download_logs(request: Request, run_id: UUID, user_id: CurrentUserId):
 @router.api_route("/results/{run_id}/publicize", methods=["POST", "HEAD"], tags=["Using EXSCLAIM"])
 async def publicize_result(run_id: UUID, user_id: ActiveUserId, publicize: bool = Body(...)):
 	async with get_db_session() as session:
-		results = await session.execute(select(Run).where(Run.id == run_id))
+		results = await session.execute(sa.select(Run).where(Run.id == run_id))
 		results: Optional[Run] = results.scalar_one_or_none()
 
 		if results is None or results.user_id != user_id:
@@ -745,7 +759,7 @@ async def publicize_result(run_id: UUID, user_id: ActiveUserId, publicize: bool 
 			return Response(f"Publicization status for {run_id} is already {publicize}.",
 							status_code=status.HTTP_202_ACCEPTED, media_type="text/plain")
 
-		await session.execute(update(Run).where(Run.id == run_id).values(publicize_results=publicize))
+		await session.execute(sa.update(Run).where(Run.id == run_id).values(publicize_results=publicize))
 		await session.commit()
 	return Response("Publicization status updated.", status_code=status.HTTP_200_OK, media_type="text/plain")
 
@@ -824,9 +838,9 @@ async def publicize_result(run_id: UUID, user_id: ActiveUserId, publicize: bool 
 		}
 	}
 		 })
-async def get_possible_compressions(request: Request, compression_type: Optional[str] = None) -> Response:
+async def get_possible_compressions(request: Request, _: CurrentUserId, compression_type: Optional[str] = None) -> Response:
 	send_json = request.headers.get("accept", "").lower() == "application/json"
-	compression_types = frozenset(map(lambda i: i[0], get_archive_formats()))
+	compression_types = frozenset(map(lambda i: i[0], shutil.get_archive_formats()))
 
 	if compression_type is None: # TODO: Add E-Tag header for compression types
 		compression_types = list(compression_types)
@@ -846,9 +860,9 @@ async def get_possible_compressions(request: Request, compression_type: Optional
 
 @router.api_route("/classification_codes", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"],
 				  response_model=list[ClassificationCodes])
-async def classification_codes(response: Response) -> tuple[ClassificationCodes]:
+async def classification_codes(response: Response, _: CurrentUserId) -> tuple[ClassificationCodes]:
 	async with get_db_session() as session:
-		results = await session.execute(select(ClassificationCodes).order_by(ClassificationCodes.code))
+		results = await session.execute(sa.select(ClassificationCodes).order_by(ClassificationCodes.code))
 		results = tuple(results.scalars().all())
 
 	hash_string = ";".join(map(lambda result: result.code, results))
@@ -860,7 +874,7 @@ async def classification_codes(response: Response) -> tuple[ClassificationCodes]
 
 @router.api_route("/checkpoints/{checkpoint}", methods=["GET", "HEAD"], tags=["EXSCLAIM Model Checkpoints"])
 async def download_checkpoint(checkpoint: str) -> Response:
-	checkpoint_folder = settings.CHECKPOINTS_PATH
+	checkpoint_folder = ui_settings.CHECKPOINTS_PATH
 
 	if not checkpoint_folder.exists() or not checkpoint_folder.is_dir():
 		return Response("Could not find any checkpoints. Please try again later.",
@@ -878,7 +892,7 @@ async def download_checkpoint(checkpoint: str) -> Response:
 
 @router.api_route("/previous_runs", methods=["GET", "QUERY", "HEAD"], tags=["Using EXSCLAIM"])
 async def previous_runs(user_id: CurrentUserId, conditions: Annotated[PreviousRunFilters, fastapi.Query()]) -> JSONResponse:
-	query = dedent(f"""
+	query = textwrap.dedent(f"""
 		SELECT {conditions.selection} FROM (
 			SELECT
 				r.id, r.status, r.search_query->>'name' AS name, r.search_query->'query'->'search_field_1'->'term' AS term,
@@ -901,7 +915,7 @@ async def previous_runs(user_id: CurrentUserId, conditions: Annotated[PreviousRu
 
 	async with get_db_session() as session:
 		query = f"{query} {filter_clause} ORDER BY r.start_time DESC;"
-		results = await session.execute(text(query), params=params)
+		results = await session.execute(sa.text(query), params=params)
 		runs = results.fetchall()
 
 	output = [None] * len(runs)
@@ -925,7 +939,10 @@ async def previous_runs(user_id: CurrentUserId, conditions: Annotated[PreviousRu
 
 
 @router.api_route("/query/llms", methods=["GET", "HEAD"], tags=["Using EXSCLAIM"])
-async def get_available_llms() -> JSONResponse:
+async def get_available_llms(user: CurrentUser) -> JSONResponse:
+	if not ui_settings.ALLOW_GUEST_USERS:
+		user.ensure_verified()
+
 	info = dict()
 	for provider, cls in llms.LLM.classes.items():
 		requires_api = cls._api_key_needed_for_list()

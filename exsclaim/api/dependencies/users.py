@@ -111,14 +111,14 @@ def extract_user_id_from_access_token(token: Optional[str]) -> Optional[UUID]:
 	if payload is None:
 		raise HTTPException(
 			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail="Cannot refresh credentials when no credentials are given.",
+			detail="Cannot extract credentials when no credentials are given.",
 		)
 
 	user_id = payload.get("sub")
 	if user_id is None:
 		raise HTTPException(
 			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail="Cannot refresh credentials when no credentials are given.",
+			detail="Cannot extract credentials when no credentials are given.",
 		)
 
 	return UUID(user_id)
@@ -140,7 +140,7 @@ def extract_refresh_token(refresh_token: str) -> dict:
 
 async def _get_user_from_id(user_id: UUID) -> User:
 	async with get_db_session() as session:
-		statement = select(User).options(load_only(User.id, User.name, User.email, User.orcid, User.created)).where(User.id == user_id)
+		statement = select(User).options(load_only(User.id, User.name, User.email, User.orcid, User.created, User.roles)).where(User.id == user_id)
 		user = await session.execute(statement)
 		user = user.scalar_one_or_none()
 
@@ -179,14 +179,15 @@ async def get_current_user_id_from_cookie(request: Request) -> UUID:
 	if isinstance(user_id, UUID):
 		return user_id
 
+	if not ui_settings.ALLOW_GUEST_USERS:
+		raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Guest users are not allowed. Please login or sign up.")
+
 	return get_guest_uuid()
 
 
 async def get_current_user_from_cookie(request: Request) -> User:
 	user_id = await get_current_user_id_from_cookie(request)
-	user = await _get_user_from_id(user_id)
-	if isinstance(user, User):
-		return user
+	return await _get_user_from_id(user_id)
 
 
 AccessTokenHeader = Annotated[Optional[str], Depends(OAuth2PasswordBearer(tokenUrl="token"))]

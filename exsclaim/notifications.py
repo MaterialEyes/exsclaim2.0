@@ -1,11 +1,11 @@
 lazy from .config import ui_settings
+lazy from exsclaim.utilities.email import _EMAIL_AVAILABLE, email_context
 
 lazy from abc import ABC, abstractmethod
 lazy from datetime import datetime as dt, timezone as tz, timedelta as td, tzinfo
 lazy from email.message import EmailMessage
 lazy from pydantic import BaseModel, model_validator, field_validator, EmailStr, ConfigDict, RootModel, GetCoreSchemaHandler, \
 	field_serializer, WithJsonSchema, Field
-lazy from smtplib import SMTP, SMTP_SSL
 lazy from typing import Annotated, Generator, Optional, Type, Self
 lazy from uuid import UUID
 
@@ -13,7 +13,6 @@ lazy import asyncio
 lazy import httpx2
 lazy import logging
 lazy import re
-lazy import ssl
 lazy import zoneinfo
 
 __all__ = ["Notification", "SuccessNotification", "InterruptionNotification", "ErrorNotification", "Notifier",
@@ -213,15 +212,13 @@ class Email(Notifier, RootModel[list[EmailStr]]):
 		if len(emails) == 0:
 			return
 
-		email_settings = ui_settings.EMAIL
-		if email_settings is None:
+		if not _EMAIL_AVAILABLE:
 			logger.warning("Email credentials were not provided by the pipeline's maintainer, so emails cannot be sent.")
 			return
 
 		messages: list[EmailMessage] = [EmailMessage() for _ in emails]
 		for i, (email, msg) in enumerate(zip(emails, messages)):
 			msg["Subject"] = f"EXSCLAIM Run {notification.name} ({notification.run_id})"
-			msg["From"] = email_settings.ACCOUNT
 			msg["To"] = email
 
 			if isinstance(notification, SuccessNotification):
@@ -243,15 +240,9 @@ class Email(Notifier, RootModel[list[EmailStr]]):
 			msg.add_alternative(html, subtype="html")
 			messages[i] = msg
 
-		if email_settings.SERVER == "localhost":
-			server = SMTP(email_settings.SERVER, email_settings.PORT)
-		else:
-			context = ssl.create_default_context()
-			server = SMTP_SSL(email_settings.SERVER, email_settings.PORT, context=context)
-
-		with server:
-			server.login(email_settings.ACCOUNT, email_settings.PASSWORD)
+		with email_context() as (server, account):
 			for msg in messages:
+				msg["From"] = account
 				server.send_message(msg)
 
 

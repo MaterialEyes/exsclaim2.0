@@ -1,5 +1,5 @@
 lazy from ..models import Banner, Run
-lazy from ..dependencies import AcceptHeader
+lazy from ..dependencies import AcceptHeader, CurrentUserId
 
 lazy from ...config import ui_settings
 lazy from ...db import get_db_session
@@ -327,7 +327,8 @@ def robots(request: Request) -> Response:
 
 
 @router.api_route("/banner", methods=["GET", "HEAD"], include_in_schema=False)
-async def get_banner_text(last_seen_banner: Optional[UUID] = None) -> Response:
+async def get_banner_text(_: CurrentUserId, last_seen_banner: Optional[UUID] = None) -> Response:
+	# user: CurrentUserId is only used to make sure that this user is logged if required by the system
 	async with get_db_session() as session:
 		results = await session.execute(select(Banner).order_by(Banner.created.desc()).limit(1))
 		banner: Optional[Banner] = results.scalar_one_or_none()

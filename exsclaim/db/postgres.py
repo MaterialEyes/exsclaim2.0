@@ -5,12 +5,11 @@ lazy from contextlib import asynccontextmanager
 lazy from pathlib import Path
 lazy from pydantic import Field, computed_field, field_validator
 lazy from pydantic_settings import BaseSettings, SettingsConfigDict
-lazy from sqlalchemy import select, text, insert
 lazy from typing import Any, AsyncGenerator, Optional
 lazy from uuid import UUID, uuid4
 
 lazy import logging
-lazy import sqlalchemy
+lazy import sqlalchemy as sa
 lazy import sqlalchemy.exc as sql_exc
 lazy import sqlalchemy.ext.asyncio as sql_async
 import sqlalchemy.dialects.postgresql as sa_psql
@@ -84,8 +83,8 @@ async_engine = sql_async.create_async_engine(
 )
 
 
-@sqlalchemy.event.listens_for(async_engine.sync_engine, "connect")
-def register_uuid_codec(dbapi_connection: sa_psql.asyncpg.AsyncAdapt_asyncpg_connection, connection_record: sqlalchemy.pool.base._ConnectionRecord):
+@sa.event.listens_for(async_engine.sync_engine, "connect")
+def register_uuid_codec(dbapi_connection: sa_psql.asyncpg.AsyncAdapt_asyncpg_connection, connection_record: sa.pool.base._ConnectionRecord):
 	dbapi_connection.run_async(
 		lambda connection: connection.set_type_codec(
 			"uuid",
@@ -124,7 +123,7 @@ class Database:
 
 	async def upload(self, exsclaim_json: dict[str, dict[str, Any]], run_id: UUID, logger: logging.Logger):
 		async with sql_async.AsyncSession(self.async_engine) as session:
-			results = await session.execute(select(ClassificationCodes))
+			results = await session.execute(sa.select(ClassificationCodes))
 			codes = results.scalars().all()
 			codes = {code.name.upper(): code.code.upper() for code in codes}
 			await session.commit()
@@ -138,7 +137,7 @@ class Database:
 							author = Author.model_validate({**author, "id": uuid4()})
 						if author.orcid is not None:
 							results = await session.execute(
-								text("SELECT id FROM results.authors WHERE orcid=:orcid"),
+								sa.text("SELECT id FROM results.authors WHERE orcid=:orcid"),
 								dict(orcid=author.orcid)
 							)
 							author_id: Optional[UUID] = results.scalar_one_or_none()
@@ -148,7 +147,7 @@ class Database:
 								continue
 
 						results = await session.execute(
-							text("INSERT INTO results.authors(name, orcid) VALUES(:name, :orcid) ON CONFLICT (id) DO NOTHING RETURNING id"),
+							sa.text("INSERT INTO results.authors(name, orcid) VALUES(:name, :orcid) ON CONFLICT (id) DO NOTHING RETURNING id"),
 							dict(name=author.name, orcid=author.orcid)
 						)
 						author_id = results.scalar_one_or_none()
@@ -156,7 +155,7 @@ class Database:
 
 					# Upload the article json
 					await session.execute(
-						text("INSERT INTO results.article(id, title, url, doi, license, open) VALUES(:id, :title, :url, :doi, :license, :open) ON CONFLICT (id) DO NOTHING"),
+						sa.text("INSERT INTO results.article(id, title, url, doi, license, open) VALUES(:id, :title, :url, :doi, :license, :open) ON CONFLICT (id) DO NOTHING"),
 						dict(
 							id=article_id,
 							title=article_json["title"],
@@ -193,7 +192,7 @@ class Database:
 
 					# Upload mapping of article to run id
 					await session.execute(
-						text("INSERT INTO results.run_articles(run_id, article_id, article_order) VALUES(:run_id, :article_id, :order)"),
+						sa.text("INSERT INTO results.run_articles(run_id, article_id, article_order) VALUES(:run_id, :article_id, :order)"),
 						dict(run_id=run_id, article_id=article_id, order=article_num)
 					)
 
@@ -311,24 +310,24 @@ class Database:
 
 	async def initialize_database(self):
 		from sqlalchemy.schema import CreateSchema
-		from .models import QueryCache # These models need to be imported before SQLModel.metadata.create_all
-		from ..api.models import Run, User, get_guest_uuid
+		from .models import QueryCache, Run, User, get_guest_uuid # These models need to be imported before SQLModel.metadata.create_all
+		from ..api.models import PasswordReset, EmailVerification
 		from ..api.db import initialize_db as api_db
 
 		import sqlmodel
 
 		async with self.async_engine.begin() as conn:
-			await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
+			await conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
 
 			for schema in ("results", "users"):
 				await conn.execute(CreateSchema(schema, if_not_exists=True))
 			await conn.run_sync(sqlmodel.SQLModel.metadata.create_all, checkfirst=True)
 
-			result = await conn.execute(text("SELECT COUNT(id) FROM users.users WHERE email IS NULL;"))
+			result = await conn.execute(sa.text("SELECT COUNT(id) FROM users.users WHERE email IS NULL;"))
 			if not result.fetchone()[0]:
-				await conn.execute(insert(User).values(id=get_guest_uuid(), name="Default User"))
+				await conn.execute(sa.insert(User).values(id=get_guest_uuid(), name="Default User"))
 
-			await conn.execute(text("""CREATE OR REPLACE PROCEDURE results.expire_query_cache() AS $$
+			await conn.execute(sa.text("""CREATE OR REPLACE PROCEDURE results.expire_query_cache() AS $$
 				BEGIN
 					DELETE FROM results.query_cache WHERE created_at > (NOW() + INTERVAL '4 hours');
 				END;
@@ -349,7 +348,7 @@ class Database:
 		)
 
 		async with sql_async.AsyncSession(self.async_engine) as session:
-			existing_codes = await session.execute(select(ClassificationCodes))
+			existing_codes = await session.execute(sa.select(ClassificationCodes))
 			existing_codes = existing_codes.all()
 
 			if not len(existing_codes):
@@ -375,6 +374,7 @@ class Database:
 			Version("2.5.3b4"): "58f3da095550",
 			Version("2.5.3b8"): "581ca3d69c77",
 			Version("2.5.3"): "c2fc8367b354",
+			Version("2.6.0b0"): "388cf2a958b3",
 		}
 
 		buffer = StringIO()

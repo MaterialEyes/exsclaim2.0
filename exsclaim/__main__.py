@@ -84,8 +84,8 @@ async def ui(dashboard_configuration: Optional[PathLike[str]] = None, api_config
 	dashboard_configuration = get_configuration(dashboard_configuration, "dashboard")
 
 	api = Popen(["/usr/local/bin/hypercorn", "-c", api_configuration, "exsclaim.api:get_app()"])
-	dashboard = Popen(["/usr/local/bin/gunicorn", "-c", dashboard_configuration, "exsclaim.dashboard:server"],
-		  cwd=str(exsclaim_dir / "dashboard"))
+	dashboard = Popen(["/usr/local/bin/hypercorn", "-c", dashboard_configuration, "exsclaim.dashboard:get_app()"],
+					  cwd=str(exsclaim_dir / "dashboard"))
 
 	if pid_folder is None:
 		pid_folder = Path("/tmp")

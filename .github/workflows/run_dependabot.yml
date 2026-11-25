@@ -1,0 +1,36 @@
+name: run_dependabot.yml # https://github.com/dependabot/example-cli-usage/blob/main/.github/workflows/example.yml
+on:
+    push:
+        branches: [ "main", "dev" ]
+    pull_request:
+        branches: [ "main" ]
+
+jobs:
+    run-dependabot:
+        runs-on: ubuntu-latest
+        permissions: read
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v7
+              with:
+                  path: repo
+
+            - name: Download CLI
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh release download --repo dependabot/cli -p "*.linux-amd64.tar.gz"
+                  tar -xzvf *.tar.gz >/dev/null 2>&1
+                  ./dependabot --version
+
+            - name: Run dependabot
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  ./dependabot update -f repo/.github/dependabot/pip.yml --local repo --timeout 20m >> result.jsonl || true
+
+            - name: Upload result
+              uses: actions/upload-artifact@v7
+              with:
+                  name: dependabot-result
+                  path: result.jsonl

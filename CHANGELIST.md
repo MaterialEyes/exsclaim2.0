@@ -1,3 +1,13 @@
+# Version 2.6.0
+## Dashboard
+- FastAPI is now the backend of Dash, Flask has been removed from the dependency list.
+
+## API
+- The API can now force users to have an account before accessing most endpoints.
+- The API can require users with email/password logins to verify their account before they can run on the pipeline.
+  - The API can now send verification emails.
+
+
 # Version 2.5.3
 ## API
 - The API now displays available LLMs for the providers that don't require an API key to list their models (`/query/llms`).

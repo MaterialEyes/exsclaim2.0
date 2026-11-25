@@ -1,0 +1,12 @@
+# Input for Dependabot CLI
+
+job:
+    package-manager: pip
+    allowed_updated:
+        - dependency-type: direct
+          update-types: all
+    source:
+        provider: github
+        repo: MaterialEyes/exsclaim2.0
+        directory: /
+        branch: dev
