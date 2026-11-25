@@ -35,7 +35,7 @@ dynamic = [
 dependencies = [
     # Image manipulation
     "numpy==2.5.2",
-    "opencv-contrib-python-headless==5.0.0.93",
+    "opencv-contrib-python-headless==5.1.0.95",
     "Pillow==13.0.0",
     "ultralytics==8.4.215",
 #    "pi_heif==1.4.0",
