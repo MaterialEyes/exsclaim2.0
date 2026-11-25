@@ -72,7 +72,7 @@ dependencies = [
     "dash-extensions==2.0.6",
     "dash-ag-grid==35.3.0",
     "fastapi[standard]==0.165.0",
-    "pydantic==2.14.3",
+    "pydantic==2.14.4",
     "starlette==1.10.0",
     "uvicorn==0.54.0",
     "hypercorn==0.18.0",
