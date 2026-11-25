@@ -58,7 +58,7 @@ dependencies = [
     "pycocotools==2.0.11",
 
     "PyYAML>=6.0.3,<6.1",
-    "pymupdf==1.28.2",
+    "pymupdf==2.1",
 
     "torch==2.15.0",
     "torchvision==0.29.2",
