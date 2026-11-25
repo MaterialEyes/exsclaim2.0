@@ -68,7 +68,7 @@ dependencies = [
     "openai~=3.51.0",
 
     # Used with the API
-    "dash[async,compress]==4.5.0",
+    "dash[async,compress]==4.5.1",
     "dash-extensions==2.0.6",
     "dash-ag-grid==35.3.0",
     "fastapi[standard]==0.165.0",
