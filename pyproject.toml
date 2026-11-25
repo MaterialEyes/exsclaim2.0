@@ -108,7 +108,7 @@ test = [
     "Faker==40.44.0",
     "pytest-asyncio==1.4.1",
     "unidecode==1.4.0",
-    "pytest-env==1.7.1"
+    "pytest-env==1.8.7"
 ]
 
 dev = [
