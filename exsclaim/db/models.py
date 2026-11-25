@@ -111,8 +111,8 @@ class User(AsyncAttrs, sqlmodel.SQLModel, table=True):
 			name="check_login_methods"
 		),
 		sqlalchemy.CheckConstraint(
-			"(email IS NULL AND email_validated IS NULL) OR (email IS NOT NULL AND email_validated IS NOT NULL)",
-			name="user_email_validated"
+			"(email IS NULL AND email_verified IS NULL) OR (email IS NOT NULL AND email_verified IS NOT NULL)",
+			name="check_user_email_verified",
 		),
 		dict(schema="users")
 	)

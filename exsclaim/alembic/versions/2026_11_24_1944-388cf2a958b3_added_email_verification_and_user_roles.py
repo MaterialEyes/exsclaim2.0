@@ -36,6 +36,11 @@ def upgrade() -> None:
         batch_op.add_column(
             sa.Column('email_verified', sa.Boolean, nullable=True)
         )
+        batch_op.create_check_constraint(
+            "check_user_email_verified",
+            "(email IS NULL AND email_verified IS NULL) OR (email IS NOT NULL AND email_verified IS NOT NULL)"
+        )
+
     op.execute("UPDATE users.users SET email_verified = FALSE WHERE email IS NOT NULL;")
     op.execute("UPDATE users.users SET email_verified = NULL WHERE email IS NULL;")
 
@@ -43,6 +48,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     with op.batch_alter_table('users', schema='users') as batch_op:
+        batch_op.drop_constraint('check_user_email_verified', type_='check')
         batch_op.drop_column('email_verified')
         batch_op.drop_column('roles')
 

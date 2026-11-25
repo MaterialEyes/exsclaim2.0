@@ -1,9 +1,6 @@
-name: run_dependabot.yml # https://github.com/dependabot/example-cli-usage/blob/main/.github/workflows/example.yml
+name: Run Dependabot # https://github.com/dependabot/example-cli-usage/blob/main/.github/workflows/example.yml
 on:
-    push:
-        branches: [ "main", "dev" ]
-    pull_request:
-        branches: [ "main" ]
+    workflow_dispatch:
 
 jobs:
     run-dependabot:
