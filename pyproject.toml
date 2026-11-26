@@ -93,7 +93,7 @@ dependencies = [
 [project.optional-dependencies]
 llm = [
     "ollama~=0.6.2",
-    "anthropic~=2.9.0",
+    "anthropic>=2.9,<2.13",
     "google-genai>=3.4.0,<3.7",
     "asksageclient==1.42",
 ]
